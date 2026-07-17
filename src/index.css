@@ -1,0 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CloudValley Design System — Minimalist, Apple/Amie inspired
+   All colors MUST be HSL. */
+
+@layer base {
+  :root {
+    /* Surfaces */
+    --background: 0 0% 100%;          /* #FFFFFF pure white */
+    --surface: 60 9% 98%;             /* #F9F9F8 subtle surface */
+    --foreground: 0 0% 4%;            /* #0A0A0A primary text */
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 4%;
+
+    /* Single accent: black */
+    --primary: 0 0% 4%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 60 9% 98%;
+    --secondary-foreground: 0 0% 4%;
+
+    --muted: 60 9% 98%;
+    --muted-foreground: 0 0% 42%;     /* #6B6B6B */
+
+    --tertiary: 0 0% 67%;             /* #ABABAB tertiary text */
+
+    --accent: 60 9% 96%;
+    --accent-foreground: 0 0% 4%;
+
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 60 6% 91%;              /* #E8E8E6 subtle border */
+    --input: 60 6% 91%;
+    --ring: 0 0% 4%;
+
+    --radius: 0.75rem;                /* 12px cards */
+
+    /* Sidebar — same minimal palette */
+    --sidebar-background: 60 9% 98%;
+    --sidebar-foreground: 0 0% 4%;
+    --sidebar-primary: 0 0% 4%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 88%;        /* light gray for active nav item */
+    --sidebar-accent-foreground: 0 0% 4%;
+    --sidebar-border: 60 6% 91%;
+    --sidebar-ring: 0 0% 4%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Geist', system-ui, -apple-system, sans-serif;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-weight: 400;
+    letter-spacing: -0.011em;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+}
