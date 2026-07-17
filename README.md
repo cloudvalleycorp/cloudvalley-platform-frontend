@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# CloudValley
 
 TODO: Document your project here
