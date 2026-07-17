@@ -87,7 +87,10 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
         window.location.assign("/login");
         return;
       }
-      if (!res.ok) return;
+      if (!res.ok) {
+        toast.error(`No se pudo cargar tu organización (${res.status})`);
+        return;
+      }
       const raw = (await res.json()) as OrganizationResponse;
       // Tolerar distintas variantes de nombres de campos entre company/fund.
       const normalized: OrgInfo = {
