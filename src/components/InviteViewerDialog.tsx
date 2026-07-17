@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { FormDialog } from "@/components/FormDialog";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -43,31 +42,23 @@ export function InviteViewerDialog({ open, onOpenChange, organizationId, organiz
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Invitar a {organizationName}</DialogTitle>
-          <DialogDescription>
-            Le va a llegar un magic link al email para acceder al portfolio.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-2 py-2">
-          <Label className="text-xs">Email</Label>
-          <Input
-            type="email"
-            placeholder="inversor@ejemplo.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleInvite()}
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleInvite} disabled={submitting}>
-            {submitting ? "Enviando…" : "Enviar invitación"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Invitar a ${organizationName}`}
+      description="Le va a llegar un magic link al email para acceder al portfolio."
+      onSubmit={handleInvite}
+      submitLabel={submitting ? "Enviando…" : "Enviar invitación"}
+      busy={submitting}
+    >
+      <Label className="text-xs">Email</Label>
+      <Input
+        type="email"
+        placeholder="inversor@ejemplo.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+      />
+    </FormDialog>
   );
 }

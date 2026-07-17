@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -15,44 +15,35 @@ export type Startup = {
   website: string | null;
 };
 
+async function fetchStartup(userId: string): Promise<Startup | null> {
+  const { data: members } = await supabase
+    .from("startup_members")
+    .select("startup_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!members) return null;
+
+  const { data: s } = await supabase
+    .from("startups")
+    .select("*")
+    .eq("id", members.startup_id)
+    .maybeSingle();
+
+  return s as Startup | null;
+}
+
 export function useStartup() {
   const { user } = useAuth();
-  const [startup, setStartup] = useState<Startup | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  const refetch = async () => {
-    if (!user) {
-      setStartup(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    const { data: members } = await supabase
-      .from("startup_members")
-      .select("startup_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
+  const { data: startup, isLoading } = useQuery({
+    queryKey: ["startup", user?.id],
+    queryFn: () => fetchStartup(user!.id),
+    enabled: !!user,
+  });
 
-    if (!members) {
-      setStartup(null);
-      setLoading(false);
-      return;
-    }
+  const refetch = () => queryClient.invalidateQueries({ queryKey: ["startup", user?.id] });
 
-    const { data: s } = await supabase
-      .from("startups")
-      .select("*")
-      .eq("id", members.startup_id)
-      .maybeSingle();
-
-    setStartup(s as Startup | null);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
-
-  return { startup, loading, refetch };
+  return { startup: startup ?? null, loading: isLoading, refetch };
 }

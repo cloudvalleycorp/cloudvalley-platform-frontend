@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, Map, BarChart3, FolderOpen, Bell, Check } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
+import { PageHeader } from "@/components/PageHeader";
 import { ReadinessScore } from "@/components/ReadinessScore";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
@@ -166,10 +167,7 @@ export default function Dashboard() {
   return (
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12">
-        <header className="mb-10">
-          <h1 className="text-3xl font-medium tracking-tight">{greeting}</h1>
-          <p className="text-sm text-muted-foreground mt-1 capitalize">{today}</p>
-        </header>
+        <PageHeader title={greeting} subtitle={<span className="capitalize">{today}</span>} className="mb-10" />
 
         <div className="grid lg:grid-cols-3 gap-6 mb-8">
           <div className="lg:col-span-2">
@@ -177,7 +175,7 @@ export default function Dashboard() {
           </div>
 
           <div className="space-y-4">
-            <Link to="/roadmap" className="block border border-border rounded-lg p-5 bg-card hover:border-foreground/30 transition-all duration-150 group">
+            <Link to="/roadmap" className="block border border-border rounded-lg p-5 bg-card hover:border-foreground/30 transition-all duration-150 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
               <div className="flex items-center justify-between">
                 <Map size={16} strokeWidth={1.5} className="text-muted-foreground" />
                 <ArrowRight size={14} strokeWidth={1.5} className="text-tertiary group-hover:text-foreground transition-all" />
@@ -191,7 +189,7 @@ export default function Dashboard() {
               </div>
             </Link>
 
-            <Link to="/metrics" className="block border border-border rounded-lg p-5 bg-card hover:border-foreground/30 transition-all duration-150 group">
+            <Link to="/metrics" className="block border border-border rounded-lg p-5 bg-card hover:border-foreground/30 transition-all duration-150 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
               <div className="flex items-center justify-between">
                 <BarChart3 size={16} strokeWidth={1.5} className="text-muted-foreground" />
                 <ArrowRight size={14} strokeWidth={1.5} className="text-tertiary group-hover:text-foreground transition-all" />
@@ -208,7 +206,7 @@ export default function Dashboard() {
               </div>
             </Link>
 
-            <Link to="/data-room" className="block border border-border rounded-lg p-5 bg-card hover:border-foreground/30 transition-all duration-150 group">
+            <Link to="/data-room" className="block border border-border rounded-lg p-5 bg-card hover:border-foreground/30 transition-all duration-150 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
               <div className="flex items-center justify-between">
                 <FolderOpen size={16} strokeWidth={1.5} className="text-muted-foreground" />
                 <ArrowRight size={14} strokeWidth={1.5} className="text-tertiary group-hover:text-foreground transition-all" />

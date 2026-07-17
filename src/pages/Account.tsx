@@ -5,17 +5,11 @@ import { User as UserIcon, Mail } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/FormDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { handleMembershipError } from "@/lib/membership";
 import { AppLayout } from "@/components/AppLayout";
+import { PageHeader } from "@/components/PageHeader";
 
 const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
 const REQUEST_EMAIL_CHANGE_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/request-email-change";
@@ -155,16 +149,19 @@ export default function Account() {
   return (
     <AppLayout>
       <div className="max-w-2xl mx-auto px-8 py-12 space-y-8">
-        <div>
-          <h1 className="text-3xl font-medium tracking-tight">Mi cuenta</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Gestioná tus datos personales. Para configurar tu organización, andá a{" "}
-            <Link to="/settings" className="underline underline-offset-2 hover:text-foreground">
-              Configuración
-            </Link>
-            .
-          </p>
-        </div>
+        <PageHeader
+          title="Mi cuenta"
+          subtitle={
+            <>
+              Gestioná tus datos personales. Para configurar tu organización, andá a{" "}
+              <Link to="/settings" className="underline underline-offset-2 hover:text-foreground">
+                Configuración
+              </Link>
+              .
+            </>
+          }
+          className="mb-0"
+        />
 
         {/* Sección Mi perfil */}
         <section className="border border-border rounded-lg p-6 bg-card space-y-5">
@@ -210,41 +207,28 @@ export default function Account() {
           </div>
         </section>
       </div>
-      <Dialog open={emailModalOpen} onOpenChange={setEmailModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cambiar email</DialogTitle>
-            <DialogDescription>
-              Te vamos a enviar un enlace de confirmación al nuevo email. Tu email actual se
-              mantiene hasta que confirmes desde ahí.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label className="text-xs">Nuevo email</Label>
-            <Input
-              type="email"
-              value={newEmail}
-              onChange={(e) => {
-                setNewEmail(e.target.value);
-                setEmailError(null);
-              }}
-              placeholder="nuevo@email.com"
-              autoFocus
-            />
-            {emailError && (
-              <p className="text-xs text-destructive">{emailError}</p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setEmailModalOpen(false)} disabled={sendingEmail}>
-              Cancelar
-            </Button>
-            <Button onClick={submitEmailChange} disabled={sendingEmail || !newEmail.trim()}>
-              {sendingEmail ? "Enviando…" : "Enviar enlace"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <FormDialog
+        open={emailModalOpen}
+        onOpenChange={setEmailModalOpen}
+        title="Cambiar email"
+        description="Te vamos a enviar un enlace de confirmación al nuevo email. Tu email actual se mantiene hasta que confirmes desde ahí."
+        onSubmit={submitEmailChange}
+        submitLabel={sendingEmail ? "Enviando…" : "Enviar enlace"}
+        busy={sendingEmail || !newEmail.trim()}
+      >
+        <Label className="text-xs">Nuevo email</Label>
+        <Input
+          type="email"
+          value={newEmail}
+          onChange={(e) => {
+            setNewEmail(e.target.value);
+            setEmailError(null);
+          }}
+          placeholder="nuevo@email.com"
+          autoFocus
+        />
+        {emailError && <p className="text-xs text-destructive">{emailError}</p>}
+      </FormDialog>
     </AppLayout>
   );
 }

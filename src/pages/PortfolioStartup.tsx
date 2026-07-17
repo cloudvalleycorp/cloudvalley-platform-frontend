@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
-import { ArrowLeft, Bell, ChevronLeft, ChevronRight, Download, Info, LineChart as LineChartIcon, LogOut } from "lucide-react";
+import { Navigate, useParams } from "react-router-dom";
+import { Bell, ChevronLeft, ChevronRight, Download, Info, LineChart as LineChartIcon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import type { Startup } from "@/hooks/useStartup";
+import { AppLayout } from "@/components/AppLayout";
 import { StageBadge } from "@/components/StageBadge";
+import { StatCard } from "@/components/StatCard";
+import { BackLink } from "@/components/BackLink";
+import { LoadingState } from "@/components/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -25,14 +30,7 @@ type Tab = "metrics" | "roadmap" | "dataroom";
 const pk = (m: number, y: number) => `${y}-${m}`;
 const prevMonth = (m: number, y: number) => (m === 1 ? { m: 12, y: y - 1 } : { m: m - 1, y });
 
-type Startup = {
-  id: string;
-  name: string;
-  stage: string | null;
-  business_model: string | null;
-  industry: string | null;
-  readiness_score: number;
-};
+type StartupSummary = Pick<Startup, "id" | "name" | "stage" | "business_model" | "industry" | "readiness_score">;
 
 type Doc = {
   id: string;
@@ -44,9 +42,9 @@ type Doc = {
 
 export default function PortfolioStartup() {
   const { startupId, orgId } = useParams<{ startupId: string; orgId: string }>();
-  const { user, loading: authLoading, isOrgViewer, signOut } = useAuth();
+  const { user, loading: authLoading, isOrgViewer } = useAuth();
 
-  const [startup, setStartup] = useState<Startup | null>(null);
+  const [startup, setStartup] = useState<StartupSummary | null>(null);
   const [link, setLink] = useState<{ batch: string | null; year: number | null } | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -87,7 +85,7 @@ export default function PortfolioStartup() {
         // TODO: migrar a backend propio
         supabase.from("metric_entries").select("metric_id, value, period_year, period_month").eq("startup_id", startupId),
       ]);
-      setStartup(s as Startup | null);
+      setStartup(s as StartupSummary | null);
       setLink(l as any);
       setAllMetrics((defs ?? []) as MetricDef[]);
       setActiveMetricIds(new Set((cfgs ?? []).map((c: any) => c.metric_id)));
@@ -231,24 +229,11 @@ export default function PortfolioStartup() {
   if (!isOrgViewer) return <Navigate to="/dashboard" replace />;
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="max-w-7xl mx-auto px-8 py-5 flex items-center justify-between">
-          <Link to="/portfolio" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-all">
-            <ArrowLeft size={14} strokeWidth={1.5} /> Volver al portfolio
-          </Link>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">{user.email}</span>
-            <button onClick={signOut} className="text-muted-foreground hover:text-foreground transition-all p-1" title="Cerrar sesión">
-              <LogOut size={16} strokeWidth={1.5} />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-8 py-10 space-y-8">
+    <AppLayout>
+      <div className="max-w-7xl mx-auto px-8 py-10 space-y-8">
+        <BackLink to="/portfolio" label="Volver al portfolio" />
         {!loaded || !startup ? (
-          <div className="text-sm text-muted-foreground">Cargando…</div>
+          <LoadingState />
         ) : (
           <>
             <div>
@@ -372,13 +357,7 @@ export default function PortfolioStartup() {
 
             {tab === "roadmap" && (
               <div className="space-y-4 max-w-2xl">
-                <div className="border border-border rounded-lg p-5">
-                  <div className="text-xs text-muted-foreground">Readiness Score</div>
-                  <div className="text-3xl font-medium tracking-tight mt-1 tabular-nums">
-                    {startup.readiness_score}
-                    <span className="text-sm text-muted-foreground">/100</span>
-                  </div>
-                </div>
+                <StatCard label="Readiness Score" value={startup.readiness_score} suffix="/100" />
                 <div className="space-y-3">
                   {pillars.map((p) => {
                     const pct = p.total === 0 ? 0 : (p.done / p.total) * 100;
@@ -468,11 +447,11 @@ export default function PortfolioStartup() {
             )}
           </>
         )}
-      </main>
+      </div>
 
       <MetricInfoSheet metric={openInfo} onClose={() => setOpenInfo(null)} history={infoHistory} />
       <MetricChartDialog metric={chartMetric} onClose={() => setChartMetric(null)} history={chartHistory} />
-    </div>
+    </AppLayout>
   );
 }
 

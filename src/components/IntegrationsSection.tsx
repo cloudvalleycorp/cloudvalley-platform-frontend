@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { FormDialog } from "@/components/FormDialog";
 import { toast } from "sonner";
 import { CheckCircle2, AlertCircle, RefreshCw, Plug } from "lucide-react";
 
@@ -233,56 +233,54 @@ export function IntegrationsSection() {
         {loading && <p className="text-xs text-muted-foreground">Cargando…</p>}
       </div>
 
-      <Dialog open={!!dialogProvider} onOpenChange={(o) => !o && setDialogProvider(null)}>
-        <DialogContent>
-          {cfg && (
+      <FormDialog
+        open={!!dialogProvider}
+        onOpenChange={(o) => !o && setDialogProvider(null)}
+        title={cfg ? `Conectar ${cfg.name}` : ""}
+        description={
+          cfg && (
             <>
-              <DialogHeader>
-                <DialogTitle>Conectar {cfg.name}</DialogTitle>
-                <DialogDescription>
-                  {cfg.helpText}{" "}
-                  <a href={cfg.helpUrl} target="_blank" rel="noopener noreferrer" className="underline">
-                    Abrir {cfg.name}
-                  </a>
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 py-2">
-                <div>
-                  <Label className="text-xs">{cfg.keyLabel}</Label>
-                  <Input
-                    type="password"
-                    placeholder={cfg.keyPlaceholder}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                {cfg.needsSecret && (
-                  <div>
-                    <Label className="text-xs">{cfg.secretLabel}</Label>
-                    <Input
-                      type="password"
-                      placeholder={cfg.secretPlaceholder}
-                      value={apiSecret}
-                      onChange={(e) => setApiSecret(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                )}
-                <p className="text-[11px] text-muted-foreground">
-                  Tu credencial se guarda encriptada y solo se usa desde el servidor para leer tus métricas.
-                </p>
-              </div>
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => setDialogProvider(null)}>Cancelar</Button>
-                <Button onClick={submitConnect} disabled={submitting || !apiKey}>
-                  {submitting ? "Validando…" : "Conectar"}
-                </Button>
-              </DialogFooter>
+              {cfg.helpText}{" "}
+              <a href={cfg.helpUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                Abrir {cfg.name}
+              </a>
             </>
-          )}
-        </DialogContent>
-      </Dialog>
+          )
+        }
+        onSubmit={submitConnect}
+        submitLabel={submitting ? "Validando…" : "Conectar"}
+        busy={submitting || !apiKey}
+      >
+        {cfg && (
+          <>
+            <div>
+              <Label className="text-xs">{cfg.keyLabel}</Label>
+              <Input
+                type="password"
+                placeholder={cfg.keyPlaceholder}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            {cfg.needsSecret && (
+              <div>
+                <Label className="text-xs">{cfg.secretLabel}</Label>
+                <Input
+                  type="password"
+                  placeholder={cfg.secretPlaceholder}
+                  value={apiSecret}
+                  onChange={(e) => setApiSecret(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Tu credencial se guarda encriptada y solo se usa desde el servidor para leer tus métricas.
+            </p>
+          </>
+        )}
+      </FormDialog>
     </section>
   );
 }

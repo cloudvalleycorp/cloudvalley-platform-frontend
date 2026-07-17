@@ -68,7 +68,7 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
                   className="text-muted-foreground hover:text-foreground"
                   aria-label={`Info sobre ${m.name}`}
                 >
-                  <Info size={13} strokeWidth={1.5} />
+                  <Info size={14} strokeWidth={1.5} />
                 </button>
               </div>
               <div className="w-40">

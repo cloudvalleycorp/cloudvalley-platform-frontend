@@ -70,7 +70,7 @@ export function OrganizationsPicker({
             <button
               type="button"
               onClick={() => toggle(org.id)}
-              className="w-full flex items-center gap-3 p-4 text-left"
+              className="w-full flex items-center gap-3 p-4 text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <Checkbox checked={isSelected} className="pointer-events-none" />
               <div className="flex-1">
@@ -120,7 +120,7 @@ export function OrganizationsPicker({
             if (!noneSelected) onChange([]);
           }}
           className={cn(
-            "w-full text-left p-3 rounded-lg border text-sm transition-all duration-150",
+            "w-full text-left p-3 rounded-lg border text-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             noneSelected ? "border-foreground bg-surface" : "border-border hover:border-foreground/30 text-muted-foreground"
           )}
         >

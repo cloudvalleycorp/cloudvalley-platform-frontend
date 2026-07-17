@@ -163,7 +163,7 @@ export function NoMembershipScreen({
             <div className="space-y-3 mt-6">
               <button
                 onClick={() => setMode("join")}
-                className="w-full text-left p-4 rounded-lg border border-border hover:border-foreground/40 hover:bg-muted/30 transition-all flex items-start gap-3 group"
+                className="w-full text-left p-4 rounded-lg border border-border hover:border-foreground/40 hover:bg-muted/30 transition-all flex items-start gap-3 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <div className="mt-0.5 text-muted-foreground group-hover:text-foreground transition-colors">
                   <Users size={18} strokeWidth={1.5} />
@@ -178,7 +178,7 @@ export function NoMembershipScreen({
               </button>
               <button
                 onClick={() => setMode("create")}
-                className="w-full text-left p-4 rounded-lg border border-border hover:border-foreground/40 hover:bg-muted/30 transition-all flex items-start gap-3 group"
+                className="w-full text-left p-4 rounded-lg border border-border hover:border-foreground/40 hover:bg-muted/30 transition-all flex items-start gap-3 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <div className="mt-0.5 text-muted-foreground group-hover:text-foreground transition-colors">
                   <Building2 size={18} strokeWidth={1.5} />
@@ -193,7 +193,7 @@ export function NoMembershipScreen({
               </button>
               <button
                 onClick={() => (onDismiss ? onDismiss() : setMode("later"))}
-                className="w-full text-left p-4 rounded-lg border border-border hover:border-foreground/40 hover:bg-muted/30 transition-all flex items-start gap-3 group"
+                className="w-full text-left p-4 rounded-lg border border-border hover:border-foreground/40 hover:bg-muted/30 transition-all flex items-start gap-3 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <div className="mt-0.5 text-muted-foreground group-hover:text-foreground transition-colors">
                   <Clock size={18} strokeWidth={1.5} />
@@ -291,7 +291,7 @@ export function NoMembershipScreen({
                 <button
                   type="button"
                   onClick={copyCode}
-                  className="w-full p-4 rounded-lg border border-border bg-surface font-mono text-lg tracking-widest flex items-center justify-center gap-3 hover:border-foreground/40 transition-all"
+                  className="w-full p-4 rounded-lg border border-border bg-surface font-mono text-lg tracking-widest flex items-center justify-center gap-3 hover:border-foreground/40 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   <span>{createdCode}</span>
                   {copied ? (

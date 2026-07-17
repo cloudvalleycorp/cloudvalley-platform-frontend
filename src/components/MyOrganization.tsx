@@ -102,7 +102,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
       setNameDraft(normalized.name);
       setFullNameDraft(normalized.full_name ?? "");
     } catch {
-      // silencioso
+      toast.error("No se pudo cargar tu organización");
     }
   };
 
@@ -274,7 +274,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
             <button
               type="button"
               onClick={copy}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-surface font-mono text-sm tracking-widest hover:border-foreground/40 transition-all"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-surface font-mono text-sm tracking-widest hover:border-foreground/40 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               title="Copiar código"
             >
               <span>{org.join_code}</span>

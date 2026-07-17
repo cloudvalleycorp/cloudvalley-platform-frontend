@@ -1,7 +1,8 @@
 import { ReactNode, useEffect } from "react";
-import { Navigate, useNavigate, Link } from "react-router-dom";
+import { Navigate, useNavigate, useLocation, Link } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
+import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
 import { LogOut, Settings as SettingsIcon, UserCircle } from "lucide-react";
@@ -16,27 +17,28 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading, isOrgViewer, isAdmin, role, company_id, company_name, email, full_name, signOut } = useAuth();
+  const { user, loading: authLoading, isOrgViewer, isAdmin, role, company_id, company_name, fund_name, email, full_name, signOut } = useAuth();
   const { startup, loading: startupLoading } = useStartup();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    if (!authLoading && user && isOrgViewer) {
+    if (!authLoading && user && isOrgViewer && !location.pathname.startsWith("/portfolio")) {
       navigate("/portfolio", { replace: true });
     }
     // Los usuarios sin company_id ahora ven la pantalla "sin empresa" dentro del
     // Dashboard en lugar de ser redirigidos al onboarding público.
-  }, [authLoading, user, isOrgViewer, navigate]);
+  }, [authLoading, user, isOrgViewer, location.pathname, navigate]);
 
   if (authLoading) {
-    return <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Cargando…</div>;
+    return <LoadingState variant="fullScreen" />;
   }
 
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  const showCompany = (role === "user" || role === "investor") && !!company_name;
+  const orgLabel = role === "user" ? company_name : role === "investor" ? fund_name : null;
   const displayName = full_name?.trim() || email || "Mi cuenta";
 
   return (
@@ -52,10 +54,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <Link to="/" className="text-base font-medium tracking-tight text-foreground shrink-0">
                 CloudValley
               </Link>
-              {showCompany && (
+              {orgLabel && (
                 <>
                   <span className="text-muted-foreground/50 hidden sm:inline">/</span>
-                  <span className="text-sm text-foreground truncate hidden sm:inline">{company_name}</span>
+                  <span className="text-sm text-foreground truncate hidden sm:inline">{orgLabel}</span>
                 </>
               )}
             </div>

@@ -234,7 +234,7 @@ export default function Onboarding() {
                   key={s.id}
                   onClick={() => setStage(s.id)}
                   className={cn(
-                    "text-left p-4 rounded-lg border transition-all duration-150",
+                    "text-left p-4 rounded-lg border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                     stage === s.id
                       ? "border-foreground bg-surface"
                       : "border-border hover:border-foreground/30"
@@ -257,7 +257,7 @@ export default function Onboarding() {
                   key={m.id}
                   onClick={() => setModel(m.id)}
                   className={cn(
-                    "text-left p-4 rounded-lg border transition-all duration-150",
+                    "text-left p-4 rounded-lg border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                     model === m.id
                       ? "border-foreground bg-surface"
                       : "border-border hover:border-foreground/30"
@@ -611,7 +611,7 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
                       key={opt.id}
                       onClick={() => setChoice(opt.id)}
                       className={cn(
-                        "text-left p-4 rounded-lg border transition-all duration-150",
+                        "text-left p-4 rounded-lg border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                         choice === opt.id
                           ? "border-foreground bg-surface"
                           : "border-border hover:border-foreground/30"

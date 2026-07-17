@@ -1,19 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
+import { PageHeader } from "@/components/PageHeader";
 import { useStartup } from "@/hooks/useStartup";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { FormDialog } from "@/components/FormDialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Building2, Search, Check, X, Clock } from "lucide-react";
@@ -113,12 +107,11 @@ export default function Connections() {
   return (
     <AppLayout>
       <div className="max-w-5xl mx-auto px-8 py-12 space-y-8">
-        <div>
-          <h1 className="text-3xl font-medium tracking-tight mb-2">Conexiones</h1>
-          <p className="text-sm text-muted-foreground">
-            Solicitá aparecer en el portfolio de fondos y aceleradoras.
-          </p>
-        </div>
+        <PageHeader
+          title="Conexiones"
+          subtitle="Solicitá aparecer en el portfolio de fondos y aceleradoras."
+          className="mb-0"
+        />
 
         <div className="flex gap-1 border-b border-border">
           {[
@@ -233,30 +226,22 @@ export default function Connections() {
         )}
       </div>
 
-      <Dialog open={!!applyingTo} onOpenChange={(o) => !o && setApplyingTo(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Solicitar conexión con {applyingTo?.name}</DialogTitle>
-            <DialogDescription>
-              Si aceptan, tu startup aparecerá en su portfolio y podrán ver tus métricas y data room públicos.
-            </DialogDescription>
-          </DialogHeader>
-          <div>
-            <Textarea
-              placeholder="Mensaje (opcional). Ej: nos postulamos a su batch 2026…"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={4}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setApplyingTo(null)}>Cancelar</Button>
-            <Button onClick={submitRequest} disabled={submitting}>
-              {submitting ? "Enviando…" : "Enviar solicitud"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <FormDialog
+        open={!!applyingTo}
+        onOpenChange={(o) => !o && setApplyingTo(null)}
+        title={`Solicitar conexión con ${applyingTo?.name}`}
+        description="Si aceptan, tu startup aparecerá en su portfolio y podrán ver tus métricas y data room públicos."
+        onSubmit={submitRequest}
+        submitLabel={submitting ? "Enviando…" : "Enviar solicitud"}
+        busy={submitting}
+      >
+        <Textarea
+          placeholder="Mensaje (opcional). Ej: nos postulamos a su batch 2026…"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          rows={4}
+        />
+      </FormDialog>
     </AppLayout>
   );
 }

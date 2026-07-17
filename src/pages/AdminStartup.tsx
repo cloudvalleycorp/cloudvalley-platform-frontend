@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Navigate, useParams, Link } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { Navigate, useParams } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
+import { BackLink } from "@/components/BackLink";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { ReadinessScore } from "@/components/ReadinessScore";
@@ -52,9 +52,7 @@ export default function AdminStartup() {
   return (
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12">
-        <Link to="/admin" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6">
-          <ArrowLeft size={14} strokeWidth={1.5} /> Volver al ecosistema
-        </Link>
+        <BackLink to="/admin" label="Volver al ecosistema" className="mb-6" />
 
         {startup && (
           <header className="mb-8">

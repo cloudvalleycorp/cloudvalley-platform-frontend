@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
+import { LoadingState } from "@/components/LoadingState";
 
 export default function Index() {
   const navigate = useNavigate();
@@ -27,9 +28,5 @@ export default function Index() {
     navigate("/dashboard", { replace: true });
   }, [authLoading, startupLoading, user, startup, isOrgViewer, isAdmin, company_id, navigate]);
 
-  return (
-    <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">
-      Cargando…
-    </div>
-  );
+  return <LoadingState variant="fullScreen" />;
 }

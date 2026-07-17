@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { LogOut, Settings as SettingsIcon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { AppLayout } from "@/components/AppLayout";
 import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershipScreen";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function InvestorPortfolio() {
   const {
@@ -10,11 +11,9 @@ export default function InvestorPortfolio() {
     loading,
     isOrgViewer,
     fund_id,
-    fund_name,
     portfolio_company_ids,
     portfolio_company_names,
     email,
-    signOut,
   } = useAuth();
   const [dismissed, setDismissed] = useState(false);
   const [reopen, setReopen] = useState(false);
@@ -26,7 +25,7 @@ export default function InvestorPortfolio() {
   if (!fund_id) {
     if (!dismissed || reopen) {
       return (
-        <div className="min-h-screen bg-background">
+        <AppLayout>
           <NoMembershipScreen
             role="investor"
             email={email}
@@ -35,18 +34,18 @@ export default function InvestorPortfolio() {
               setReopen(false);
             }}
           />
-        </div>
+        </AppLayout>
       );
     }
     return (
-      <div className="min-h-screen bg-background">
+      <AppLayout>
         <div className="max-w-7xl mx-auto px-8 py-12">
           <NoMembershipBanner role="investor" onOpen={() => setReopen(true)} />
           <div className="border border-border rounded-lg p-12 text-center text-sm text-muted-foreground bg-card">
             No hay portfolio para mostrar hasta que te unas a un fondo.
           </div>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
@@ -56,44 +55,12 @@ export default function InvestorPortfolio() {
   }));
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="max-w-7xl mx-auto px-8 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-lg font-medium tracking-tight">CloudValley</span>
-            <span className="text-tertiary">·</span>
-            <span className="text-sm text-muted-foreground">{fund_name ?? "Tu fondo"}</span>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
-              Modo lectura
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">{user.email}</span>
-            <Link
-              to="/account"
-              className="text-muted-foreground hover:text-foreground transition-all duration-150 p-1"
-              title="Mi cuenta"
-            >
-              <SettingsIcon size={16} strokeWidth={1.5} />
-            </Link>
-            <button
-              onClick={signOut}
-              className="text-muted-foreground hover:text-foreground transition-all duration-150 p-1"
-              title="Cerrar sesión"
-            >
-              <LogOut size={16} strokeWidth={1.5} />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-8 py-12 space-y-8">
-        <div>
-          <h1 className="text-3xl font-medium tracking-tight mb-2">Portfolio</h1>
-          <p className="text-sm text-muted-foreground">
-            {companies.length} empresa{companies.length === 1 ? "" : "s"}
-          </p>
-        </div>
+    <AppLayout>
+      <div className="max-w-7xl mx-auto px-8 py-12 space-y-8">
+        <PageHeader
+          title="Portfolio"
+          subtitle={`${companies.length} empresa${companies.length === 1 ? "" : "s"}`}
+        />
 
         {companies.length === 0 ? (
           <div className="border border-border rounded-lg p-12 text-center text-sm text-muted-foreground bg-card">
@@ -105,7 +72,7 @@ export default function InvestorPortfolio() {
               <Link
                 key={c.id}
                 to={`/portfolio/${c.id}`}
-                className="border border-border rounded-lg p-5 bg-card hover:border-foreground/40 transition-all"
+                className="border border-border rounded-lg p-5 bg-card hover:border-foreground/40 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <div className="text-base font-medium">{c.name}</div>
                 <div className="text-xs text-muted-foreground mt-1">Ver detalle</div>
@@ -113,7 +80,7 @@ export default function InvestorPortfolio() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

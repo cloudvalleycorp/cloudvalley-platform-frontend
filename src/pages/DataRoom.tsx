@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Upload, Link2, ChevronDown, Plus, RefreshCw, FileText, ExternalLink, Trash2 } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
+import { PageHeader } from "@/components/PageHeader";
 import { useStartup } from "@/hooks/useStartup";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -231,15 +232,15 @@ export default function DataRoom() {
   return (
     <AppLayout>
       <div className="max-w-5xl mx-auto px-8 py-12">
-        <header className="flex items-start justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-medium tracking-tight">Data Room</h1>
-            <p className="text-sm text-muted-foreground mt-2">{totalUploaded} de {docs.length} documentos cargados</p>
-          </div>
-          <Button variant="outline" onClick={copyLink}>
-            <Link2 size={14} strokeWidth={1.5} className="mr-2" /> Compartir link
-          </Button>
-        </header>
+        <PageHeader
+          title="Data Room"
+          subtitle={`${totalUploaded} de ${docs.length} documentos cargados`}
+          action={
+            <Button variant="outline" onClick={copyLink}>
+              <Link2 size={14} strokeWidth={1.5} className="mr-2" /> Compartir link
+            </Button>
+          }
+        />
 
         <div className="space-y-4">
           {categories.map((cat) => {

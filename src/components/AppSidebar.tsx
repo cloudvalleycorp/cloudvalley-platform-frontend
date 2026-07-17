@@ -25,7 +25,7 @@ const items = [
 ];
 
 export function AppSidebar() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isOrgViewer, fund_name } = useAuth();
   const { startup } = useStartup();
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
 
@@ -45,6 +45,43 @@ export function AppSidebar() {
       setOrgs(list);
     })();
   }, [startup?.id]);
+
+  if (isOrgViewer) {
+    return (
+      <Sidebar>
+        <SidebarHeader className="border-b border-sidebar-border px-5 py-5">
+          <div className="text-lg font-medium tracking-tight">CloudValley</div>
+          {fund_name && <div className="mt-3 text-sm text-foreground">{fund_name}</div>}
+        </SidebarHeader>
+        <SidebarContent className="px-3 py-4">
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <NavLink
+                      to="/portfolio"
+                      end
+                      className={({ isActive }) =>
+                        `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
+                          isActive
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                            : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
+                        }`
+                      }
+                    >
+                      <Building2 size={16} strokeWidth={1.5} />
+                      <span>Portfolio</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
+    );
+  }
 
   return (
     <Sidebar>

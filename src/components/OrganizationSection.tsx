@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Users, UserMinus, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { LoadingState } from "@/components/LoadingState";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -63,7 +64,7 @@ export function OrganizationSection() {
         const data = await res.json();
         setRequests(Array.isArray(data?.requests) ? data.requests : []);
       } catch {
-        // silent
+        toast.error("No se pudieron cargar las solicitudes");
       }
     })();
   }, []);
@@ -81,6 +82,7 @@ export function OrganizationSection() {
         setMembers(Array.isArray(data?.users) ? data.users : []);
       } catch {
         setMembers([]);
+        toast.error("No se pudieron cargar los miembros");
       } finally {
         setLoadingMembers(false);
       }
@@ -154,7 +156,7 @@ export function OrganizationSection() {
       {requests.length > 0 && (
         <div className="px-6 py-5 border-b border-border">
           <div className="flex items-center gap-2 mb-3">
-            <Bell size={13} strokeWidth={1.5} className="text-muted-foreground" />
+            <Bell size={12} strokeWidth={1.5} className="text-muted-foreground" />
             <h3 className="text-xs font-medium text-foreground uppercase tracking-wide">
               Solicitudes pendientes ({requests.length})
             </h3>
@@ -199,7 +201,7 @@ export function OrganizationSection() {
           Miembros {members.length > 0 && `(${members.length})`}
         </h3>
         {loadingMembers ? (
-          <p className="text-sm text-muted-foreground">Cargando…</p>
+          <LoadingState />
         ) : members.length === 0 ? (
           <p className="text-sm text-muted-foreground">No hay miembros para mostrar.</p>
         ) : (

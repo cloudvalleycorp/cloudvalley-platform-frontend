@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
+import { PageHeader } from "@/components/PageHeader";
 import { useStartup } from "@/hooks/useStartup";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -193,16 +194,19 @@ export default function Settings() {
   return (
     <AppLayout>
       <div className="max-w-2xl mx-auto px-8 py-12 space-y-8">
-        <div>
-          <h1 className="text-3xl font-medium tracking-tight">Configuración</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Tu organización, startup e integraciones. Para editar tu perfil personal, andá a{" "}
-            <Link to="/account" className="underline underline-offset-2 hover:text-foreground">
-              Mi cuenta
-            </Link>
-            .
-          </p>
-        </div>
+        <PageHeader
+          title="Configuración"
+          subtitle={
+            <>
+              Tu organización, startup e integraciones. Para editar tu perfil personal, andá a{" "}
+              <Link to="/account" className="underline underline-offset-2 hover:text-foreground">
+                Mi cuenta
+              </Link>
+              .
+            </>
+          }
+          className="mb-0"
+        />
 
         {/* Mi organización + Miembros */}
         {((role === "user" && !!company_id) || (role === "investor" && !!fund_id)) && (
@@ -347,7 +351,7 @@ export default function Settings() {
           <div className="grid grid-cols-2 gap-3">
             <Link
               to="/metrics"
-              className="border border-border rounded-lg p-4 hover:bg-surface transition-all"
+              className="border border-border rounded-lg p-4 hover:bg-surface transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Métricas</span>
@@ -368,7 +372,7 @@ export default function Settings() {
             </Link>
             <Link
               to="/data-room"
-              className="border border-border rounded-lg p-4 hover:bg-surface transition-all"
+              className="border border-border rounded-lg p-4 hover:bg-surface transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Documentos</span>

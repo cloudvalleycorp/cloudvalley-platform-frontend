@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
+import { PageHeader } from "@/components/PageHeader";
 import { useStartup } from "@/hooks/useStartup";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -283,57 +284,55 @@ export default function Metrics() {
   return (
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12">
-        <header className="mb-8 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-medium tracking-tight">Growth Tracker</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Cargá los datos del mes y mirá cómo evolucionan tus métricas clave.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {view === "monthly" && (
-              <select
-                value={`${period.year}-${period.month}`}
-                onChange={(e) => {
-                  const [y, m] = e.target.value.split("-").map(Number);
-                  setPeriod({ month: m, year: y });
-                }}
-                className="border border-border rounded-md px-3 py-1.5 text-sm bg-background h-9"
-              >
-                {Array.from({ length: 12 }, (_, i) => {
-                  const d = new Date(now.getFullYear(), now.getMonth() - i);
-                  return (
-                    <option key={i} value={`${d.getFullYear()}-${d.getMonth() + 1}`}>
-                      {months[d.getMonth()]} {d.getFullYear()}
-                    </option>
-                  );
-                })}
-              </select>
-            )}
-            <div className="inline-flex border border-border rounded-md overflow-hidden h-9">
-              <button
-                onClick={() => setView("annual")}
-                className={cn(
-                  "px-3 text-xs flex items-center gap-1.5 transition-all",
-                  view === "annual" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                )}
-                title="Vista anual"
-              >
-                <Table2 size={12} strokeWidth={1.5} /> Anual
-              </button>
-              <button
-                onClick={() => setView("monthly")}
-                className={cn(
-                  "px-3 text-xs flex items-center gap-1.5 transition-all border-l border-border",
-                  view === "monthly" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                )}
-                title="Vista mensual"
-              >
-                <LayoutGrid size={12} strokeWidth={1.5} /> Mensual
-              </button>
-            </div>
-          </div>
-        </header>
+        <PageHeader
+          title="Growth Tracker"
+          subtitle="Cargá los datos del mes y mirá cómo evolucionan tus métricas clave."
+          action={
+            <>
+              {view === "monthly" && (
+                <select
+                  value={`${period.year}-${period.month}`}
+                  onChange={(e) => {
+                    const [y, m] = e.target.value.split("-").map(Number);
+                    setPeriod({ month: m, year: y });
+                  }}
+                  className="border border-border rounded-md px-3 py-1.5 text-sm bg-background h-9"
+                >
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const d = new Date(now.getFullYear(), now.getMonth() - i);
+                    return (
+                      <option key={i} value={`${d.getFullYear()}-${d.getMonth() + 1}`}>
+                        {months[d.getMonth()]} {d.getFullYear()}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+              <div className="inline-flex border border-border rounded-md overflow-hidden h-9">
+                <button
+                  onClick={() => setView("annual")}
+                  className={cn(
+                    "px-3 text-xs flex items-center gap-1.5 transition-all",
+                    view === "annual" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Vista anual"
+                >
+                  <Table2 size={12} strokeWidth={1.5} /> Anual
+                </button>
+                <button
+                  onClick={() => setView("monthly")}
+                  className={cn(
+                    "px-3 text-xs flex items-center gap-1.5 transition-all border-l border-border",
+                    view === "monthly" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Vista mensual"
+                >
+                  <LayoutGrid size={12} strokeWidth={1.5} /> Mensual
+                </button>
+              </div>
+            </>
+          }
+        />
 
         <div className="flex gap-1 border-b border-border mb-8">
           {categories.map((c) => (

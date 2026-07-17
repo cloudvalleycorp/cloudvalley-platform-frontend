@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
+import { PageHeader } from "@/components/PageHeader";
+import { StatCard } from "@/components/StatCard";
+import { DataTable } from "@/components/DataTable";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { StageBadge } from "@/components/StageBadge";
@@ -77,78 +80,66 @@ export default function Admin() {
     <AppLayout>
       <div className="max-w-7xl mx-auto px-8 py-12">
         <InviteSection />
-        <div className="flex items-start justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-medium tracking-tight mb-2">Ecosistema CloudValley</h1>
-            <p className="text-sm text-muted-foreground">Vista global del portfolio</p>
-          </div>
-          <Link
-            to="/admin/organizations"
-            className="text-sm px-3 py-2 border border-border rounded-md hover:bg-surface transition-all"
-          >
-            Organizaciones →
-          </Link>
-        </div>
+        <PageHeader
+          title="Ecosistema CloudValley"
+          subtitle="Vista global del portfolio"
+          action={
+            <Link
+              to="/admin/organizations"
+              className="text-sm px-3 py-2 border border-border rounded-md hover:bg-surface transition-all"
+            >
+              Organizaciones →
+            </Link>
+          }
+        />
 
         <div className="grid grid-cols-3 gap-4 mb-10">
-          <Stat label="Total startups" value={rows.length} />
-          <Stat label="Score promedio" value={avgScore} />
-          <Stat label="Score > 70" value={highScore} />
+          <StatCard label="Total startups" value={rows.length} />
+          <StatCard label="Score promedio" value={avgScore} />
+          <StatCard label="Score > 70" value={highScore} />
         </div>
 
-        <div className="border border-border rounded-lg bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-muted-foreground border-b border-border">
-                <th className="text-left font-normal px-5 py-3">Startup</th>
-                <th className="text-left font-normal px-5 py-3">Etapa</th>
-                <th className="text-left font-normal px-5 py-3">Modelo</th>
-                <th className="text-left font-normal px-5 py-3 cursor-pointer" onClick={() => setSortBy("score")}>
-                  Readiness {sortBy === "score" && "↓"}
-                </th>
-                <th className="text-left font-normal px-5 py-3 cursor-pointer" onClick={() => setSortBy("mrr")}>
-                  MRR {sortBy === "mrr" && "↓"}
-                </th>
-                <th className="text-left font-normal px-5 py-3">Runway</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((r) => (
-                <tr key={r.id} className="border-b border-border/50 last:border-0 hover:bg-surface transition-all duration-150">
-                  <td className="px-5 py-4">
-                    <Link to={`/admin/startup/${r.id}`} className="font-medium hover:underline">{r.name}</Link>
-                  </td>
-                  <td className="px-5 py-4"><StageBadge stage={r.stage} /></td>
-                  <td className="px-5 py-4 text-muted-foreground capitalize">{r.business_model?.replace("_", " ")}</td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className="tabular-nums">{r.readiness_score}</span>
-                      <div className="h-1 w-20 bg-surface rounded-full overflow-hidden">
-                        <div className="h-full bg-foreground" style={{ width: `${r.readiness_score}%` }} />
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-4 tabular-nums">{r.mrr != null ? `$${r.mrr.toLocaleString()}` : "—"}</td>
-                  <td className="px-5 py-4 tabular-nums">{r.runway != null ? `${r.runway}m` : "—"}</td>
-                </tr>
-              ))}
-              {sorted.length === 0 && (
-                <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">No hay startups todavía.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={[
+            {
+              header: "Startup",
+              cell: (r) => (
+                <Link to={`/admin/startup/${r.id}`} className="font-medium hover:underline">{r.name}</Link>
+              ),
+            },
+            { header: "Etapa", cell: (r) => <StageBadge stage={r.stage} /> },
+            {
+              header: "Modelo",
+              cell: (r) => <span className="text-muted-foreground capitalize">{r.business_model?.replace("_", " ")}</span>,
+            },
+            {
+              header: <>Readiness {sortBy === "score" && "↓"}</>,
+              onHeaderClick: () => setSortBy("score"),
+              cell: (r) => (
+                <div className="flex items-center gap-2">
+                  <span className="tabular-nums">{r.readiness_score}</span>
+                  <div className="h-1 w-20 bg-surface rounded-full overflow-hidden">
+                    <div className="h-full bg-foreground" style={{ width: `${r.readiness_score}%` }} />
+                  </div>
+                </div>
+              ),
+            },
+            {
+              header: <>MRR {sortBy === "mrr" && "↓"}</>,
+              onHeaderClick: () => setSortBy("mrr"),
+              cell: (r) => <span className="tabular-nums">{r.mrr != null ? `$${r.mrr.toLocaleString()}` : "—"}</span>,
+            },
+            {
+              header: "Runway",
+              cell: (r) => <span className="tabular-nums">{r.runway != null ? `${r.runway}m` : "—"}</span>,
+            },
+          ]}
+          rows={sorted}
+          rowKey={(r) => r.id}
+          emptyLabel="No hay startups todavía."
+        />
       </div>
     </AppLayout>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="border border-border rounded-lg p-5 bg-card">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-3xl font-medium tracking-tight mt-2 tabular-nums">{value}</div>
-    </div>
   );
 }
 
