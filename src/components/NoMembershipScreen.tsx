@@ -34,6 +34,10 @@ export function NoMembershipScreen({
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [joinSent, setJoinSent] = useState(false);
+  // Backend's actual response text for a failed join attempt — shown persistently
+  // next to the form instead of only as a toast, which is easy to miss when the
+  // submit was triggered automatically (from an intent) rather than by a click.
+  const [joinNote, setJoinNote] = useState<string | null>(null);
   const [createdCode, setCreatedCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -89,10 +93,11 @@ export function NoMembershipScreen({
     }
   }, [role]);
 
-  const autoSubmitJoin = async (code: string) => {
+  const sendJoinRequest = async (code: string) => {
     const trimmed = code.trim().toUpperCase();
     if (!trimmed) return;
     setSubmitting(true);
+    setJoinNote(null);
     try {
       const res = await fetch(REQUEST_MEMBERSHIP_URL, {
         method: "POST",
@@ -100,38 +105,40 @@ export function NoMembershipScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ join_code: trimmed }),
       });
-      if (await handleMembershipError(res)) return;
+      if (res.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!res.ok) {
+        // Show whatever the backend actually says (e.g. an already-pending request,
+        // or an invalid code) persistently, instead of a toast that can be missed
+        // and leaves the user staring at the same empty-looking form.
+        let message = "No se pudo enviar la solicitud.";
+        if (res.status === 400) {
+          try {
+            const data = await res.json();
+            message = data?.error ?? message;
+          } catch {
+            // keep default message
+          }
+        } else if (res.status === 403) {
+          message = "No autorizado.";
+        }
+        setJoinNote(message);
+        return;
+      }
       setJoinSent(true);
       rememberPendingMembership(trimmed);
       toast.success("Solicitud enviada");
     } catch {
-      toast.error("No se pudo enviar la solicitud. Revisá tu conexión.");
+      setJoinNote("No se pudo enviar la solicitud. Revisá tu conexión.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const submitJoin = async () => {
-    if (!joinCode.trim()) return;
-    setSubmitting(true);
-    try {
-      const trimmed = joinCode.trim().toUpperCase();
-      const res = await fetch(REQUEST_MEMBERSHIP_URL, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ join_code: trimmed }),
-      });
-      if (await handleMembershipError(res)) return;
-      setJoinSent(true);
-      rememberPendingMembership(trimmed);
-      toast.success("Solicitud enviada");
-    } catch {
-      toast.error("No se pudo enviar la solicitud. Revisá tu conexión.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const autoSubmitJoin = sendJoinRequest;
+  const submitJoin = () => sendJoinRequest(joinCode);
 
   const submitCreate = async () => {
     if (!name.trim()) return;
@@ -295,17 +302,22 @@ export function NoMembershipScreen({
               </div>
             ) : (
               <div className="mt-6 space-y-3">
+                {joinNote && (
+                  <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-foreground">
+                    {joinNote}
+                  </div>
+                )}
                 <Input
                   placeholder="Código de acceso"
                   value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinNote(null); }}
                   className="h-11 font-mono tracking-widest uppercase"
                   autoFocus
                 />
                 <div className="flex gap-2">
                   <Button variant="ghost" onClick={() => setMode("menu")}>Atrás</Button>
                   <Button onClick={submitJoin} disabled={submitting || !joinCode.trim()}>
-                    {submitting ? "Enviando…" : "Enviar solicitud"}
+                    {submitting ? "Enviando…" : joinNote ? "Reintentar" : "Enviar solicitud"}
                   </Button>
                 </div>
               </div>
