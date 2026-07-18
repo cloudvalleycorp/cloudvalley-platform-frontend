@@ -23,7 +23,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   useEffect(() => {
-    if (!authLoading && user && isOrgViewer && !location.pathname.startsWith("/portfolio")) {
+    // Los inversores viven en modo lectura dentro de /portfolio, pero igual
+    // necesitan poder editar su perfil (/account) y la configuración de su
+    // fondo (/settings) — no solo navegar el portfolio.
+    const allowedForOrgViewer =
+      location.pathname.startsWith("/portfolio") ||
+      location.pathname === "/account" ||
+      location.pathname === "/settings";
+    if (!authLoading && user && isOrgViewer && !allowedForOrgViewer) {
       navigate("/portfolio", { replace: true });
     }
     // Los usuarios sin company_id ahora ven la pantalla "sin empresa" dentro del
