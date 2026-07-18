@@ -7,7 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { ACCEPT_INVITE_URL, REQUEST_MEMBERSHIP_URL, MANAGE_COMPANIES_URL } from "@/lib/membership";
+import {
+  ACCEPT_INVITE_URL,
+  REQUEST_MEMBERSHIP_URL,
+  MANAGE_COMPANIES_URL,
+  rememberPendingMembership,
+} from "@/lib/membership";
 import { GET_SESSION_URL } from "@/contexts/AuthContext";
 
 const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
@@ -331,6 +336,7 @@ function CodeInvite({ code }: { code: string }) {
         return;
       }
       if (r.status === 201 || r.ok) {
+        rememberPendingMembership(code);
         setResultKind("success");
         setDoneTitle("Solicitud enviada");
         setMessage("Un miembro de la organización la va a revisar.");

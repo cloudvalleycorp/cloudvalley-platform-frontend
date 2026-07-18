@@ -18,6 +18,43 @@ export type MembershipRequest = {
   requested_at: string;
 };
 
+const PENDING_MEMBERSHIP_KEY = "cv:pending_membership";
+
+/**
+ * Remembers, client-side, that a join request was sent — so screens like
+ * NoMembershipScreen can show "solicitud enviada" after a reload instead of
+ * the initial menu. Written from every place that calls request-membership
+ * (NoMembershipScreen's own form and CodeInvite's auto-submit), read from
+ * NoMembershipScreen. Not authoritative: it's just a local hint, cleared once
+ * the session picks up a company_id/fund_id.
+ */
+export function rememberPendingMembership(code: string) {
+  try {
+    localStorage.setItem(PENDING_MEMBERSHIP_KEY, JSON.stringify({ code, requestedAt: Date.now() }));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function forgetPendingMembership() {
+  try {
+    localStorage.removeItem(PENDING_MEMBERSHIP_KEY);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function getPendingMembership(): { code: string; requestedAt: number } | null {
+  try {
+    const raw = localStorage.getItem(PENDING_MEMBERSHIP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.code ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Central error handling for membership endpoints:
  * - 401 → redirect to /login

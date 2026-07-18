@@ -8,6 +8,9 @@ import {
   MANAGE_FUNDS_URL,
   REQUEST_MEMBERSHIP_URL,
   handleMembershipError,
+  rememberPendingMembership,
+  forgetPendingMembership,
+  getPendingMembership,
 } from "@/lib/membership";
 import { MEMBERSHIP_INTENT_KEY } from "@/pages/Onboarding";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,7 +28,6 @@ export function NoMembershipScreen({
 }) {
   const { refreshSession } = useAuth();
   const label = role === "user" ? "empresa" : "fondo";
-  const pendingKey = `cv:pending_membership:${role}`;
   const [mode, setMode] = useState<Mode>("menu");
   const [joinCode, setJoinCode] = useState("");
   const [name, setName] = useState("");
@@ -33,22 +35,6 @@ export function NoMembershipScreen({
   const [joinSent, setJoinSent] = useState(false);
   const [createdCode, setCreatedCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-
-  const rememberPending = (code: string) => {
-    try {
-      localStorage.setItem(pendingKey, JSON.stringify({ code, requestedAt: Date.now() }));
-    } catch {
-      // ignore storage errors
-    }
-  };
-
-  const forgetPending = () => {
-    try {
-      localStorage.removeItem(pendingKey);
-    } catch {
-      // ignore storage errors
-    }
-  };
 
   // Consume intent saved during PublicInvite to pre-fill this screen.
   useEffect(() => {
@@ -79,22 +65,15 @@ export function NoMembershipScreen({
       // ignore
     }
 
-    // No fresh intent — check if we're already waiting on a request from a previous visit,
-    // so a page reload doesn't send the user back to the menu as if nothing happened.
-    try {
-      const rawPending = localStorage.getItem(pendingKey);
-      if (rawPending) {
-        const { code } = JSON.parse(rawPending);
-        if (code) {
-          setJoinCode(code);
-          setMode("join");
-          setJoinSent(true);
-        }
-      }
-    } catch {
-      // ignore
+    // No fresh intent — check if we're already waiting on a request from a previous visit
+    // (sent from here or from a CodeInvite link), so a reload doesn't send the user back
+    // to the menu as if nothing happened.
+    const pending = getPendingMembership();
+    if (pending) {
+      setJoinCode(pending.code);
+      setMode("join");
+      setJoinSent(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
   const autoSubmitJoin = async (code: string) => {
@@ -110,7 +89,7 @@ export function NoMembershipScreen({
       });
       if (await handleMembershipError(res)) return;
       setJoinSent(true);
-      rememberPending(trimmed);
+      rememberPendingMembership(trimmed);
       toast.success("Solicitud enviada");
     } catch {
       toast.error("No se pudo enviar la solicitud. Revisá tu conexión.");
@@ -132,7 +111,7 @@ export function NoMembershipScreen({
       });
       if (await handleMembershipError(res)) return;
       setJoinSent(true);
-      rememberPending(trimmed);
+      rememberPendingMembership(trimmed);
       toast.success("Solicitud enviada");
     } catch {
       toast.error("No se pudo enviar la solicitud. Revisá tu conexión.");
@@ -254,7 +233,7 @@ export function NoMembershipScreen({
                 onClick={async () => {
                   const ok = await refreshSession();
                   if (ok) {
-                    forgetPending();
+                    forgetPendingMembership();
                     toast.success("Sesión actualizada");
                     window.location.assign("/");
                   } else {
@@ -287,13 +266,13 @@ export function NoMembershipScreen({
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => { forgetPending(); setJoinSent(false); setMode("menu"); }}>
+                  <Button variant="outline" onClick={() => { forgetPendingMembership(); setJoinSent(false); setMode("menu"); }}>
                     Volver
                   </Button>
                   <Button
                     onClick={async () => {
                       const ok = await refreshSession();
-                      if (ok) { forgetPending(); toast.success("Sesión actualizada"); window.location.assign("/"); }
+                      if (ok) { forgetPendingMembership(); toast.success("Sesión actualizada"); window.location.assign("/"); }
                       else toast.error("Todavía no fuiste aprobado");
                     }}
                   >
