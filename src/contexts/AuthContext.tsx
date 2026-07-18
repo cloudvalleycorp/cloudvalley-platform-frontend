@@ -63,8 +63,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPortfolioIds(Array.isArray(data.portfolio_company_ids) ? data.portfolio_company_ids : []);
     setPortfolioNames(Array.isArray(data.portfolio_company_names) ? data.portfolio_company_names : []);
     setUser({ id: data.company_id ?? data.email, email: data.email });
-    // get-session no devuelve full_name — fallback silencioso a get-my-organization
-    // sólo si el usuario tiene org y no vino el nombre en la sesión.
+    // get-session ya devuelve full_name. Este fallback a get-my-organization queda
+    // como red de contención para sesiones emitidas antes de ese cambio de backend
+    // (dura hasta que esa sesión se refresque o el usuario vuelva a loguearse).
     const hasOrg =
       (data.role === "user" && !!data.company_id) ||
       (data.role === "investor" && !!data.fund_id);

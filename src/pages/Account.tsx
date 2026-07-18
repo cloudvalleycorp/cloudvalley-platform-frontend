@@ -32,9 +32,9 @@ export default function Account() {
     if (full_name) setFullName(full_name);
   }, [full_name]);
 
-  // Fallback: si el contexto no trae full_name (get-session no lo devuelve),
-  // intentamos leerlo de get-my-organization cuando el usuario tiene org.
-  // Error 400 (sin org) o cualquier otro → silencioso.
+  // Fallback para sesiones emitidas antes de que get-session empezara a devolver
+  // full_name: si el contexto no lo trae, lo intentamos leer de get-my-organization
+  // (solo funciona si el usuario ya tiene org). Error 400 (sin org) o cualquier otro → silencioso.
   useEffect(() => {
     if (!user) return;
     if (fullName) return; // ya tenemos algo
