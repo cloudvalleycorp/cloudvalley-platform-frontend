@@ -39,11 +39,31 @@ export function NoMembershipScreen({
 
   // Consume intent saved during PublicInvite to pre-fill this screen.
   useEffect(() => {
+    // A real pending request (already sent to the backend) is a stronger signal than
+    // an old PublicInvite intent, and takes priority — otherwise a stale "create" intent
+    // from a much earlier attempt could hide the fact that a join request is already
+    // sitting there waiting for approval.
+    const pending = getPendingMembership();
+    if (pending) {
+      try {
+        localStorage.removeItem(MEMBERSHIP_INTENT_KEY);
+      } catch {
+        // ignore
+      }
+      setJoinCode(pending.code);
+      setMode("join");
+      setJoinSent(true);
+      return;
+    }
+
     try {
       const raw = localStorage.getItem(MEMBERSHIP_INTENT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed?.role === role) {
+        // role === null comes from CodeInvite, which doesn't know ahead of time
+        // which role the join code resolves to server-side — accept it regardless
+        // of which role's screen mounted.
+        if (parsed?.role === role || parsed?.role === null) {
           const intent = parsed.intent;
           localStorage.removeItem(MEMBERSHIP_INTENT_KEY);
           if (intent?.kind === "join" && intent.code) {
@@ -52,11 +72,13 @@ export function NoMembershipScreen({
             // Auto-submit membership request so the user actually appears
             // in the target org without an extra manual click.
             void autoSubmitJoin(intent.code);
-            return;
           } else if (intent?.kind === "create" && intent.name) {
+            // A diferencia de "join" (idempotente, seguro de auto-enviar), crear una
+            // organización es una acción consecuente — no la disparamos ni saltamos
+            // el menú solo porque eligieron "crear" en un paso anterior, capaz hace
+            // rato (y para entonces la organización puede ya existir, creada por otra
+            // vía). Solo dejamos precargado el nombre por si igual la crean.
             setName(intent.name);
-            setMode("create");
-            return;
           }
         } else {
           localStorage.removeItem(MEMBERSHIP_INTENT_KEY);
@@ -64,16 +86,6 @@ export function NoMembershipScreen({
       }
     } catch {
       // ignore
-    }
-
-    // No fresh intent — check if we're already waiting on a request from a previous visit
-    // (sent from here or from a CodeInvite link), so a reload doesn't send the user back
-    // to the menu as if nothing happened.
-    const pending = getPendingMembership();
-    if (pending) {
-      setJoinCode(pending.code);
-      setMode("join");
-      setJoinSent(true);
     }
   }, [role]);
 

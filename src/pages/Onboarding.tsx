@@ -404,6 +404,21 @@ function CodeInvite({ code }: { code: string }) {
 
   const handleSubmit = async () => {
     setSubmitting(true);
+    // CodeInvite doesn't know the role the code resolves to (that's decided
+    // server-side), so this intent isn't role-tagged — NoMembershipScreen picks
+    // it up regardless of which role's screen ends up mounting after login.
+    // Without this, the code would only be submitted here if the user was
+    // already logged in; for a brand-new user going through the magic-link
+    // round trip, it would otherwise be silently lost and no request would
+    // ever get sent.
+    try {
+      localStorage.setItem(
+        MEMBERSHIP_INTENT_KEY,
+        JSON.stringify({ role: null, intent: { kind: "join", code: code.trim().toUpperCase() } })
+      );
+    } catch {
+      // ignore storage errors
+    }
     try {
       await fetch(ACCEPT_INVITE_URL, {
         method: "POST",
