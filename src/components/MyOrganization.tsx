@@ -232,6 +232,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           [idKey]: org.id,
+          name: org.name,
           industry: industryDraft.trim() || null,
           website: websiteDraft.trim() || null,
           target_raise_usd: targetDraft ? Number(targetDraft) : null,
