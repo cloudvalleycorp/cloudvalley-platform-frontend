@@ -38,8 +38,62 @@ export function NoMembershipScreen({
   // next to the form instead of only as a toast, which is easy to miss when the
   // submit was triggered automatically (from an intent) rather than by a click.
   const [joinNote, setJoinNote] = useState<string | null>(null);
+  // Epoch ms when another join attempt is allowed again — each request-membership
+  // call can trigger a notification email to the org's existing members, so repeated
+  // clicks on "Reintentar" shouldn't be able to spam them. Persisted per code (not
+  // just in-memory) since the cooldown is measured in hours — a page reload can't
+  // reset it.
+  const [retryAt, setRetryAtState] = useState(0);
+  const [, forceTick] = useState(0);
   const [createdCode, setCreatedCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const RETRY_COOLDOWN_MS = 60 * 60 * 1000; // 1h
+
+  const retryKey = (code: string) => `cv:join_retry_at:${code.trim().toUpperCase()}`;
+
+  const readRetryAt = (code: string): number => {
+    try {
+      const raw = localStorage.getItem(retryKey(code));
+      const at = raw ? Number(raw) : 0;
+      return Number.isFinite(at) ? at : 0;
+    } catch {
+      return 0;
+    }
+  };
+
+  const loadRetryAt = (code: string) => setRetryAtState(readRetryAt(code));
+
+  const markRetryAt = (code: string) => {
+    const at = Date.now() + RETRY_COOLDOWN_MS;
+    try {
+      localStorage.setItem(retryKey(code), String(at));
+    } catch {
+      // ignore storage errors
+    }
+    setRetryAtState(at);
+  };
+
+  const retrySecondsLeft = Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
+  const retryLabel = (() => {
+    if (retrySecondsLeft <= 0) return null;
+    const h = Math.floor(retrySecondsLeft / 3600);
+    const m = Math.ceil((retrySecondsLeft % 3600) / 60);
+    if (h > 0) return `${h}h ${m}min`;
+    if (retrySecondsLeft > 60) return `${m}min`;
+    return `${retrySecondsLeft}s`;
+  })();
+
+  useEffect(() => {
+    if (joinCode) loadRetryAt(joinCode);
+  }, [joinCode]);
+
+  useEffect(() => {
+    if (retryAt <= Date.now()) return;
+    // Hour-long cooldown — a coarse tick is enough to keep the label fresh.
+    const id = setInterval(() => forceTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, [retryAt]);
 
   // Consume intent saved during PublicInvite to pre-fill this screen.
   useEffect(() => {
@@ -96,8 +150,19 @@ export function NoMembershipScreen({
   const sendJoinRequest = async (code: string) => {
     const trimmed = code.trim().toUpperCase();
     if (!trimmed) return;
+    // Read the cooldown straight from storage rather than the retrySecondsLeft/retryAt
+    // state, which could still be stale right after joinCode changes in the same tick
+    // (e.g. the auto-submit-from-intent path sets joinCode and calls this synchronously,
+    // before the state-loading effect has run).
+    if (readRetryAt(trimmed) > Date.now()) {
+      setRetryAtState(readRetryAt(trimmed));
+      return;
+    }
     setSubmitting(true);
     setJoinNote(null);
+    // Mark the cooldown before the request resolves, not after — otherwise a user
+    // could fire several requests back-to-back while the first one is still in flight.
+    markRetryAt(trimmed);
     try {
       const res = await fetch(REQUEST_MEMBERSHIP_URL, {
         method: "POST",
@@ -307,6 +372,11 @@ export function NoMembershipScreen({
                     {joinNote}
                   </div>
                 )}
+                {retryLabel && (
+                  <p className="text-xs text-muted-foreground">
+                    Para no repetir el aviso a {w.ofThe} {w.noun}, podés reintentar en {retryLabel}.
+                  </p>
+                )}
                 <Input
                   placeholder="Código de acceso"
                   value={joinCode}
@@ -314,12 +384,36 @@ export function NoMembershipScreen({
                   className="h-11 font-mono tracking-widest uppercase"
                   autoFocus
                 />
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button variant="ghost" onClick={() => setMode("menu")}>Atrás</Button>
-                  <Button onClick={submitJoin} disabled={submitting || !joinCode.trim()}>
-                    {submitting ? "Enviando…" : joinNote ? "Reintentar" : "Enviar solicitud"}
+                  <Button onClick={submitJoin} disabled={submitting || !joinCode.trim() || retrySecondsLeft > 0}>
+                    {submitting
+                      ? "Enviando…"
+                      : retryLabel
+                        ? `Reintentar en ${retryLabel}`
+                        : joinNote
+                          ? "Reintentar"
+                          : "Enviar solicitud"}
                   </Button>
                 </div>
+                {(joinNote || retryLabel) && (
+                  <div className="flex gap-2 flex-wrap pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setJoinNote(null); setMode("menu"); }}
+                    >
+                      Declinar unirme
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setJoinNote(null); setMode("create"); }}
+                    >
+                      Crear mi {w.own} {w.noun} en su lugar
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </>
