@@ -175,19 +175,19 @@ export function NoMembershipScreen({
         return;
       }
       if (!res.ok) {
-        // Show whatever the backend actually says (e.g. an already-pending request,
-        // or an invalid code) persistently, instead of a toast that can be missed
-        // and leaves the user staring at the same empty-looking form.
-        let message = "No se pudo enviar la solicitud.";
-        if (res.status === 400) {
+        // Show whatever the backend actually says (an already-pending request, an
+        // invalid code, or a rate limit) persistently, instead of a toast that can
+        // be missed and leaves the user staring at the same empty-looking form.
+        // 429 is the backend's own per-user throttle on request-membership, on top
+        // of the hour-long per-code cooldown already enforced above.
+        let message = res.status === 403 ? "No autorizado." : "No se pudo enviar la solicitud.";
+        if (res.status === 400 || res.status === 403 || res.status === 429) {
           try {
             const data = await res.json();
             message = data?.error ?? message;
           } catch {
             // keep default message
           }
-        } else if (res.status === 403) {
-          message = "No autorizado.";
         }
         setJoinNote(message);
         return;

@@ -352,7 +352,10 @@ function CodeInvite({ code }: { code: string }) {
         setPhase("done");
         return;
       }
-      if (r.status === 400) {
+      if (r.status === 400 || r.status === 403 || r.status === 429) {
+        // 429 is the backend's own throttle on request-membership — not a system
+        // failure, so it stays under "info" (no "Reintentar" button) like 400/403,
+        // rather than the generic "error" state below.
         const data = await r.json().catch(() => null);
         setResultKind("info");
         setDoneTitle("Listo");
