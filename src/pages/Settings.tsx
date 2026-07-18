@@ -187,129 +187,135 @@ export default function Settings() {
           </>
         )}
 
-        {/* Mis organizaciones */}
-        <section className="border border-border rounded-lg p-6 bg-card space-y-4">
-          <div className="flex items-center gap-2">
-            <UsersIcon size={14} strokeWidth={1.5} className="text-muted-foreground" />
-            <h2 className="text-sm font-medium text-foreground">Mis organizaciones</h2>
-          </div>
-          <p className="text-xs text-muted-foreground -mt-2">
-              Aceleradoras o fondos a los que pertenece tu startup. Pueden ver las métricas y documentos que marques como públicos.
-          </p>
-          <OrganizationsPicker value={orgSelections} onChange={setOrgSelections} />
-          <Button onClick={saveOrgs} disabled={savingOrgs}>
-            {savingOrgs ? "Guardando…" : "Guardar organizaciones"}
-          </Button>
-
-          {orgSelections.length > 0 && (
-            <div className="pt-4 space-y-2">
-              <div className="text-xs font-medium text-muted-foreground">Invitar inversores</div>
-              <div className="space-y-2">
-                {orgSelections.map((o) => (
-                  <div key={o.organization_id} className="flex items-center justify-between border border-border rounded-md px-3 py-2">
-                    <span className="text-sm">{orgsMeta[o.organization_id] ?? "Cargando…"}</span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setInviteState({
-                          open: true,
-                          orgId: o.organization_id,
-                          orgName: orgsMeta[o.organization_id] ?? "",
-                        })
-                      }
-                    >
-                      <Mail size={12} className="mr-1" /> Invitar
-                    </Button>
-                  </div>
-                ))}
+        {/* Mis organizaciones, Privacidad e Integraciones son conceptos del lado
+            startup (a qué aceleradoras/fondos reporta, qué métricas/docs comparte,
+            qué herramientas sincroniza) — no aplican a un fondo/inversor. */}
+        {role === "user" && (
+          <>
+            <section className="border border-border rounded-lg p-6 bg-card space-y-4">
+              <div className="flex items-center gap-2">
+                <UsersIcon size={14} strokeWidth={1.5} className="text-muted-foreground" />
+                <h2 className="text-sm font-medium text-foreground">Mis organizaciones</h2>
               </div>
+              <p className="text-xs text-muted-foreground -mt-2">
+                  Aceleradoras o fondos a los que pertenece tu startup. Pueden ver las métricas y documentos que marques como públicos.
+              </p>
+              <OrganizationsPicker value={orgSelections} onChange={setOrgSelections} />
+              <Button onClick={saveOrgs} disabled={savingOrgs}>
+                {savingOrgs ? "Guardando…" : "Guardar organizaciones"}
+              </Button>
 
-              {pendingInvites.length > 0 && (
-                <div className="pt-3">
-                  <div className="text-xs font-medium text-muted-foreground mb-2">Invitaciones enviadas</div>
-                  <div className="space-y-1">
-                    {pendingInvites.map((inv) => (
-                      <div key={inv.id} className="flex items-center justify-between text-xs px-3 py-2 border border-border rounded-md">
-                        <div>
-                          <span className="text-foreground">{inv.email}</span>
-                          <span className="text-muted-foreground"> → {inv.org_name}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={inv.status === "pending" ? "text-muted-foreground" : inv.status === "accepted" ? "text-foreground" : "text-muted-foreground line-through"}>
-                            {inv.status === "pending" ? "Pendiente" : inv.status === "accepted" ? "Aceptada" : "Revocada"}
-                          </span>
-                          {inv.status === "pending" && (
-                            <button onClick={() => revokeInvite(inv.id)} className="text-muted-foreground hover:text-foreground">
-                              Revocar
-                            </button>
-                          )}
-                        </div>
+              {orgSelections.length > 0 && (
+                <div className="pt-4 space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">Invitar inversores</div>
+                  <div className="space-y-2">
+                    {orgSelections.map((o) => (
+                      <div key={o.organization_id} className="flex items-center justify-between border border-border rounded-md px-3 py-2">
+                        <span className="text-sm">{orgsMeta[o.organization_id] ?? "Cargando…"}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setInviteState({
+                              open: true,
+                              orgId: o.organization_id,
+                              orgName: orgsMeta[o.organization_id] ?? "",
+                            })
+                          }
+                        >
+                          <Mail size={12} className="mr-1" /> Invitar
+                        </Button>
                       </div>
                     ))}
                   </div>
+
+                  {pendingInvites.length > 0 && (
+                    <div className="pt-3">
+                      <div className="text-xs font-medium text-muted-foreground mb-2">Invitaciones enviadas</div>
+                      <div className="space-y-1">
+                        {pendingInvites.map((inv) => (
+                          <div key={inv.id} className="flex items-center justify-between text-xs px-3 py-2 border border-border rounded-md">
+                            <div>
+                              <span className="text-foreground">{inv.email}</span>
+                              <span className="text-muted-foreground"> → {inv.org_name}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={inv.status === "pending" ? "text-muted-foreground" : inv.status === "accepted" ? "text-foreground" : "text-muted-foreground line-through"}>
+                                {inv.status === "pending" ? "Pendiente" : inv.status === "accepted" ? "Aceptada" : "Revocada"}
+                              </span>
+                              {inv.status === "pending" && (
+                                <button onClick={() => revokeInvite(inv.id)} className="text-muted-foreground hover:text-foreground">
+                                  Revocar
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
-        </section>
+            </section>
 
-        {/* Privacidad */}
-        <section className="border border-border rounded-lg p-6 bg-card space-y-4">
-          <div className="flex items-center gap-2">
-            <ShieldCheck size={14} strokeWidth={1.5} className="text-muted-foreground" />
-            <h2 className="text-sm font-medium text-foreground">Privacidad</h2>
-          </div>
-          <p className="text-xs text-muted-foreground -mt-2">
-            Controlá qué métricas y documentos pueden ver tus organizaciones.
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <Link
-              to="/metrics"
-              className="border border-border rounded-lg p-4 hover:bg-surface transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Métricas</span>
-                {privacySummary.metricsPrivate > 0 ? (
-                  <Lock size={12} strokeWidth={1.5} className="text-muted-foreground" />
-                ) : (
-                  <Eye size={12} strokeWidth={1.5} className="text-muted-foreground" />
-                )}
+            {/* Privacidad */}
+            <section className="border border-border rounded-lg p-6 bg-card space-y-4">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={14} strokeWidth={1.5} className="text-muted-foreground" />
+                <h2 className="text-sm font-medium text-foreground">Privacidad</h2>
               </div>
-              <div className="mt-2 text-sm">
-                <span className="text-foreground tabular-nums">
-                  {privacySummary.metricsTotal - privacySummary.metricsPrivate}
-                </span>
-                <span className="text-muted-foreground"> visibles · </span>
-                <span className="text-foreground tabular-nums">{privacySummary.metricsPrivate}</span>
-                <span className="text-muted-foreground"> privadas</span>
+              <p className="text-xs text-muted-foreground -mt-2">
+                Controlá qué métricas y documentos pueden ver tus organizaciones.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Link
+                  to="/metrics"
+                  className="border border-border rounded-lg p-4 hover:bg-surface transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Métricas</span>
+                    {privacySummary.metricsPrivate > 0 ? (
+                      <Lock size={12} strokeWidth={1.5} className="text-muted-foreground" />
+                    ) : (
+                      <Eye size={12} strokeWidth={1.5} className="text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="mt-2 text-sm">
+                    <span className="text-foreground tabular-nums">
+                      {privacySummary.metricsTotal - privacySummary.metricsPrivate}
+                    </span>
+                    <span className="text-muted-foreground"> visibles · </span>
+                    <span className="text-foreground tabular-nums">{privacySummary.metricsPrivate}</span>
+                    <span className="text-muted-foreground"> privadas</span>
+                  </div>
+                </Link>
+                <Link
+                  to="/data-room"
+                  className="border border-border rounded-lg p-4 hover:bg-surface transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Documentos</span>
+                    {privacySummary.docsPrivate > 0 ? (
+                      <Lock size={12} strokeWidth={1.5} className="text-muted-foreground" />
+                    ) : (
+                      <Eye size={12} strokeWidth={1.5} className="text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="mt-2 text-sm">
+                    <span className="text-foreground tabular-nums">
+                      {privacySummary.docsTotal - privacySummary.docsPrivate}
+                    </span>
+                    <span className="text-muted-foreground"> visibles · </span>
+                    <span className="text-foreground tabular-nums">{privacySummary.docsPrivate}</span>
+                    <span className="text-muted-foreground"> privados</span>
+                  </div>
+                </Link>
               </div>
-            </Link>
-            <Link
-              to="/data-room"
-              className="border border-border rounded-lg p-4 hover:bg-surface transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Documentos</span>
-                {privacySummary.docsPrivate > 0 ? (
-                  <Lock size={12} strokeWidth={1.5} className="text-muted-foreground" />
-                ) : (
-                  <Eye size={12} strokeWidth={1.5} className="text-muted-foreground" />
-                )}
-              </div>
-              <div className="mt-2 text-sm">
-                <span className="text-foreground tabular-nums">
-                  {privacySummary.docsTotal - privacySummary.docsPrivate}
-                </span>
-                <span className="text-muted-foreground"> visibles · </span>
-                <span className="text-foreground tabular-nums">{privacySummary.docsPrivate}</span>
-                <span className="text-muted-foreground"> privados</span>
-              </div>
-            </Link>
-          </div>
-        </section>
+            </section>
 
-        <IntegrationsSection />
+            <IntegrationsSection />
+          </>
+        )}
       </div>
 
       <InviteViewerDialog
