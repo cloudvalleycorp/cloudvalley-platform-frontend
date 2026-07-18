@@ -157,7 +157,7 @@ export default function Dashboard() {
         <div className="max-w-6xl mx-auto px-8 py-12">
           <NoMembershipBanner role="user" onOpen={() => setReopenNoMembership(true)} />
           <div className="border border-border rounded-lg p-12 text-center text-sm text-muted-foreground bg-card">
-            No hay contenido para mostrar hasta que te unas a una empresa.
+            No hay contenido para mostrar hasta que te unas a una startup.
           </div>
         </div>
       </AppLayout>

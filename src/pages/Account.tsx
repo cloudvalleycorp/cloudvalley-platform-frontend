@@ -153,7 +153,7 @@ export default function Account() {
           title="Mi cuenta"
           subtitle={
             <>
-              Gestioná tus datos personales. Para configurar tu organización, andá a{" "}
+              Gestioná tus datos personales. Para configurar tu {role === "investor" ? "organización" : "startup"}, andá a{" "}
               <Link to="/settings" className="underline underline-offset-2 hover:text-foreground">
                 Configuración
               </Link>

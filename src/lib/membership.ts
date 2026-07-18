@@ -18,6 +18,7 @@ export function entityWords(isFund: boolean) {
     ofThe: isFund ? "del" : "de la",
     demonstrative: isFund ? "este" : "esta",
     own: isFund ? "propio" : "propia",
+    new_: isFund ? "nuevo" : "nueva",
     no: isFund ? "ningún" : "ninguna",
   };
 }

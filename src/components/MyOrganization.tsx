@@ -7,6 +7,7 @@ import {
   MANAGE_COMPANIES_URL,
   MANAGE_FUNDS_URL,
   handleMembershipError,
+  entityWords,
 } from "@/lib/membership";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -75,7 +76,7 @@ const getJoinCode = (raw: OrganizationResponse | null | undefined) =>
   );
 
 export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean } = {}) {
-  const { refreshSession, email } = useAuth();
+  const { refreshSession, email, role } = useAuth();
   const [org, setOrg] = useState<OrgInfo | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -106,7 +107,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
         return;
       }
       if (!res.ok) {
-        toast.error(`No se pudo cargar tu organización (${res.status})`);
+        toast.error(`No se pudo cargar tu ${role === "user" ? "startup" : "organización"} (${res.status})`);
         return;
       }
       const raw = (await res.json()) as OrganizationResponse;
@@ -133,7 +134,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
       setCohortNumberDraft(normalized.cohort_number?.toString() ?? "");
       setCohortYearDraft(normalized.cohort_year?.toString() ?? "");
     } catch {
-      toast.error("No se pudo cargar tu organización");
+      toast.error(role === "user" ? "No se pudo cargar tu startup" : "No se pudo cargar tu organización");
     }
   };
 
@@ -145,7 +146,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
 
   const orgUrl = org.type === "company" ? MANAGE_COMPANIES_URL : MANAGE_FUNDS_URL;
   const idKey = org.type === "company" ? "company_id" : "fund_id";
-  const labelOrg = org.type === "company" ? "empresa" : "fondo";
+  const w = entityWords(org.type === "fund");
 
   const copy = async () => {
     if (!org.join_code) return;
@@ -187,7 +188,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
         body: JSON.stringify({ [idKey]: org.id, name: next }),
       });
       if (await handleMembershipError(res)) return;
-      toast.success(`Nombre del ${labelOrg} actualizado`);
+      toast.success(`Nombre ${w.ofThe} ${w.noun} actualizado`);
       setEditingName(false);
       await load();
       await refreshSession();
@@ -199,7 +200,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
   const regenerate = async () => {
     const message = org.join_code
       ? "¿Regenerar el código? El código anterior dejará de funcionar."
-      : `¿Generar un código para este ${labelOrg}?`;
+      : `¿Generar un código para ${w.demonstrative} ${w.noun}?`;
     if (!confirm(message)) return;
     setRegenerating(true);
     try {
@@ -280,10 +281,12 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
       <div>
         <div className="flex items-center gap-2 mb-4">
           <Building2 size={14} strokeWidth={1.5} className="text-muted-foreground" />
-          <h2 className="text-sm font-medium text-foreground">Mi organización</h2>
+          <h2 className="text-sm font-medium text-foreground">
+            {org.type === "company" ? "Mi startup" : "Mi organización"}
+          </h2>
         </div>
 
-        {/* Nombre de la organización */}
+        {/* Nombre */}
         <div className="flex flex-wrap items-center gap-3">
           {editingName ? (
             <>
@@ -378,7 +381,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
         </p>
       </div>
 
-      {/* Detalles de la startup (solo empresas) */}
+      {/* Detalles de la startup (solo startups) */}
       {org.type === "company" && (
         <div className="border-t border-border pt-6">
           <div className="flex items-center justify-between mb-4">

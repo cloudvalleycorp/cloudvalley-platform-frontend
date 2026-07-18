@@ -11,6 +11,7 @@ import {
   rememberPendingMembership,
   forgetPendingMembership,
   getPendingMembership,
+  entityWords,
 } from "@/lib/membership";
 import { MEMBERSHIP_INTENT_KEY } from "@/pages/Onboarding";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,7 +28,7 @@ export function NoMembershipScreen({
   onDismiss?: () => void;
 }) {
   const { refreshSession } = useAuth();
-  const label = role === "user" ? "empresa" : "fondo";
+  const w = entityWords(role === "investor");
   const [mode, setMode] = useState<Mode>("menu");
   const [joinCode, setJoinCode] = useState("");
   const [name, setName] = useState("");
@@ -164,14 +165,14 @@ export function NoMembershipScreen({
     <div className="max-w-2xl mx-auto px-6 sm:px-8 py-12 sm:py-16">
       <div className="mb-8">
         <div className="text-xs uppercase tracking-widest text-muted-foreground mb-2">
-          {role === "user" ? "Configuración de empresa" : "Configuración de fondo"}
+          Configuración de {w.noun}
         </div>
         <h1 className="text-3xl font-medium tracking-tight">
-          Conectá tu cuenta a una {label}
+          Conectá tu cuenta a {w.a} {w.noun}
         </h1>
         <p className="text-sm text-muted-foreground mt-2">
           {email ? <>Estás logueado como <span className="text-foreground">{email}</span>. </> : null}
-          Para ver el contenido necesitás formar parte de una {label}.
+          Para ver el contenido necesitás formar parte de {w.a} {w.noun}.
         </p>
       </div>
 
@@ -180,7 +181,7 @@ export function NoMembershipScreen({
           <>
             <h2 className="text-lg font-medium">Elegí cómo continuar</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Podés unirte con un código o crear tu propia {label}.
+              Podés unirte con un código o crear tu {w.own} {w.noun}.
             </p>
             <div className="space-y-3 mt-6">
               <button
@@ -193,7 +194,7 @@ export function NoMembershipScreen({
                 <div className="flex-1">
                   <div className="font-medium">Unirme con un código</div>
                   <div className="text-sm text-muted-foreground mt-0.5">
-                    Ingresá el código que te compartió tu {label}.
+                    Ingresá el código que te compartió tu {w.noun}.
                   </div>
                 </div>
                 <ArrowRight size={16} strokeWidth={1.5} className="mt-1 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -206,7 +207,7 @@ export function NoMembershipScreen({
                   <Building2 size={18} strokeWidth={1.5} />
                 </div>
                 <div className="flex-1">
-                  <div className="font-medium">Crear mi propia {label}</div>
+                  <div className="font-medium">Crear mi {w.own} {w.noun}</div>
                   <div className="text-sm text-muted-foreground mt-0.5">
                     Vas a recibir un código para invitar a tu equipo.
                   </div>
@@ -252,7 +253,7 @@ export function NoMembershipScreen({
           <>
             <h2 className="text-lg font-medium">Unirme con un código</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Ingresá el código que te compartió tu {label}. Un miembro va a aprobar tu solicitud.
+              Ingresá el código que te compartió tu {w.noun}. Un miembro va a aprobar tu solicitud.
             </p>
             {joinSent ? (
               <div className="mt-6 space-y-4">
@@ -261,7 +262,7 @@ export function NoMembershipScreen({
                   <div className="text-sm">
                     <div className="font-medium text-foreground">Solicitud enviada</div>
                     <div className="text-muted-foreground mt-0.5">
-                      Un miembro de la {label} la va a revisar. Vas a recibir acceso cuando te aprueben.
+                      Un miembro {w.ofThe} {w.noun} la va a revisar. Vas a recibir acceso cuando te aprueben.
                     </div>
                   </div>
                 </div>
@@ -302,7 +303,7 @@ export function NoMembershipScreen({
 
         {mode === "create" && (
           <>
-            <h2 className="text-lg font-medium">Crear mi propia {label}</h2>
+            <h2 className="text-lg font-medium">Crear mi {w.own} {w.noun}</h2>
             <p className="text-sm text-muted-foreground mt-1">
               Elegí un nombre. Después vas a poder invitar a tu equipo con el código.
             </p>
@@ -328,7 +329,7 @@ export function NoMembershipScreen({
             ) : (
               <div className="mt-6 space-y-3">
                 <Input
-                  placeholder={role === "user" ? "Nombre de la empresa" : "Nombre del fondo"}
+                  placeholder={`Nombre ${w.ofThe} ${w.noun}`}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="h-11"
@@ -354,11 +355,11 @@ export function NoMembershipScreen({
 }
 
 export function NoMembershipBanner({ onOpen, role }: { onOpen: () => void; role: "user" | "investor" }) {
-  const label = role === "user" ? "empresa" : "fondo";
+  const w = entityWords(role === "investor");
   return (
     <div className="border border-border rounded-lg px-4 py-3 bg-muted/40 flex items-center justify-between gap-3 mb-6">
       <span className="text-sm text-foreground">
-        Todavía no formás parte de ninguna {label}.
+        Todavía no formás parte de {w.no} {w.noun}.
       </span>
       <button
         onClick={onOpen}

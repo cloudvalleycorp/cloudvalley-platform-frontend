@@ -12,8 +12,10 @@ import {
   REQUEST_MEMBERSHIP_URL,
   MANAGE_COMPANIES_URL,
   rememberPendingMembership,
+  entityWords,
 } from "@/lib/membership";
 import { GET_SESSION_URL } from "@/contexts/AuthContext";
+import { BrandMark } from "@/components/BrandMark";
 
 const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
 
@@ -52,8 +54,14 @@ export default function Onboarding() {
   if (inviteRoleParam !== null && !isPublicInvite) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-6">
-        <div className="max-w-sm text-center text-sm text-muted-foreground">
-          Link de invitación inválido.
+        <BrandMark />
+        <div className="max-w-sm text-center space-y-5">
+          <div className="text-sm text-muted-foreground">
+            Este link de invitación no es válido o ya venció.
+          </div>
+          <Button variant="outline" onClick={() => (window.location.href = "/login")}>
+            Ir al inicio
+          </Button>
         </div>
       </div>
     );
@@ -153,6 +161,7 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-6 py-12">
+      <BrandMark />
       <div className="w-full max-w-xl">
         {/* Progress */}
         <div className="flex gap-1.5 mb-12">
@@ -420,6 +429,7 @@ function CodeInvite({ code }: { code: string }) {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-6 py-12">
+      <BrandMark />
       <div className="w-full max-w-xl">
         {phase === "checking" || phase === "authed" ? (
           <div className="text-center text-sm text-muted-foreground animate-fade-in">
@@ -480,7 +490,7 @@ function CodeInvite({ code }: { code: string }) {
 
 function PublicInvite({ role }: { role: "user" | "investor" }) {
   const navigate = useNavigate();
-  const label = role === "user" ? "empresa" : "fondo";
+  const w = entityWords(role === "investor");
   const roleLabel = role === "user" ? "Usuario" : "Inversor";
 
   const [step, setStep] = useState(1);
@@ -542,6 +552,7 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-6 py-12">
+      <BrandMark />
       <div className="w-full max-w-xl">
         {sent ? (
           <div className="animate-fade-in text-center space-y-5">
@@ -549,7 +560,7 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
             <p className="text-sm text-muted-foreground">
               Si los datos son válidos, te enviamos un enlace de acceso a{" "}
               <span className="text-foreground font-medium">{email}</span>. Al iniciar
-              sesión vamos a retomar el flujo con tu {label}.
+              sesión vamos a retomar el flujo con tu {w.noun}.
             </p>
             <div className="flex items-center justify-center pt-1">
               <Button variant="outline" onClick={() => navigate("/")}>
@@ -605,18 +616,18 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
             {step === 2 && (
               <div className="animate-fade-in space-y-6">
                 <h2 className="text-2xl font-medium tracking-tight">
-                  ¿Con qué {label} te vas a conectar?
+                  ¿Con qué {w.noun} te vas a conectar?
                 </h2>
                 <div className="grid gap-3">
                   {[
                     {
                       id: "join" as const,
-                      title: `Unirme a una ${label} existente`,
-                      desc: `Tengo un código de acceso compartido por mi ${label}.`,
+                      title: `Unirme a ${w.a} ${w.noun} existente`,
+                      desc: `Tengo un código de acceso compartido por mi ${w.noun}.`,
                     },
                     {
                       id: "create" as const,
-                      title: `Crear una nueva ${label}`,
+                      title: `Crear ${w.a} ${w.new_} ${w.noun}`,
                       desc: `Voy a generar un código para invitar a mi equipo.`,
                     },
                     {
@@ -647,7 +658,7 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
               <div className="animate-fade-in space-y-6">
                 <h2 className="text-2xl font-medium tracking-tight">Ingresá el código</h2>
                 <p className="text-sm text-muted-foreground -mt-4">
-                  Un miembro de la {label} va a revisar y aprobar tu solicitud.
+                  Un miembro {w.ofThe} {w.noun} va a revisar y aprobar tu solicitud.
                 </p>
                 <Input
                   placeholder="Código de acceso"
@@ -661,13 +672,13 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
             {step === 3 && choice === "create" && (
               <div className="animate-fade-in space-y-6">
                 <h2 className="text-2xl font-medium tracking-tight">
-                  ¿Cómo se llama tu {label}?
+                  ¿Cómo se llama tu {w.noun}?
                 </h2>
                 <p className="text-sm text-muted-foreground -mt-4">
                   Después de iniciar sesión generamos el código para tu equipo.
                 </p>
                 <Input
-                  placeholder={role === "user" ? "Nombre de la empresa" : "Nombre del fondo"}
+                  placeholder={`Nombre ${w.ofThe} ${w.noun}`}
                   value={entityName}
                   onChange={(e) => setEntityName(e.target.value)}
                   className="h-11"

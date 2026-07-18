@@ -146,7 +146,9 @@ export function OrganizationSection() {
       <div className="px-6 pt-6 pb-4 border-b border-border">
         <div className="flex items-center gap-2">
           <Users size={14} strokeWidth={1.5} className="text-muted-foreground" />
-          <h2 className="text-sm font-medium text-foreground">Organización</h2>
+          <h2 className="text-sm font-medium text-foreground">
+            {role === "investor" ? "Organización" : "Startup"}
+          </h2>
         </div>
         {orgName && (
           <p className="text-xs text-muted-foreground mt-1 ml-6">{orgName}</p>
@@ -237,7 +239,7 @@ export function OrganizationSection() {
                       variant="ghost"
                       className="shrink-0 text-muted-foreground hover:text-destructive"
                       onClick={() => setRemoveTarget(m)}
-                      title="Quitar de la organización"
+                      title={`Quitar de la ${role === "investor" ? "organización" : "startup"}`}
                     >
                       <UserMinus size={14} strokeWidth={1.5} />
                     </Button>
@@ -260,7 +262,7 @@ export function OrganizationSection() {
               <span className="text-foreground font-medium">
                 {removeTarget?.full_name || removeTarget?.email}
               </span>{" "}
-              de la organización? Podrá volver a solicitar unirse más tarde.
+              de la {role === "investor" ? "organización" : "startup"}? Podrá volver a solicitar unirse más tarde.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
