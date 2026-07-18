@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { ACCEPT_INVITE_URL, REQUEST_MEMBERSHIP_URL } from "@/lib/membership";
+import { ACCEPT_INVITE_URL, REQUEST_MEMBERSHIP_URL, MANAGE_COMPANIES_URL } from "@/lib/membership";
 import { GET_SESSION_URL } from "@/contexts/AuthContext";
 
 const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
@@ -28,7 +28,7 @@ const models = [
 
 export default function Onboarding() {
   const { user, loading: authLoading, isOrgViewer, company_id, user_id, email, refreshSession } = useAuth();
-  const { startup, loading: startupLoading, refetch } = useStartup();
+  const { startup, loading: startupLoading } = useStartup();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const inviteCodeParam = params.get("code");
@@ -97,21 +97,30 @@ export default function Onboarding() {
         // No bloqueamos la creación por esto — se puede editar luego en /account.
       }
 
-      // Create startup + membership atomically (RPC bypasses RLS race)
-      const { data: newStartupId, error: sErr } = await supabase.rpc(
-        "create_startup_with_member",
-        {
-          _name: name,
-          _industry: industry,
-          _stage: stage as "pre_seed" | "seed" | "series_a",
-          _business_model: model as any,
-          _target_raise_usd: target ? Number(target) : null,
-          _cohort_number: cohortNumber ? Number(cohortNumber) : null,
-          _cohort_year: cohortYear ? Number(cohortYear) : null,
-        }
-      );
-      if (sErr || !newStartupId) throw sErr ?? new Error("No startup id");
-      const newStartup = { id: newStartupId as string };
+      // Create the company (self-service) via the auth backend.
+      const res = await fetch(MANAGE_COMPANIES_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_own_with_profile",
+          name,
+          industry,
+          stage: stage as "pre_seed" | "seed" | "series_a",
+          business_model: model,
+          target_raise_usd: target ? Number(target) : null,
+          cohort_number: cohortNumber ? Number(cohortNumber) : null,
+          cohort_year: cohortYear ? Number(cohortYear) : null,
+        }),
+      });
+      if (res.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? "Error al crear startup");
+      }
 
       // Update profile name
       if (founderName) {
@@ -119,44 +128,8 @@ export default function Onboarding() {
         await supabase.from("profiles").update({ name: founderName }).eq("id", user.id);
       }
 
-      // Generate startup_tasks for all tasks matching stage
-      const { data: tasks } = await supabase
-        .from("roadmap_tasks")
-        .select("id, stage_required");
-      const filteredTasks = (tasks ?? []).filter(
-        (t) => t.stage_required === "all" || t.stage_required === stage
-      );
-      if (filteredTasks.length > 0) {
-        // TODO: migrar a backend propio
-        await supabase.from("startup_tasks").insert(
-          filteredTasks.map((t) => ({
-            startup_id: newStartup.id,
-            task_id: t.id,
-            status: "pending" as const,
-          }))
-        );
-      }
-
-      // Generate metric_configs: core + matching business model
-      const { data: metrics } = await supabase
-        .from("metric_definitions")
-        .select("id, is_core, applies_to_model, order_index");
-      const filteredMetrics = (metrics ?? []).filter(
-        (m) => m.is_core || (m.applies_to_model as string[])?.includes(model)
-      );
-      if (filteredMetrics.length > 0) {
-        // TODO: migrar a backend propio
-        await supabase.from("metric_configs").insert(
-          filteredMetrics.map((m, i) => ({
-            startup_id: newStartup.id,
-            metric_id: m.id,
-            is_active: true,
-            display_order: m.order_index ?? i,
-          }))
-        );
-      }
-
-      await refetch();
+      // The company_id isn't in the session cookie yet — refresh before navigating,
+      // otherwise the next screens see the user as if they still had no company.
       await refreshSession();
       toast.success("¡Startup creada!");
       navigate("/dashboard", { replace: true });
