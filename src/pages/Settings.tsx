@@ -169,7 +169,7 @@ export default function Settings() {
           title="Configuración"
           subtitle={
             <>
-              Tu organización, startup e integraciones. Para editar tu perfil personal, andá a{" "}
+              {role === "investor" ? "Tu organización, equipo e integraciones." : "Tu startup, equipo e integraciones."} Para editar tu perfil personal, andá a{" "}
               <Link to="/account" className="underline underline-offset-2 hover:text-foreground">
                 Mi cuenta
               </Link>
