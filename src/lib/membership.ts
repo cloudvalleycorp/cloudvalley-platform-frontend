@@ -9,6 +9,19 @@ export const MANAGE_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/ma
 export const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
 export const REMOVE_MEMBER_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/remove-member";
 
+// Companies are "startup" (feminine); funds are "fondo" (masculine) — these
+// precomposed forms keep articles/possessives grammatically agreeing with each.
+export function entityWords(isFund: boolean) {
+  return {
+    noun: isFund ? "fondo" : "startup",
+    a: isFund ? "un" : "una",
+    ofThe: isFund ? "del" : "de la",
+    demonstrative: isFund ? "este" : "esta",
+    own: isFund ? "propio" : "propia",
+    no: isFund ? "ningún" : "ninguna",
+  };
+}
+
 export type MembershipRequest = {
   request_id: string;
   email: string;
