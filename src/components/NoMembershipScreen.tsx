@@ -25,6 +25,7 @@ export function NoMembershipScreen({
 }) {
   const { refreshSession } = useAuth();
   const label = role === "user" ? "empresa" : "fondo";
+  const pendingKey = `cv:pending_membership:${role}`;
   const [mode, setMode] = useState<Mode>("menu");
   const [joinCode, setJoinCode] = useState("");
   const [name, setName] = useState("");
@@ -33,28 +34,67 @@ export function NoMembershipScreen({
   const [createdCode, setCreatedCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const rememberPending = (code: string) => {
+    try {
+      localStorage.setItem(pendingKey, JSON.stringify({ code, requestedAt: Date.now() }));
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const forgetPending = () => {
+    try {
+      localStorage.removeItem(pendingKey);
+    } catch {
+      // ignore storage errors
+    }
+  };
+
   // Consume intent saved during PublicInvite to pre-fill this screen.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(MEMBERSHIP_INTENT_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed?.role !== role) return;
-      const intent = parsed.intent;
-      if (intent?.kind === "join" && intent.code) {
-        setJoinCode(intent.code);
-        setMode("join");
-        // Auto-submit membership request so the user actually appears
-        // in the target org without an extra manual click.
-        void autoSubmitJoin(intent.code);
-      } else if (intent?.kind === "create" && intent.name) {
-        setName(intent.name);
-        setMode("create");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.role === role) {
+          const intent = parsed.intent;
+          localStorage.removeItem(MEMBERSHIP_INTENT_KEY);
+          if (intent?.kind === "join" && intent.code) {
+            setJoinCode(intent.code);
+            setMode("join");
+            // Auto-submit membership request so the user actually appears
+            // in the target org without an extra manual click.
+            void autoSubmitJoin(intent.code);
+            return;
+          } else if (intent?.kind === "create" && intent.name) {
+            setName(intent.name);
+            setMode("create");
+            return;
+          }
+        } else {
+          localStorage.removeItem(MEMBERSHIP_INTENT_KEY);
+        }
       }
-      localStorage.removeItem(MEMBERSHIP_INTENT_KEY);
     } catch {
       // ignore
     }
+
+    // No fresh intent — check if we're already waiting on a request from a previous visit,
+    // so a page reload doesn't send the user back to the menu as if nothing happened.
+    try {
+      const rawPending = localStorage.getItem(pendingKey);
+      if (rawPending) {
+        const { code } = JSON.parse(rawPending);
+        if (code) {
+          setJoinCode(code);
+          setMode("join");
+          setJoinSent(true);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
   const autoSubmitJoin = async (code: string) => {
@@ -70,6 +110,7 @@ export function NoMembershipScreen({
       });
       if (await handleMembershipError(res)) return;
       setJoinSent(true);
+      rememberPending(trimmed);
       toast.success("Solicitud enviada");
     } catch {
       toast.error("No se pudo enviar la solicitud. Revisá tu conexión.");
@@ -82,14 +123,16 @@ export function NoMembershipScreen({
     if (!joinCode.trim()) return;
     setSubmitting(true);
     try {
+      const trimmed = joinCode.trim().toUpperCase();
       const res = await fetch(REQUEST_MEMBERSHIP_URL, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ join_code: joinCode.trim().toUpperCase() }),
+        body: JSON.stringify({ join_code: trimmed }),
       });
       if (await handleMembershipError(res)) return;
       setJoinSent(true);
+      rememberPending(trimmed);
       toast.success("Solicitud enviada");
     } catch {
       toast.error("No se pudo enviar la solicitud. Revisá tu conexión.");
@@ -211,6 +254,7 @@ export function NoMembershipScreen({
                 onClick={async () => {
                   const ok = await refreshSession();
                   if (ok) {
+                    forgetPending();
                     toast.success("Sesión actualizada");
                     window.location.assign("/");
                   } else {
@@ -243,13 +287,13 @@ export function NoMembershipScreen({
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => { setJoinSent(false); setMode("menu"); }}>
+                  <Button variant="outline" onClick={() => { forgetPending(); setJoinSent(false); setMode("menu"); }}>
                     Volver
                   </Button>
                   <Button
                     onClick={async () => {
                       const ok = await refreshSession();
-                      if (ok) { toast.success("Sesión actualizada"); window.location.assign("/"); }
+                      if (ok) { forgetPending(); toast.success("Sesión actualizada"); window.location.assign("/"); }
                       else toast.error("Todavía no fuiste aprobado");
                     }}
                   >
