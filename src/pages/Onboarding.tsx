@@ -308,11 +308,60 @@ type MembershipIntent =
 export const MEMBERSHIP_INTENT_KEY = "cv:membership_intent";
 
 function CodeInvite({ code }: { code: string }) {
+  const navigate = useNavigate();
   const [phase, setPhase] = useState<"checking" | "authed" | "form" | "done">("checking");
   const [message, setMessage] = useState<string>("");
+  const [resultKind, setResultKind] = useState<"success" | "info" | "error">("success");
+  const [doneTitle, setDoneTitle] = useState("Listo");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+
+  const requestMembership = async () => {
+    try {
+      const r = await fetch(REQUEST_MEMBERSHIP_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ join_code: code }),
+      });
+      if (r.status === 401) {
+        setPhase("form");
+        return;
+      }
+      if (r.status === 201 || r.ok) {
+        setResultKind("success");
+        setDoneTitle("Solicitud enviada");
+        setMessage("Un miembro de la organización la va a revisar.");
+        setPhase("done");
+        return;
+      }
+      if (r.status === 400) {
+        const data = await r.json().catch(() => null);
+        setResultKind("info");
+        setDoneTitle("Listo");
+        setMessage(data?.error ?? "No se pudo enviar la solicitud.");
+        setPhase("done");
+        return;
+      }
+      setResultKind("error");
+      setDoneTitle("No pudimos enviar tu solicitud");
+      setMessage("Intentá de nuevo.");
+      setPhase("done");
+    } catch {
+      setResultKind("error");
+      setDoneTitle("No pudimos enviar tu solicitud");
+      setMessage("Revisá tu conexión e intentá de nuevo.");
+      setPhase("done");
+    }
+  };
+
+  const retry = async () => {
+    setRetrying(true);
+    await requestMembership();
+    setRetrying(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -322,35 +371,7 @@ function CodeInvite({ code }: { code: string }) {
         if (cancelled) return;
         if (res.ok) {
           setPhase("authed");
-          try {
-            const r = await fetch(REQUEST_MEMBERSHIP_URL, {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ join_code: code }),
-            });
-            if (cancelled) return;
-            if (r.status === 401) {
-              setPhase("form");
-              return;
-            }
-            if (r.status === 201 || r.ok) {
-              setMessage("Solicitud enviada. Un miembro de la organización la va a revisar.");
-              setPhase("done");
-              return;
-            }
-            if (r.status === 400) {
-              const data = await r.json().catch(() => null);
-              setMessage(data?.error ?? "No se pudo enviar la solicitud.");
-              setPhase("done");
-              return;
-            }
-            setMessage("No se pudo enviar la solicitud.");
-            setPhase("done");
-          } catch {
-            setMessage("No se pudo enviar la solicitud.");
-            setPhase("done");
-          }
+          await requestMembership();
           return;
         }
         // 401 or otherwise not authenticated
@@ -382,6 +403,8 @@ function CodeInvite({ code }: { code: string }) {
     } catch {
       // do not leak backend errors
     }
+    setResultKind("success");
+    setDoneTitle("Revisá tu correo");
     setMessage(
       "Si los datos son válidos, vas a recibir un enlace de acceso en tu casilla en breve."
     );
@@ -397,9 +420,19 @@ function CodeInvite({ code }: { code: string }) {
             Procesando invitación…
           </div>
         ) : phase === "done" ? (
-          <div className="animate-fade-in text-center space-y-4">
-            <h1 className="text-3xl font-medium tracking-tight">Listo</h1>
+          <div className="animate-fade-in text-center space-y-5">
+            <h1 className="text-3xl font-medium tracking-tight">{doneTitle}</h1>
             <p className="text-sm text-muted-foreground">{message}</p>
+            <div className="flex items-center justify-center gap-2 pt-1">
+              {resultKind === "error" && (
+                <Button variant="outline" onClick={retry} disabled={retrying}>
+                  {retrying ? "Reintentando…" : "Reintentar"}
+                </Button>
+              )}
+              <Button onClick={() => navigate("/")}>
+                {doneTitle === "Revisá tu correo" ? "Volver al inicio" : "Ir a la plataforma"}
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="animate-fade-in space-y-6">
@@ -440,6 +473,7 @@ function CodeInvite({ code }: { code: string }) {
 }
 
 function PublicInvite({ role }: { role: "user" | "investor" }) {
+  const navigate = useNavigate();
   const label = role === "user" ? "empresa" : "fondo";
   const roleLabel = role === "user" ? "Usuario" : "Inversor";
 
@@ -504,13 +538,18 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
     <div className="min-h-screen bg-background flex items-center justify-center px-6 py-12">
       <div className="w-full max-w-xl">
         {sent ? (
-          <div className="animate-fade-in text-center space-y-4">
+          <div className="animate-fade-in text-center space-y-5">
             <h1 className="text-3xl font-medium tracking-tight">Revisá tu correo</h1>
             <p className="text-sm text-muted-foreground">
               Si los datos son válidos, te enviamos un enlace de acceso a{" "}
               <span className="text-foreground font-medium">{email}</span>. Al iniciar
               sesión vamos a retomar el flujo con tu {label}.
             </p>
+            <div className="flex items-center justify-center pt-1">
+              <Button variant="outline" onClick={() => navigate("/")}>
+                Volver al inicio
+              </Button>
+            </div>
           </div>
         ) : (
           <>
