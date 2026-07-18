@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, Check, Building2, Pencil, RefreshCw, User as UserIcon, Link2 } from "lucide-react";
+import { Copy, Check, Building2, Pencil, RefreshCw, User as UserIcon, Link2, Rocket } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,11 @@ type OrgInfo = {
   join_code: string;
   full_name?: string;
   user_id?: string;
+  industry: string;
+  website: string;
+  target_raise_usd: number | null;
+  cohort_number: number | null;
+  cohort_year: number | null;
 };
 
 type OrganizationResponse = Partial<{
@@ -46,6 +51,11 @@ type OrganizationResponse = Partial<{
   user_name: string;
   user_id: string;
   member_id: string;
+  industry: string | null;
+  website: string | null;
+  target_raise_usd: number | null;
+  cohort_number: number | null;
+  cohort_year: number | null;
 }>;
 
 const firstText = (...values: Array<string | null | undefined>) =>
@@ -80,6 +90,14 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
 
   const [regenerating, setRegenerating] = useState(false);
 
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [industryDraft, setIndustryDraft] = useState("");
+  const [websiteDraft, setWebsiteDraft] = useState("");
+  const [targetDraft, setTargetDraft] = useState("");
+  const [cohortNumberDraft, setCohortNumberDraft] = useState("");
+  const [cohortYearDraft, setCohortYearDraft] = useState("");
+  const [savingDetails, setSavingDetails] = useState(false);
+
   const load = async () => {
     try {
       const res = await fetch(GET_MY_ORGANIZATION_URL, { credentials: "include" });
@@ -100,10 +118,20 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
         join_code: getJoinCode(raw),
         full_name: firstText(raw.full_name, raw.user_full_name, raw.member_full_name, raw.user_name),
         user_id: raw.user_id ?? raw.member_id ?? undefined,
+        industry: raw.industry ?? "",
+        website: raw.website ?? "",
+        target_raise_usd: raw.target_raise_usd ?? null,
+        cohort_number: raw.cohort_number ?? null,
+        cohort_year: raw.cohort_year ?? null,
       };
       setOrg(normalized);
       setNameDraft(normalized.name);
       setFullNameDraft(normalized.full_name ?? "");
+      setIndustryDraft(normalized.industry);
+      setWebsiteDraft(normalized.website);
+      setTargetDraft(normalized.target_raise_usd?.toString() ?? "");
+      setCohortNumberDraft(normalized.cohort_number?.toString() ?? "");
+      setCohortYearDraft(normalized.cohort_year?.toString() ?? "");
     } catch {
       toast.error("No se pudo cargar tu organización");
     }
@@ -192,6 +220,31 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
       toast.success(org.join_code ? "Código regenerado" : "Código generado");
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  const saveDetails = async () => {
+    setSavingDetails(true);
+    try {
+      const res = await fetch(orgUrl, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          [idKey]: org.id,
+          industry: industryDraft.trim() || null,
+          website: websiteDraft.trim() || null,
+          target_raise_usd: targetDraft ? Number(targetDraft) : null,
+          cohort_number: cohortNumberDraft ? Number(cohortNumberDraft) : null,
+          cohort_year: cohortYearDraft ? Number(cohortYearDraft) : null,
+        }),
+      });
+      if (await handleMembershipError(res)) return;
+      toast.success("Detalles actualizados");
+      setEditingDetails(false);
+      await load();
+    } finally {
+      setSavingDetails(false);
     }
   };
 
@@ -323,6 +376,121 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
           Compartí este código con las personas de tu equipo para que puedan unirse.
         </p>
       </div>
+
+      {/* Detalles de la startup (solo empresas) */}
+      {org.type === "company" && (
+        <div className="border-t border-border pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Rocket size={14} strokeWidth={1.5} className="text-muted-foreground" />
+              <h2 className="text-sm font-medium text-foreground">Detalles de la startup</h2>
+            </div>
+            {!editingDetails && (
+              <button
+                type="button"
+                onClick={() => setEditingDetails(true)}
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Pencil size={12} strokeWidth={1.5} />
+                Editar
+              </button>
+            )}
+          </div>
+
+          {editingDetails ? (
+            <div className="space-y-3">
+              <div>
+                <span className="text-xs text-muted-foreground mb-1 block">Industria</span>
+                <Input value={industryDraft} onChange={(e) => setIndustryDraft(e.target.value)} className="h-9" />
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground mb-1 block">Website</span>
+                <Input
+                  type="url"
+                  placeholder="https://"
+                  value={websiteDraft}
+                  onChange={(e) => setWebsiteDraft(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground mb-1 block">Objetivo de ronda (USD)</span>
+                <Input
+                  type="number"
+                  value={targetDraft}
+                  onChange={(e) => setTargetDraft(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="text-xs text-muted-foreground mb-1 block">Nº de cohort</span>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={cohortNumberDraft}
+                    onChange={(e) => setCohortNumberDraft(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div>
+                  <span className="text-xs text-muted-foreground mb-1 block">Año del cohort</span>
+                  <Input
+                    type="number"
+                    min="2000"
+                    max="2100"
+                    value={cohortYearDraft}
+                    onChange={(e) => setCohortYearDraft(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" onClick={saveDetails} disabled={savingDetails}>
+                  {savingDetails ? "Guardando…" : "Guardar cambios"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditingDetails(false);
+                    setIndustryDraft(org.industry);
+                    setWebsiteDraft(org.website);
+                    setTargetDraft(org.target_raise_usd?.toString() ?? "");
+                    setCohortNumberDraft(org.cohort_number?.toString() ?? "");
+                    setCohortYearDraft(org.cohort_year?.toString() ?? "");
+                  }}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <dt className="text-xs text-muted-foreground">Industria</dt>
+                <dd className="text-foreground">{org.industry || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Website</dt>
+                <dd className="text-foreground truncate">{org.website || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Objetivo de ronda</dt>
+                <dd className="text-foreground">
+                  {org.target_raise_usd != null ? `USD ${org.target_raise_usd.toLocaleString()}` : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Cohort</dt>
+                <dd className="text-foreground">
+                  {org.cohort_number != null ? `#${org.cohort_number}${org.cohort_year ? ` · ${org.cohort_year}` : ""}` : "—"}
+                </dd>
+              </div>
+            </dl>
+          )}
+        </div>
+      )}
 
       {/* Perfil */}
       {!hideProfile && (

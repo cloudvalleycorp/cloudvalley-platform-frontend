@@ -4,27 +4,19 @@ import { PageHeader } from "@/components/PageHeader";
 import { useStartup } from "@/hooks/useStartup";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { OrganizationsPicker, type OrgSelection } from "@/components/OrganizationsPicker";
 import { Link } from "react-router-dom";
-import { Eye, Lock, Mail, Rocket, Users as UsersIcon, ShieldCheck } from "lucide-react";
+import { Eye, Lock, Mail, Users as UsersIcon, ShieldCheck } from "lucide-react";
 import { InviteViewerDialog } from "@/components/InviteViewerDialog";
 import { IntegrationsSection } from "@/components/IntegrationsSection";
 import { MyOrganization } from "@/components/MyOrganization";
 import { OrganizationSection } from "@/components/OrganizationSection";
 
 export default function Settings() {
-  const { startup, refetch } = useStartup();
+  const { startup } = useStartup();
   const { user, role, company_id, fund_id } = useAuth();
-  const [name, setName] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [target, setTarget] = useState("");
-  const [website, setWebsite] = useState("");
-  const [cohortNumber, setCohortNumber] = useState("");
-  const [cohortYear, setCohortYear] = useState("");
   const [orgSelections, setOrgSelections] = useState<OrgSelection[]>([]);
   const [savingOrgs, setSavingOrgs] = useState(false);
   const [orgsMeta, setOrgsMeta] = useState<Record<string, string>>({}); // id -> name
@@ -43,12 +35,6 @@ export default function Settings() {
 
   useEffect(() => {
     if (startup) {
-      setName(startup.name);
-      setIndustry(startup.industry ?? "");
-      setTarget(startup.target_raise_usd?.toString() ?? "");
-      setWebsite(startup.website ?? "");
-      setCohortNumber(startup.cohort_number?.toString() ?? "");
-      setCohortYear(startup.cohort_year?.toString() ?? "");
       supabase
         .from("startup_organizations")
         .select("organization_id, batch, year")
@@ -149,21 +135,6 @@ export default function Settings() {
     loadInvites();
   };
 
-  const save = async () => {
-    if (!startup || !user) return;
-    // TODO: migrar a backend propio
-    await supabase.from("startups").update({
-      name,
-      industry,
-      target_raise_usd: target ? Number(target) : null,
-      website: website.trim() || null,
-      cohort_number: cohortNumber ? Number(cohortNumber) : null,
-      cohort_year: cohortYear ? Number(cohortYear) : null,
-    }).eq("id", startup.id);
-    toast.success("Cambios guardados");
-    refetch();
-  };
-
   const saveOrgs = async () => {
     if (!startup) return;
     setSavingOrgs(true);
@@ -215,62 +186,6 @@ export default function Settings() {
             <OrganizationSection />
           </>
         )}
-
-        {/* Tu startup */}
-        <section className="border border-border rounded-lg p-6 bg-card space-y-5">
-          <div className="flex items-center gap-2">
-            <Rocket size={14} strokeWidth={1.5} className="text-muted-foreground" />
-            <h2 className="text-sm font-medium text-foreground">Tu startup</h2>
-          </div>
-          <div className="space-y-3">
-              <div>
-                <Label className="text-xs">Nombre</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs">Industria</Label>
-                <Input value={industry} onChange={(e) => setIndustry(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs">Website</Label>
-                <Input
-                  type="url"
-                  placeholder="https://"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Objetivo de ronda (USD)</Label>
-                <Input type="number" value={target} onChange={(e) => setTarget(e.target.value)} className="mt-1" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Nº de cohort</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    value={cohortNumber}
-                    onChange={(e) => setCohortNumber(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Año del cohort</Label>
-                  <Input
-                    type="number"
-                    min="2000"
-                    max="2100"
-                    value={cohortYear}
-                    onChange={(e) => setCohortYear(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-          </div>
-          <Button onClick={save}>Guardar cambios</Button>
-        </section>
 
         {/* Mis organizaciones */}
         <section className="border border-border rounded-lg p-6 bg-card space-y-4">
