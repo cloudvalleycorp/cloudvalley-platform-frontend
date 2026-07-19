@@ -19,11 +19,17 @@ export function CompleteProfileScreen({ onSkip }: { onSkip: () => void }) {
   const save = async () => {
     const next = fullName.trim();
     if (!next) return;
+    // manage-users only accepts user_id, no email fallback — this screen only
+    // renders once AppLayout has already resolved a session, so user_id should
+    // be present by the time someone can reach "Continuar"; the check is a
+    // safeguard against a race, not the expected path.
+    if (!user_id) {
+      toast.error("Todavía no se cargó tu cuenta — esperá un segundo y volvé a intentar.");
+      return;
+    }
     setSaving(true);
     try {
-      const body: Record<string, unknown> = { full_name: next };
-      if (user_id) body.user_id = user_id;
-      else if (email) body.email = email;
+      const body: Record<string, unknown> = { user_id, full_name: next };
       const res = await fetch(MANAGE_USERS_URL, {
         method: "PATCH",
         credentials: "include",
@@ -84,7 +90,7 @@ export function CompleteProfileScreen({ onSkip }: { onSkip: () => void }) {
             >
               Ahora no
             </button>
-            <Button onClick={save} disabled={!fullName.trim() || saving}>
+            <Button onClick={save} disabled={!fullName.trim() || saving || !user_id}>
               {saving ? "Guardando…" : "Continuar"}
             </Button>
           </div>

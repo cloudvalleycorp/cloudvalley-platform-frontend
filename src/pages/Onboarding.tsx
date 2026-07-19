@@ -106,18 +106,20 @@ export default function Onboarding() {
     try {
       // 1. Guardar nombre completo en el backend de sesión (obligatorio).
       //    Así el header muestra el nombre en lugar del email.
-      try {
-        const body: Record<string, unknown> = { full_name: founderName.trim() };
-        if (user_id) body.user_id = user_id;
-        else if (email) body.email = email;
-        await fetch(MANAGE_USERS_URL, {
-          method: "PATCH",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-      } catch {
-        // No bloqueamos la creación por esto — se puede editar luego en /account.
+      //    manage-users solo acepta user_id (sin fallback por email) — si todavía
+      //    no está resuelto, directamente no lo intentamos: no bloqueamos la
+      //    creación por esto, se puede editar luego en /account.
+      if (user_id) {
+        try {
+          await fetch(MANAGE_USERS_URL, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id, full_name: founderName.trim() }),
+          });
+        } catch {
+          // No bloqueamos la creación por esto — se puede editar luego en /account.
+        }
       }
 
       // Create the company (self-service) via the auth backend.
