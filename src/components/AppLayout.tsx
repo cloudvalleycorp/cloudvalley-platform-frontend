@@ -1,10 +1,11 @@
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Navigate, useNavigate, useLocation, Link } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
+import { CompleteProfileScreen } from "@/components/CompleteProfileScreen";
 import { LogOut, Settings as SettingsIcon, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const { startup, loading: startupLoading } = useStartup();
   const navigate = useNavigate();
   const location = useLocation();
+  const [profilePromptDismissed, setProfilePromptDismissed] = useState(false);
 
   useEffect(() => {
     // Los inversores viven en modo lectura dentro de /portfolio, pero igual
@@ -43,6 +45,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Alguien que se sumó vía invitación (accept-invite no pide nombre, ver
+  // CodeInvite) todavía no tiene full_name — antes de mostrarle el resto de
+  // la plataforma, pedírselo con la misma estética que el onboarding de
+  // autoservicio, no un popup.
+  if (!full_name?.trim() && !profilePromptDismissed) {
+    return <CompleteProfileScreen onSkip={() => setProfilePromptDismissed(true)} />;
   }
 
   const orgLabel = role === "user" ? company_name : role === "investor" ? fund_name : null;
