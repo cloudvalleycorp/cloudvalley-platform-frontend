@@ -24,6 +24,25 @@ export function entityWords(isFund: boolean) {
   };
 }
 
+/**
+ * Users are more likely to paste the whole invite link ("Compartir enlace de
+ * invitación" copies `${origin}/onboarding?code=XXXX`) than to manually pull the
+ * bare code out of it. If the pasted value parses as a URL with a `code` param,
+ * use that; otherwise treat it as an already-bare code.
+ */
+export function extractJoinCode(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const code = new URL(trimmed).searchParams.get("code");
+      if (code) return code.trim().toUpperCase();
+    } catch {
+      // not a parseable URL — fall through and treat the whole thing as a code
+    }
+  }
+  return trimmed.toUpperCase();
+}
+
 export type MembershipRequest = {
   request_id: string;
   email: string;

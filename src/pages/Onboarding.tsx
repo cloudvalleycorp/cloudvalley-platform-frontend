@@ -13,6 +13,7 @@ import {
   MANAGE_COMPANIES_URL,
   rememberPendingMembership,
   entityWords,
+  extractJoinCode,
 } from "@/lib/membership";
 import { GET_SESSION_URL } from "@/contexts/AuthContext";
 import { BrandMark } from "@/components/BrandMark";
@@ -327,7 +328,6 @@ function CodeInvite({ code }: { code: string }) {
   const [message, setMessage] = useState<string>("");
   const [resultKind, setResultKind] = useState<"success" | "info" | "error">("success");
   const [doneTitle, setDoneTitle] = useState("Listo");
-  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -403,7 +403,7 @@ function CodeInvite({ code }: { code: string }) {
     };
   }, [code]);
 
-  const canSubmit = fullName.trim().length > 0 && /\S+@\S+\.\S+/.test(email);
+  const canSubmit = /\S+@\S+\.\S+/.test(email);
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -423,13 +423,18 @@ function CodeInvite({ code }: { code: string }) {
       // ignore storage errors
     }
     try {
+      // full_name is intentionally omitted: whether this email already has an
+      // account or not, asking for it here would either be redundant (existing
+      // account) or would require the backend to answer differently for new vs.
+      // existing emails — which turns this into an oracle for "is this email
+      // registered". A brand-new account gets created with no name; the person
+      // fills it in later from "Mi cuenta" once logged in.
       await fetch(ACCEPT_INVITE_URL, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
-          full_name: fullName,
           join_code: code.trim().toUpperCase(),
         }),
       });
@@ -475,23 +480,19 @@ function CodeInvite({ code }: { code: string }) {
                 Te estás uniendo a una organización existente
               </h1>
               <p className="text-sm text-muted-foreground mt-2">
-                Ingresá tus datos para recibir un enlace de acceso.
+                Ingresá tu email para recibir un enlace de acceso. Si ya tenés cuenta, no
+                hace falta nada más; si no, vas a poder completar tu nombre después desde
+                "Mi cuenta".
               </p>
             </div>
             <div className="space-y-3">
-              <Input
-                placeholder="Tu nombre completo"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="h-11"
-                autoFocus
-              />
               <Input
                 type="email"
                 placeholder="tu@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="h-11"
+                autoFocus
               />
             </div>
             <div className="flex justify-end">
@@ -681,7 +682,7 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
                 <Input
                   placeholder="Código de acceso"
                   value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
+                  onChange={(e) => setJoinCode(extractJoinCode(e.target.value))}
                   className="h-11 tracking-widest font-mono"
                 />
               </div>

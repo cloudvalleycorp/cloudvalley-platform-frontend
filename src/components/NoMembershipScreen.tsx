@@ -12,6 +12,7 @@ import {
   forgetPendingMembership,
   getPendingMembership,
   entityWords,
+  extractJoinCode,
 } from "@/lib/membership";
 import { MEMBERSHIP_INTENT_KEY } from "@/pages/Onboarding";
 import { useAuth } from "@/contexts/AuthContext";
@@ -385,7 +386,7 @@ export function NoMembershipScreen({
                 <Input
                   placeholder="Código de acceso"
                   value={joinCode}
-                  onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinNote(null); }}
+                  onChange={(e) => { setJoinCode(extractJoinCode(e.target.value)); setJoinNote(null); }}
                   className="h-11 font-mono tracking-widest uppercase"
                   autoFocus
                 />
