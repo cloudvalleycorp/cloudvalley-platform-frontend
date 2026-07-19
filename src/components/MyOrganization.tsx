@@ -76,7 +76,7 @@ const getJoinCode = (raw: OrganizationResponse | null | undefined) =>
   );
 
 export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean } = {}) {
-  const { refreshSession, email, role } = useAuth();
+  const { refreshSession, email, role, user_id: sessionUserId } = useAuth();
   const [org, setOrg] = useState<OrgInfo | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -256,11 +256,18 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
       setEditingFullName(false);
       return;
     }
+    // manage-users only accepts user_id, no email fallback — org.user_id (from
+    // get-my-organization) and sessionUserId (from get-session) are two reads of
+    // the same value; try both before giving up, since sending email instead
+    // would just 400 "user_id es requerido".
+    const userId = org.user_id ?? sessionUserId;
+    if (!userId) {
+      toast.error("No se pudo identificar tu usuario — recargá la página e intentá de nuevo.");
+      return;
+    }
     setSavingFullName(true);
     try {
-      const body: Record<string, unknown> = { full_name: next };
-      if (org.user_id) body.user_id = org.user_id;
-      else if (email) body.email = email;
+      const body: Record<string, unknown> = { user_id: userId, full_name: next };
       const res = await fetch(MANAGE_USERS_URL, {
         method: "PATCH",
         credentials: "include",

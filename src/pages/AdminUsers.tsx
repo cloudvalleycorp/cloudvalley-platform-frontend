@@ -25,6 +25,7 @@ import { handleGatewayError } from "@/lib/adminGateway";
 const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
 const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
 const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
+const LIST_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-funds";
 const CREATE_INVITE_LINK_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/create-invite-link";
 
 type Role = "admin" | "user" | "investor";
@@ -42,6 +43,7 @@ type User = {
 };
 
 type Company = { company_id: string; name: string };
+type Fund = { fund_id: string; name: string };
 
 function RoleBadge({ role }: { role: Role }) {
   const styles: Record<Role, string> = {
@@ -82,21 +84,34 @@ export default function AdminUsers() {
     enabled: isAdmin,
   });
 
+  const { data: funds = [] } = useQuery({
+    queryKey: ["admin-funds"],
+    queryFn: async () => {
+      const res = await fetch(LIST_FUNDS_URL, { credentials: "include" });
+      if (!res.ok) return [] as Fund[];
+      const data = await res.json();
+      return (data.funds ?? []) as Fund[];
+    },
+    enabled: isAdmin,
+  });
+
   const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: ["admin-users"] });
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState<{ email: string; full_name: string; role: Role; company_id: string }>({
+  const [form, setForm] = useState<{ email: string; full_name: string; role: Role; company_id: string; fund_id: string }>({
     email: "",
     full_name: "",
     role: "user",
     company_id: "",
+    fund_id: "",
   });
   const [editing, setEditing] = useState<User | null>(null);
-  const [editForm, setEditForm] = useState<{ email: string; full_name: string; role: Role; company_id: string }>({
+  const [editForm, setEditForm] = useState<{ email: string; full_name: string; role: Role; company_id: string; fund_id: string }>({
     email: "",
     full_name: "",
     role: "user",
     company_id: "",
+    fund_id: "",
   });
   const [editReactivate, setEditReactivate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -116,7 +131,8 @@ export default function AdminUsers() {
           email: form.email.trim(),
           full_name: form.full_name.trim(),
           role: form.role,
-          company_id: form.role === "admin" ? null : form.company_id,
+          company_id: form.role === "user" ? form.company_id : null,
+          fund_id: form.role === "investor" ? form.fund_id : null,
         }),
       });
       if (await handleGatewayError(res)) throw new Error("create failed");
@@ -136,7 +152,8 @@ export default function AdminUsers() {
         email: editForm.email.trim(),
         full_name: editForm.full_name.trim(),
         role: editForm.role,
-        company_id: editForm.role === "admin" ? null : editForm.company_id || null,
+        company_id: editForm.role === "user" ? editForm.company_id || null : null,
+        fund_id: editForm.role === "investor" ? editForm.fund_id || null : null,
       };
       if (!editing.is_active && editReactivate) {
         body.is_active = true;
@@ -213,7 +230,7 @@ export default function AdminUsers() {
     createMutation.isPending || updateMutation.isPending || deactivateMutation.isPending || removeMutation.isPending;
 
   const openCreate = () => {
-    setForm({ email: "", full_name: "", role: "user", company_id: "" });
+    setForm({ email: "", full_name: "", role: "user", company_id: "", fund_id: "" });
     setCreateOpen(true);
   };
 
@@ -239,8 +256,11 @@ export default function AdminUsers() {
     if (!form.email.trim() || !form.full_name.trim()) {
       return toast.error("Email y nombre son requeridos");
     }
-    if (form.role !== "admin" && !form.company_id) {
+    if (form.role === "user" && !form.company_id) {
       return toast.error("Empresa requerida");
+    }
+    if (form.role === "investor" && !form.fund_id) {
+      return toast.error("Fondo requerido");
     }
     createMutation.mutate();
   };
@@ -252,11 +272,20 @@ export default function AdminUsers() {
       full_name: u.full_name ?? "",
       role: u.role,
       company_id: u.company_id ?? "",
+      fund_id: u.fund_id ?? "",
     });
     setEditReactivate(false);
   };
 
-  const update = () => updateMutation.mutate();
+  const update = () => {
+    if (editForm.role === "user" && !editForm.company_id) {
+      return toast.error("Empresa requerida");
+    }
+    if (editForm.role === "investor" && !editForm.fund_id) {
+      return toast.error("Fondo requerido");
+    }
+    updateMutation.mutate();
+  };
   const deactivate = (u: User) => deactivateMutation.mutate(u);
   const remove = () => removeMutation.mutate();
 
@@ -339,7 +368,7 @@ export default function AdminUsers() {
             </SelectContent>
           </Select>
         </div>
-        {form.role !== "admin" && (
+        {form.role === "user" && (
           <div>
             <Label className="text-xs">Empresa</Label>
             <Select value={form.company_id} onValueChange={(v) => setForm({ ...form, company_id: v })}>
@@ -347,6 +376,19 @@ export default function AdminUsers() {
               <SelectContent>
                 {companies.map((c) => (
                   <SelectItem key={c.company_id} value={c.company_id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {form.role === "investor" && (
+          <div>
+            <Label className="text-xs">Fondo</Label>
+            <Select value={form.fund_id} onValueChange={(v) => setForm({ ...form, fund_id: v })}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Seleccionar fondo" /></SelectTrigger>
+              <SelectContent>
+                {funds.map((f) => (
+                  <SelectItem key={f.fund_id} value={f.fund_id}>{f.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -408,7 +450,7 @@ export default function AdminUsers() {
             </SelectContent>
           </Select>
         </div>
-        {editForm.role !== "admin" && (
+        {editForm.role === "user" && (
           <div>
             <Label className="text-xs">Empresa</Label>
             <Select value={editForm.company_id} onValueChange={(v) => setEditForm({ ...editForm, company_id: v })}>
@@ -416,6 +458,19 @@ export default function AdminUsers() {
               <SelectContent>
                 {companies.map((c) => (
                   <SelectItem key={c.company_id} value={c.company_id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {editForm.role === "investor" && (
+          <div>
+            <Label className="text-xs">Fondo</Label>
+            <Select value={editForm.fund_id} onValueChange={(v) => setEditForm({ ...editForm, fund_id: v })}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Seleccionar fondo" /></SelectTrigger>
+              <SelectContent>
+                {funds.map((f) => (
+                  <SelectItem key={f.fund_id} value={f.fund_id}>{f.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

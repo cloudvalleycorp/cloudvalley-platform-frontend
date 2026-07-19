@@ -67,11 +67,15 @@ export default function Account() {
   const saveFullName = async () => {
     const next = fullName.trim();
     if (!next) return;
+    // manage-users only accepts user_id, no email fallback — sending email instead
+    // would just 400 "user_id es requerido", so don't even try.
+    if (!user_id) {
+      toast.error("Todavía no se cargó tu cuenta — esperá un segundo y volvé a intentar.");
+      return;
+    }
     setSavingName(true);
     try {
-      const body: Record<string, unknown> = { full_name: next };
-      if (user_id) body.user_id = user_id;
-      else if (email) body.email = email;
+      const body: Record<string, unknown> = { user_id, full_name: next };
       const res = await fetch(MANAGE_USERS_URL, {
         method: "PATCH",
         credentials: "include",
@@ -102,9 +106,17 @@ export default function Account() {
     }
   };
 
+  // Matches the backend's own validation (auth/request-email-change) so the error
+  // shows up while typing instead of only after a round-trip to the server.
+  const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
   const submitEmailChange = async () => {
     const next = newEmail.trim();
     if (!next) return;
+    if (!EMAIL_REGEX.test(next)) {
+      setEmailError("Ingresá un email válido");
+      return;
+    }
     setEmailError(null);
     setSendingEmail(true);
     try {
@@ -179,7 +191,7 @@ export default function Account() {
                 className="h-9 flex-1 min-w-[200px]"
                 placeholder="Tu nombre"
               />
-              <Button size="sm" onClick={saveFullName} disabled={savingName || !fullName.trim()}>
+              <Button size="sm" onClick={saveFullName} disabled={savingName || !fullName.trim() || !user_id}>
                 {savingName ? "Guardando…" : "Guardar"}
               </Button>
             </div>
@@ -214,7 +226,7 @@ export default function Account() {
         description="Te vamos a enviar un enlace de confirmación al nuevo email. Tu email actual se mantiene hasta que confirmes desde ahí."
         onSubmit={submitEmailChange}
         submitLabel={sendingEmail ? "Enviando…" : "Enviar enlace"}
-        busy={sendingEmail || !newEmail.trim()}
+        busy={sendingEmail || !EMAIL_REGEX.test(newEmail.trim())}
       >
         <Label className="text-xs">Nuevo email</Label>
         <Input
