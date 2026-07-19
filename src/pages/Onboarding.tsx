@@ -40,6 +40,7 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const inviteCodeParam = params.get("code");
+  const inviteTokenParam = params.get("invite");
   const inviteRoleParam = params.get("role");
   const isPublicInvite = inviteRoleParam === "user" || inviteRoleParam === "investor";
 
@@ -48,7 +49,15 @@ export default function Onboarding() {
     return <CodeInvite code={inviteCodeParam} />;
   }
 
-  // Public invite flow — no auth required, short form calling accept-invite.
+  // Admin-generated invite link (create-invite-link) — role is baked into the
+  // token server-side, same idea as the code-based flow above but without an
+  // existing org to join.
+  if (inviteTokenParam) {
+    return <TokenInvite token={inviteTokenParam} />;
+  }
+
+  // Public invite flow (?role=) — deprecated in favor of the token-based link
+  // above, but old links already shared keep working the same as before.
   if (isPublicInvite) {
     return <PublicInvite role={inviteRoleParam as "user" | "investor"} />;
   }
@@ -495,6 +504,76 @@ function CodeInvite({ code }: { code: string }) {
                 autoFocus
               />
             </div>
+            <div className="flex justify-end">
+              <Button onClick={handleSubmit} disabled={!canSubmit || submitting}>
+                {submitting ? "Enviando…" : "Recibir enlace"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TokenInvite({ token }: { token: string }) {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const canSubmit = /\S+@\S+\.\S+/.test(email);
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      // Same "always respond the same way" contract as accept-invite's other
+      // callers — role is baked into invite_token server-side, we never send it.
+      await fetch(ACCEPT_INVITE_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, invite_token: token }),
+      });
+    } catch {
+      // do not leak backend errors
+    }
+    setSent(true);
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center px-6 py-12">
+      <BrandMark />
+      <div className="w-full max-w-xl">
+        {sent ? (
+          <div className="animate-fade-in text-center space-y-5">
+            <h1 className="text-3xl font-medium tracking-tight">Revisá tu correo</h1>
+            <p className="text-sm text-muted-foreground">
+              Si los datos son válidos, vas a recibir un enlace de acceso en tu casilla en breve.
+            </p>
+            <div className="flex items-center justify-center pt-1">
+              <Button variant="outline" onClick={() => navigate("/")}>
+                Volver al inicio
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="animate-fade-in space-y-6">
+            <div>
+              <h1 className="text-2xl font-medium tracking-tight">Bienvenido a CloudValley</h1>
+              <p className="text-sm text-muted-foreground mt-2">
+                Ingresá tu email para recibir un enlace de acceso.
+              </p>
+            </div>
+            <Input
+              type="email"
+              placeholder="tu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-11"
+              autoFocus
+            />
             <div className="flex justify-end">
               <Button onClick={handleSubmit} disabled={!canSubmit || submitting}>
                 {submitting ? "Enviando…" : "Recibir enlace"}

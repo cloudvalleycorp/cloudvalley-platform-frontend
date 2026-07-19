@@ -19,12 +19,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Link2, Copy, Check } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
 
 const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
 const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
 const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
+const CREATE_INVITE_LINK_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/create-invite-link";
 
 type Role = "admin" | "user" | "investor";
 
@@ -99,6 +100,11 @@ export default function AdminUsers() {
   });
   const [editReactivate, setEditReactivate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteRole, setInviteRole] = useState<"user" | "investor">("user");
+  const [inviteResult, setInviteResult] = useState<{ url: string; expires_at: string } | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -186,12 +192,47 @@ export default function AdminUsers() {
     },
   });
 
+  const createInviteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(CREATE_INVITE_LINK_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: inviteRole }),
+      });
+      if (await handleGatewayError(res)) throw new Error("create invite failed");
+      return (await res.json()) as { invite_token: string; url: string; expires_at: string };
+    },
+    onSuccess: (data) => {
+      setInviteResult({ url: data.url, expires_at: data.expires_at });
+      setInviteCopied(false);
+    },
+  });
+
   const busy =
     createMutation.isPending || updateMutation.isPending || deactivateMutation.isPending || removeMutation.isPending;
 
   const openCreate = () => {
     setForm({ email: "", full_name: "", role: "user", company_id: "" });
     setCreateOpen(true);
+  };
+
+  const openInvite = () => {
+    setInviteRole("user");
+    setInviteResult(null);
+    setInviteOpen(true);
+  };
+
+  const copyInviteUrl = async () => {
+    if (!inviteResult) return;
+    try {
+      await navigator.clipboard.writeText(inviteResult.url);
+      setInviteCopied(true);
+      toast.success("Link copiado");
+      setTimeout(() => setInviteCopied(false), 2000);
+    } catch {
+      toast.error("No se pudo copiar");
+    }
   };
 
   const create = () => {
@@ -229,9 +270,14 @@ export default function AdminUsers() {
           title="Usuarios"
           subtitle="Gestión de usuarios y roles."
           action={
-            <Button onClick={openCreate}>
-              <Plus size={14} className="mr-1" /> Nuevo usuario
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={openInvite}>
+                <Link2 size={14} className="mr-1" /> Generar link de invitación
+              </Button>
+              <Button onClick={openCreate}>
+                <Plus size={14} className="mr-1" /> Nuevo usuario
+              </Button>
+            </div>
           }
         />
 
@@ -393,6 +439,56 @@ export default function AdminUsers() {
         busy={busy}
       >
         <div className="text-sm text-muted-foreground">Esta acción no se puede deshacer.</div>
+      </FormDialog>
+
+      <FormDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        title="Generar link de invitación"
+        description={!inviteResult ? "Elegí el rol con el que se va a unir quien reciba el link." : undefined}
+        footer={
+          inviteResult ? (
+            <Button onClick={() => setInviteOpen(false)}>Cerrar</Button>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={() => setInviteOpen(false)}>Cancelar</Button>
+              <Button onClick={() => createInviteMutation.mutate()} disabled={createInviteMutation.isPending}>
+                {createInviteMutation.isPending ? "Generando…" : "Generar"}
+              </Button>
+            </>
+          )
+        }
+      >
+        {inviteResult ? (
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={copyInviteUrl}
+              className="w-full text-left px-3 py-2 rounded-md border border-border bg-surface font-mono text-xs break-all flex items-start justify-between gap-2 hover:border-foreground/40 transition-all"
+            >
+              <span>{inviteResult.url}</span>
+              {inviteCopied ? (
+                <Check size={14} className="shrink-0 mt-0.5" />
+              ) : (
+                <Copy size={14} className="shrink-0 mt-0.5 text-muted-foreground" />
+              )}
+            </button>
+            <p className="text-xs text-muted-foreground">
+              Vence el {new Date(inviteResult.expires_at).toLocaleString()}.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <Label className="text-xs">Rol</Label>
+            <Select value={inviteRole} onValueChange={(v: "user" | "investor") => setInviteRole(v)}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">user (empresa)</SelectItem>
+                <SelectItem value="investor">investor (fondo)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </FormDialog>
     </AppLayout>
   );
