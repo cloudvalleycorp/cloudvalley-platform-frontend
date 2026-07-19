@@ -16,6 +16,7 @@ export function entityWords(isFund: boolean) {
     noun: isFund ? "fondo" : "startup",
     a: isFund ? "un" : "una",
     ofThe: isFund ? "del" : "de la",
+    toThe: isFund ? "al" : "a la",
     demonstrative: isFund ? "este" : "esta",
     own: isFund ? "propio" : "propia",
     new_: isFund ? "nuevo" : "nueva",

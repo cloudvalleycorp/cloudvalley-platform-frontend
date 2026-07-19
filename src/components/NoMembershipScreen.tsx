@@ -367,15 +367,20 @@ export function NoMembershipScreen({
               </div>
             ) : (
               <div className="mt-6 space-y-3">
-                {joinNote && (
-                  <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-foreground">
-                    {joinNote}
+                {(joinNote || retryLabel) && (
+                  <div className="rounded-lg border border-border bg-muted/40 p-4 flex items-start gap-3">
+                    <Mail size={18} strokeWidth={1.5} className="mt-0.5 text-foreground shrink-0" />
+                    <div className="text-sm">
+                      <div className="font-medium text-foreground">
+                        {joinNote ?? "Ya enviaste esta solicitud"}
+                      </div>
+                      {retryLabel && (
+                        <div className="text-muted-foreground mt-0.5">
+                          Para no volver a avisarle {w.toThe} {w.noun}, podés reintentar en {retryLabel}.
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-                {retryLabel && (
-                  <p className="text-xs text-muted-foreground">
-                    Para no repetir el aviso a {w.ofThe} {w.noun}, podés reintentar en {retryLabel}.
-                  </p>
                 )}
                 <Input
                   placeholder="Código de acceso"
@@ -385,7 +390,7 @@ export function NoMembershipScreen({
                   autoFocus
                 />
                 <div className="flex gap-2 flex-wrap">
-                  <Button variant="ghost" onClick={() => setMode("menu")}>Atrás</Button>
+                  <Button variant="ghost" onClick={() => { setJoinNote(null); setMode("menu"); }}>Atrás</Button>
                   <Button onClick={submitJoin} disabled={submitting || !joinCode.trim() || retrySecondsLeft > 0}>
                     {submitting
                       ? "Enviando…"
@@ -397,14 +402,7 @@ export function NoMembershipScreen({
                   </Button>
                 </div>
                 {(joinNote || retryLabel) && (
-                  <div className="flex gap-2 flex-wrap pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => { setJoinNote(null); setMode("menu"); }}
-                    >
-                      Declinar unirme
-                    </Button>
+                  <div className="pt-1">
                     <Button
                       variant="outline"
                       size="sm"
