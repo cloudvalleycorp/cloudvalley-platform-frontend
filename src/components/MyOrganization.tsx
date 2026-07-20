@@ -22,6 +22,7 @@ type OrgInfo = {
   join_code: string;
   full_name?: string;
   user_id?: string;
+  is_owner: boolean;
   industry: string;
   website: string;
   target_raise_usd: number | null;
@@ -53,6 +54,7 @@ type OrganizationResponse = Partial<{
   user_name: string;
   user_id: string;
   member_id: string;
+  is_owner: boolean;
   industry: string | null;
   website: string | null;
   target_raise_usd: number | null;
@@ -128,6 +130,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
         join_code: getJoinCode(raw),
         full_name: firstText(raw.full_name, raw.user_full_name, raw.member_full_name, raw.user_name),
         user_id: raw.user_id ?? raw.member_id ?? undefined,
+        is_owner: !!raw.is_owner,
         industry: raw.industry ?? "",
         website: raw.website ?? "",
         target_raise_usd: raw.target_raise_usd ?? null,
@@ -380,15 +383,17 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
               <div className="text-lg font-medium tracking-tight flex-1 min-w-0 truncate">
                 {org.name}
               </div>
-              <button
-                type="button"
-                onClick={() => setEditingName(true)}
-                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                title="Editar nombre"
-              >
-                <Pencil size={12} strokeWidth={1.5} />
-                Editar
-              </button>
+              {org.is_owner && (
+                <button
+                  type="button"
+                  onClick={() => setEditingName(true)}
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  title="Editar nombre"
+                >
+                  <Pencil size={12} strokeWidth={1.5} />
+                  Editar
+                </button>
+              )}
             </>
           )}
         </div>
@@ -414,16 +419,18 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
               Código no disponible
             </span>
           )}
-          <button
-            type="button"
-            onClick={regenerate}
-            disabled={regenerating}
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-            title={org.join_code ? "Regenerar código" : "Generar código"}
-          >
-            <RefreshCw size={12} strokeWidth={1.5} />
-            {regenerating ? "Generando…" : org.join_code ? "Regenerar" : "Generar"}
-          </button>
+          {org.is_owner && (
+            <button
+              type="button"
+              onClick={regenerate}
+              disabled={regenerating}
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+              title={org.join_code ? "Regenerar código" : "Generar código"}
+            >
+              <RefreshCw size={12} strokeWidth={1.5} />
+              {regenerating ? "Generando…" : org.join_code ? "Regenerar" : "Generar"}
+            </button>
+          )}
         </div>
         {org.join_code && (
           <div className="mt-3">
@@ -445,37 +452,39 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
           Compartí este código con las personas de tu equipo para que puedan unirse.
         </p>
 
-        <div className="mt-4 pt-4 border-t border-border">
-          <p className="text-xs text-muted-foreground mb-2">O invitá directamente por email:</p>
-          <div className="flex flex-wrap gap-2">
-            <Input
-              type="email"
-              placeholder="email@ejemplo.com"
-              value={inviteEmail}
-              onChange={(e) => {
-                setInviteEmail(e.target.value);
-                setInviteEmailNote(null);
-              }}
-              className="h-9 flex-1 min-w-[180px]"
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={inviteByEmail}
-              disabled={invitingByEmail || !inviteEmail.trim() || inviteRetrySecondsLeft > 0}
-            >
-              <Mail size={12} strokeWidth={1.5} className="mr-1.5" />
-              {invitingByEmail
-                ? "Enviando…"
-                : inviteRetrySecondsLeft > 0
-                  ? `Esperá ${inviteRetrySecondsLeft}s`
-                  : "Invitar por mail"}
-            </Button>
+        {org.is_owner && (
+          <div className="mt-4 pt-4 border-t border-border">
+            <p className="text-xs text-muted-foreground mb-2">O invitá directamente por email:</p>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                type="email"
+                placeholder="email@ejemplo.com"
+                value={inviteEmail}
+                onChange={(e) => {
+                  setInviteEmail(e.target.value);
+                  setInviteEmailNote(null);
+                }}
+                className="h-9 flex-1 min-w-[180px]"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={inviteByEmail}
+                disabled={invitingByEmail || !inviteEmail.trim() || inviteRetrySecondsLeft > 0}
+              >
+                <Mail size={12} strokeWidth={1.5} className="mr-1.5" />
+                {invitingByEmail
+                  ? "Enviando…"
+                  : inviteRetrySecondsLeft > 0
+                    ? `Esperá ${inviteRetrySecondsLeft}s`
+                    : "Invitar por mail"}
+              </Button>
+            </div>
+            {inviteEmailNote && (
+              <p className="text-xs text-muted-foreground mt-2">{inviteEmailNote}</p>
+            )}
           </div>
-          {inviteEmailNote && (
-            <p className="text-xs text-muted-foreground mt-2">{inviteEmailNote}</p>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Detalles de la startup (solo startups) */}
@@ -486,7 +495,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
               <Rocket size={14} strokeWidth={1.5} className="text-muted-foreground" />
               <h2 className="text-sm font-medium text-foreground">Detalles de la startup</h2>
             </div>
-            {!editingDetails && (
+            {!editingDetails && org.is_owner && (
               <button
                 type="button"
                 onClick={() => setEditingDetails(true)}

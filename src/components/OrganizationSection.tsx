@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Users, UserMinus, LogOut, Bell } from "lucide-react";
+import { Users, UserMinus, LogOut, Bell, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/LoadingState";
@@ -25,12 +25,15 @@ import {
 } from "@/lib/membership";
 import { useAuth } from "@/contexts/AuthContext";
 
+const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
+
 type OrgMember = {
   user_id: string;
   email: string;
   full_name: string | null;
   role: "admin" | "user" | "investor" | string;
   is_active?: boolean;
+  is_owner?: boolean;
   company_id?: string | null;
   company_name?: string | null;
   fund_id?: string | null;
@@ -45,7 +48,7 @@ const roleLabel = (r: string) => {
 };
 
 export function OrganizationSection() {
-  const { user_id, company_name, fund_name, role, refreshSession } = useAuth();
+  const { user_id, company_name, fund_name, role, is_owner, refreshSession } = useAuth();
   const navigate = useNavigate();
 
   const [requests, setRequests] = useState<MembershipRequest[]>([]);
@@ -55,6 +58,7 @@ export function OrganizationSection() {
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [removeTarget, setRemoveTarget] = useState<OrgMember | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [ownerBusyId, setOwnerBusyId] = useState<string | null>(null);
 
   const orgName = role === "investor" ? fund_name : company_name;
 
@@ -152,6 +156,44 @@ export function OrganizationSection() {
     }
   };
 
+  const toggleOwner = async (member: OrgMember, nextIsOwner: boolean) => {
+    setOwnerBusyId(member.user_id);
+    try {
+      const res = await fetch(MANAGE_USERS_URL, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: member.user_id, is_owner: nextIsOwner }),
+      });
+      if (res.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!res.ok) {
+        let msg = "No se pudo actualizar.";
+        try {
+          const data = await res.json();
+          msg = data?.error ?? msg;
+        } catch {
+          // keep default message
+        }
+        toast.error(msg);
+        return;
+      }
+      setMembers((ms) =>
+        ms.map((m) => (m.user_id === member.user_id ? { ...m, is_owner: nextIsOwner } : m))
+      );
+      toast.success(nextIsOwner ? "Ahora es owner" : "Ya no es owner");
+      // Si me cambié el owner a mí mismo, la sesión (y el gating del resto de la
+      // UI) queda desactualizada hasta refrescarla.
+      if (member.user_id === user_id) await refreshSession();
+    } catch {
+      toast.error("No se pudo actualizar. Revisá tu conexión.");
+    } finally {
+      setOwnerBusyId(null);
+    }
+  };
+
   return (
     <section className="border border-border rounded-lg bg-card overflow-hidden">
       <div className="px-6 pt-6 pb-4 border-b border-border">
@@ -186,23 +228,25 @@ export function OrganizationSection() {
                     {r.email} · {new Date(r.requested_at).toLocaleDateString("es-AR")}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busyRequest === r.request_id}
-                    onClick={() => decide(r.request_id, "reject")}
-                  >
-                    Rechazar
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={busyRequest === r.request_id}
-                    onClick={() => decide(r.request_id, "approve")}
-                  >
-                    Aprobar
-                  </Button>
-                </div>
+                {is_owner && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busyRequest === r.request_id}
+                      onClick={() => decide(r.request_id, "reject")}
+                    >
+                      Rechazar
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={busyRequest === r.request_id}
+                      onClick={() => decide(r.request_id, "approve")}
+                    >
+                      Aprobar
+                    </Button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -213,6 +257,13 @@ export function OrganizationSection() {
         <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">
           Miembros {members.length > 0 && `(${members.length})`}
         </h3>
+        {!loadingMembers && members.length > 0 && !members.some((m) => m.is_owner) && (
+          <p className="text-xs text-muted-foreground mb-3 border border-border rounded-md px-3 py-2 bg-muted/40">
+            Todavía no hay ningún owner asignado — nadie puede aprobar solicitudes, invitar por
+            mail ni editar {role === "investor" ? "esta organización" : "esta startup"} hasta que
+            un admin de CloudValley le asigne el rol a alguien.
+          </p>
+        )}
         {loadingMembers ? (
           <LoadingState />
         ) : members.length === 0 ? (
@@ -241,10 +292,28 @@ export function OrganizationSection() {
                       {m.email}
                     </div>
                   </div>
+                  {m.is_owner && (
+                    <Badge className="shrink-0 gap-1 text-[10px] font-medium">
+                      <Crown size={10} strokeWidth={1.5} />
+                      Owner
+                    </Badge>
+                  )}
                   <Badge variant="secondary" className="shrink-0 text-[10px] font-medium">
                     {roleLabel(m.role)}
                   </Badge>
-                  {!isMe ? (
+                  {is_owner && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="shrink-0 text-muted-foreground hover:text-foreground"
+                      disabled={ownerBusyId === m.user_id}
+                      onClick={() => toggleOwner(m, !m.is_owner)}
+                      title={m.is_owner ? "Quitar owner" : "Hacer owner"}
+                    >
+                      <Crown size={14} strokeWidth={1.5} fill={m.is_owner ? "currentColor" : "none"} />
+                    </Button>
+                  )}
+                  {!isMe && is_owner && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -254,7 +323,8 @@ export function OrganizationSection() {
                     >
                       <UserMinus size={14} strokeWidth={1.5} />
                     </Button>
-                  ) : (
+                  )}
+                  {isMe && (
                     <Button
                       size="sm"
                       variant="ghost"

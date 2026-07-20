@@ -25,6 +25,7 @@ type AuthContextType = {
   company_name: string | null;
   fund_id: string | null;
   fund_name: string | null;
+  is_owner: boolean;
   portfolio_company_ids: string[];
   portfolio_company_names: string[];
   isAdmin: boolean;
@@ -46,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [fundId, setFundId] = useState<string | null>(null);
   const [fundName, setFundName] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
   const [portfolioIds, setPortfolioIds] = useState<string[]>([]);
   const [portfolioNames, setPortfolioNames] = useState<string[]>([]);
 
@@ -60,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCompanyName(data.company_name ?? null);
     setFundId(data.fund_id ?? null);
     setFundName(data.fund_name ?? null);
+    setIsOwner(!!data.is_owner);
     setPortfolioIds(Array.isArray(data.portfolio_company_ids) ? data.portfolio_company_ids : []);
     setPortfolioNames(Array.isArray(data.portfolio_company_names) ? data.portfolio_company_names : []);
     setUser({ id: data.company_id ?? data.email, email: data.email });
@@ -109,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setCompanyName(null);
           setFundId(null);
           setFundName(null);
+          setIsOwner(false);
           setPortfolioIds([]);
           setPortfolioNames([]);
         }
@@ -138,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCompanyName(null);
     setFundId(null);
     setFundName(null);
+    setIsOwner(false);
     setPortfolioIds([]);
     setPortfolioNames([]);
     window.location.assign("/login");
@@ -172,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         company_name: companyName,
         fund_id: fundId,
         fund_name: fundName,
+        is_owner: isOwner,
         portfolio_company_ids: portfolioIds,
         portfolio_company_names: portfolioNames,
         isAdmin: role === "admin",
