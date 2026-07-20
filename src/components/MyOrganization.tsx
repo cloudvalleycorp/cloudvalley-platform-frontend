@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, Check, Building2, Pencil, RefreshCw, User as UserIcon, Link2, Rocket } from "lucide-react";
+import { Copy, Check, Building2, Pencil, RefreshCw, User as UserIcon, Link2, Rocket, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const GET_MY_ORGANIZATION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-my-organization";
 const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
+const INVITE_MEMBER_BY_EMAIL_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/invite-member-by-email";
 
 type OrgInfo = {
   type: "company" | "fund";
@@ -91,6 +92,14 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
 
   const [regenerating, setRegenerating] = useState(false);
 
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitingByEmail, setInvitingByEmail] = useState(false);
+  const [inviteEmailNote, setInviteEmailNote] = useState<string | null>(null);
+  // 30s anti-spam cooldown after each attempt — in-memory only, backend enforces
+  // its own 429 regardless, this is just to stop accidental double-clicks.
+  const [inviteRetryAt, setInviteRetryAt] = useState(0);
+  const [, tickInviteRetry] = useState(0);
+
   const [editingDetails, setEditingDetails] = useState(false);
   const [industryDraft, setIndustryDraft] = useState("");
   const [websiteDraft, setWebsiteDraft] = useState("");
@@ -142,7 +151,15 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
     void load();
   }, []);
 
+  useEffect(() => {
+    if (inviteRetryAt <= Date.now()) return;
+    const id = setInterval(() => tickInviteRetry((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [inviteRetryAt]);
+
   if (!org) return null;
+
+  const inviteRetrySecondsLeft = Math.max(0, Math.ceil((inviteRetryAt - Date.now()) / 1000));
 
   const orgUrl = org.type === "company" ? MANAGE_COMPANIES_URL : MANAGE_FUNDS_URL;
   const idKey = org.type === "company" ? "company_id" : "fund_id";
@@ -170,6 +187,47 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
       setTimeout(() => setCopiedLink(false), 2000);
     } catch {
       toast.error("No se pudo copiar");
+    }
+  };
+
+  const inviteByEmail = async () => {
+    const next = inviteEmail.trim();
+    if (!next || inviteRetrySecondsLeft > 0) return;
+    setInvitingByEmail(true);
+    setInviteEmailNote(null);
+    try {
+      const res = await fetch(INVITE_MEMBER_BY_EMAIL_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: next }),
+      });
+      if (res.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!res.ok) {
+        let message = "No se pudo enviar la invitación.";
+        try {
+          const data = await res.json();
+          message = data?.error ?? message;
+        } catch {
+          // keep default message
+        }
+        setInviteEmailNote(message);
+        // 429 means "wait before trying again" — start the same cooldown as a
+        // successful send so the button doesn't just invite another 429.
+        if (res.status === 429) setInviteRetryAt(Date.now() + 30_000);
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      toast.success(data?.message ?? "Si los datos son válidos, se envió la invitación.");
+      setInviteEmail("");
+      setInviteRetryAt(Date.now() + 30_000);
+    } catch {
+      setInviteEmailNote("No se pudo enviar la invitación. Revisá tu conexión.");
+    } finally {
+      setInvitingByEmail(false);
     }
   };
 
@@ -386,6 +444,38 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
         <p className="text-xs text-muted-foreground mt-3">
           Compartí este código con las personas de tu equipo para que puedan unirse.
         </p>
+
+        <div className="mt-4 pt-4 border-t border-border">
+          <p className="text-xs text-muted-foreground mb-2">O invitá directamente por email:</p>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              type="email"
+              placeholder="email@ejemplo.com"
+              value={inviteEmail}
+              onChange={(e) => {
+                setInviteEmail(e.target.value);
+                setInviteEmailNote(null);
+              }}
+              className="h-9 flex-1 min-w-[180px]"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={inviteByEmail}
+              disabled={invitingByEmail || !inviteEmail.trim() || inviteRetrySecondsLeft > 0}
+            >
+              <Mail size={12} strokeWidth={1.5} className="mr-1.5" />
+              {invitingByEmail
+                ? "Enviando…"
+                : inviteRetrySecondsLeft > 0
+                  ? `Esperá ${inviteRetrySecondsLeft}s`
+                  : "Invitar por mail"}
+            </Button>
+          </div>
+          {inviteEmailNote && (
+            <p className="text-xs text-muted-foreground mt-2">{inviteEmailNote}</p>
+          )}
+        </div>
       </div>
 
       {/* Detalles de la startup (solo startups) */}
