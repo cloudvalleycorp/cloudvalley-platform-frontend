@@ -3,8 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/BrandMark";
 import { useAuth } from "@/contexts/AuthContext";
-
-const DECIDE_INVITATION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/decide-invitation";
+import { DECIDE_INVITATION_URL } from "@/lib/membership";
 
 type InvitationInfo = {
   invitation_id: string;

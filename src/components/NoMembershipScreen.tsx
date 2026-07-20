@@ -7,12 +7,15 @@ import {
   MANAGE_COMPANIES_URL,
   MANAGE_FUNDS_URL,
   REQUEST_MEMBERSHIP_URL,
+  DECIDE_INVITATION_URL,
+  LIST_MY_INVITATIONS_URL,
   handleMembershipError,
   rememberPendingMembership,
   forgetPendingMembership,
   getPendingMembership,
   entityWords,
   extractJoinCode,
+  type PendingInvitation,
 } from "@/lib/membership";
 import { MEMBERSHIP_INTENT_KEY } from "@/pages/Onboarding";
 import { useAuth } from "@/contexts/AuthContext";
@@ -48,6 +51,12 @@ export function NoMembershipScreen({
   const [, forceTick] = useState(0);
   const [createdCode, setCreatedCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Invitaciones por mail pendientes — coexisten con el flujo de join-by-code,
+  // no lo reemplazan (alguien puede tener ambas cosas al mismo tiempo).
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
+  const [loadingInvitations, setLoadingInvitations] = useState(true);
+  const [decidingInvitationId, setDecidingInvitationId] = useState<string | null>(null);
 
   const RETRY_COOLDOWN_MS = 60 * 60 * 1000; // 1h
 
@@ -88,6 +97,29 @@ export function NoMembershipScreen({
   useEffect(() => {
     if (joinCode) loadRetryAt(joinCode);
   }, [joinCode]);
+
+  useEffect(() => {
+    (async () => {
+      setLoadingInvitations(true);
+      try {
+        const res = await fetch(LIST_MY_INVITATIONS_URL, { credentials: "include" });
+        if (res.status === 401) {
+          window.location.assign("/login");
+          return;
+        }
+        if (!res.ok) {
+          setInvitations([]);
+          return;
+        }
+        const data = await res.json();
+        setInvitations(Array.isArray(data?.invitations) ? data.invitations : []);
+      } catch {
+        setInvitations([]);
+      } finally {
+        setLoadingInvitations(false);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (retryAt <= Date.now()) return;
@@ -206,6 +238,46 @@ export function NoMembershipScreen({
   const autoSubmitJoin = sendJoinRequest;
   const submitJoin = () => sendJoinRequest(joinCode);
 
+  const decideInvitation = async (invitation: PendingInvitation, decision: "accept" | "decline") => {
+    setDecidingInvitationId(invitation.invitation_id);
+    try {
+      const res = await fetch(DECIDE_INVITATION_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invitation_id: invitation.invitation_id, decision }),
+      });
+      if (res.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (!res.ok) {
+        let message = "No se pudo procesar la invitación.";
+        try {
+          const data = await res.json();
+          message = data?.error ?? message;
+        } catch {
+          // keep default message
+        }
+        toast.error(message);
+        return;
+      }
+      if (decision === "accept") {
+        // El company_id/fund_id nuevo vive en Firestore pero todavía no en la
+        // cookie hasta refrescar la sesión.
+        await refreshSession();
+        window.location.assign("/");
+        return;
+      }
+      setInvitations((invs) => invs.filter((i) => i.invitation_id !== invitation.invitation_id));
+      toast.success(`No te uniste a ${invitation.target_name}`);
+    } catch {
+      toast.error("No se pudo procesar la invitación. Revisá tu conexión.");
+    } finally {
+      setDecidingInvitationId(null);
+    }
+  };
+
   const submitCreate = async () => {
     if (!name.trim()) return;
     setSubmitting(true);
@@ -260,6 +332,49 @@ export function NoMembershipScreen({
           Para ver el contenido necesitás formar parte de {w.a} {w.noun}.
         </p>
       </div>
+
+      {!loadingInvitations && invitations.length > 0 && (
+        <div className="mb-6 space-y-3">
+          <h2 className="text-sm font-medium text-foreground">
+            {invitations.length === 1 ? "Tenés una invitación pendiente" : `Tenés ${invitations.length} invitaciones pendientes`}
+          </h2>
+          {invitations.map((inv) => {
+            const invW = entityWords(inv.target_type === "fund");
+            const busy = decidingInvitationId === inv.invitation_id;
+            return (
+              <div
+                key={inv.invitation_id}
+                className="border border-border rounded-xl p-4 sm:p-5 bg-card shadow-sm flex flex-wrap items-center justify-between gap-3"
+              >
+                <div className="flex items-start gap-3 min-w-0">
+                  <Mail size={18} strokeWidth={1.5} className="mt-0.5 text-foreground shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {inv.invited_by_name} te invitó a unirte a {inv.target_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Vas a formar parte de {invW.demonstrative} {invW.noun} como miembro.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => decideInvitation(inv, "decline")}
+                  >
+                    Rechazar
+                  </Button>
+                  <Button size="sm" disabled={busy} onClick={() => decideInvitation(inv, "accept")}>
+                    {busy ? "Procesando…" : "Aceptar"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="border border-border rounded-xl p-6 sm:p-8 bg-card shadow-sm">
         {mode === "menu" && (

@@ -8,6 +8,16 @@ export const MANAGE_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.de
 export const MANAGE_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-funds";
 export const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
 export const REMOVE_MEMBER_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/remove-member";
+export const DECIDE_INVITATION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/decide-invitation";
+export const LIST_MY_INVITATIONS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-my-invitations";
+
+export type PendingInvitation = {
+  invitation_id: string;
+  target_type: "company" | "fund";
+  target_name: string;
+  invited_by_name: string;
+  expires_at: string;
+};
 
 // Companies are "startup" (feminine); funds are "fondo" (masculine) — these
 // precomposed forms keep articles/possessives grammatically agreeing with each.
