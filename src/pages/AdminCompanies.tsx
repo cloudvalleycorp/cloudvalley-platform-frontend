@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
+import { MembersCell } from "@/components/admin/MembersCell";
+import { TablePagination } from "@/components/admin/TablePagination";
+import { useTablePage } from "@/hooks/useTablePage";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,15 +14,28 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { FormDialog } from "@/components/FormDialog";
 import { StatusBadge } from "@/components/StatusBadge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
 
 const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
 const MANAGE_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-companies";
 const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
 
-type Company = { company_id: string; name: string; is_active: boolean };
+type Company = {
+  company_id: string;
+  name: string;
+  is_active: boolean;
+  // Todavía no confirmado si list-companies ya lo devuelve — se muestra "—" si falta.
+  created_at?: string;
+};
 type CompanyUser = {
   user_id: string;
   email: string;
@@ -28,6 +44,7 @@ type CompanyUser = {
   company_id: string | null;
   is_active: boolean;
 };
+type StatusFilter = "all" | "active" | "inactive";
 
 export default function AdminCompanies() {
   const { isAdmin, loading } = useAuth();
@@ -56,6 +73,19 @@ export default function AdminCompanies() {
   });
 
   const invalidateCompanies = () => queryClient.invalidateQueries({ queryKey: ["admin-companies"] });
+
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const visibleCompanies =
+    statusFilter === "all" ? companies : companies.filter((c) => c.is_active === (statusFilter === "active"));
+  const {
+    query: search,
+    setQuery: setSearch,
+    page,
+    setPage,
+    totalPages,
+    filteredCount,
+    pageItems: pagedCompanies,
+  } = useTablePage(visibleCompanies, (c, q) => c.name.toLowerCase().includes(q));
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -154,33 +184,44 @@ export default function AdminCompanies() {
           }
         />
 
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={14} strokeWidth={1.5} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar empresa por nombre…"
+              className="pl-9 h-9"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={(v: StatusFilter) => setStatusFilter(v)}>
+            <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              <SelectItem value="active">Activas</SelectItem>
+              <SelectItem value="inactive">Inactivas</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <DataTable
           columns={[
             { header: "Nombre", cell: (c) => <span className="font-medium">{c.name}</span> },
             {
               header: "Usuarios",
-              cell: (c) => {
-                const members = users.filter((u) => u.company_id === c.company_id);
-                return members.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">—</span>
-                ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {members.map((m) => (
-                      <span
-                        key={m.user_id}
-                        title={m.email}
-                        className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-foreground border border-border"
-                      >
-                        {m.full_name ?? m.email}
-                      </span>
-                    ))}
-                  </div>
-                );
-              },
+              cell: (c) => <MembersCell members={users.filter((u) => u.company_id === c.company_id)} />,
             },
             {
               header: "Estado",
               cell: (c) => <StatusBadge isActive={c.is_active} activeLabel="Activa" inactiveLabel="Inactiva" />,
+            },
+            {
+              header: "Creada",
+              cell: (c) => (
+                <span className="text-xs text-muted-foreground">
+                  {c.created_at ? new Date(c.created_at).toLocaleDateString("es-AR") : "—"}
+                </span>
+              ),
             },
             {
               header: "Acciones",
@@ -192,10 +233,11 @@ export default function AdminCompanies() {
               ),
             },
           ]}
-          rows={companies}
+          rows={pagedCompanies}
           rowKey={(c) => c.company_id}
           emptyLabel="No hay empresas todavía."
         />
+        <TablePagination page={page} totalPages={totalPages} totalCount={filteredCount} onPageChange={setPage} />
       </div>
 
       <FormDialog

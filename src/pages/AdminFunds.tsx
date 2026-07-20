@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
+import { MembersCell } from "@/components/admin/MembersCell";
+import { TablePagination } from "@/components/admin/TablePagination";
+import { useTablePage } from "@/hooks/useTablePage";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,17 +15,41 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FormDialog } from "@/components/FormDialog";
 import { StatusBadge } from "@/components/StatusBadge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
 
 const LIST_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-funds";
 const MANAGE_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-funds";
 const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
+const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
 
 type PortfolioEntry = { company_id: string; company_name: string };
-type Fund = { fund_id: string; name: string; is_active: boolean; portfolio: PortfolioEntry[] };
+type Fund = {
+  fund_id: string;
+  name: string;
+  is_active: boolean;
+  portfolio: PortfolioEntry[];
+  // Todavía no confirmado si list-funds ya lo devuelve — se muestra "—" si falta.
+  created_at?: string;
+};
 type Company = { company_id: string; name: string; is_active?: boolean };
+type FundUser = {
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+  fund_id: string | null;
+  is_active: boolean;
+};
+type StatusFilter = "all" | "active" | "inactive";
 
 export default function AdminFunds() {
   const { isAdmin, loading } = useAuth();
@@ -50,7 +77,31 @@ export default function AdminFunds() {
     enabled: isAdmin,
   });
 
+  const { data: users = [] } = useQuery({
+    queryKey: ["admin-users"],
+    queryFn: async () => {
+      const res = await fetch(LIST_USERS_URL, { credentials: "include" });
+      if (!res.ok) return [] as FundUser[];
+      const data = await res.json();
+      return (data.users ?? []) as FundUser[];
+    },
+    enabled: isAdmin,
+  });
+
   const invalidateFunds = () => queryClient.invalidateQueries({ queryKey: ["admin-funds"] });
+
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const visibleFunds =
+    statusFilter === "all" ? funds : funds.filter((f) => f.is_active === (statusFilter === "active"));
+  const {
+    query: search,
+    setQuery: setSearch,
+    page,
+    setPage,
+    totalPages,
+    filteredCount,
+    pageItems: pagedFunds,
+  } = useTablePage(visibleFunds, (f, q) => f.name.toLowerCase().includes(q));
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -194,10 +245,34 @@ export default function AdminFunds() {
           }
         />
 
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={14} strokeWidth={1.5} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar fondo por nombre…"
+              className="pl-9 h-9"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={(v: StatusFilter) => setStatusFilter(v)}>
+            <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="active">Activos</SelectItem>
+              <SelectItem value="inactive">Inactivos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <DataTable
           columns={[
             { header: "Nombre", cell: (f) => <span className="font-medium">{f.name}</span> },
             { header: "Estado", cell: (f) => <StatusBadge isActive={f.is_active} /> },
+            {
+              header: "Miembros",
+              cell: (f) => <MembersCell members={users.filter((u) => u.fund_id === f.fund_id)} />,
+            },
             {
               header: "Portfolio",
               cell: (f) =>
@@ -217,6 +292,14 @@ export default function AdminFunds() {
                 ),
             },
             {
+              header: "Creado",
+              cell: (f) => (
+                <span className="text-xs text-muted-foreground">
+                  {f.created_at ? new Date(f.created_at).toLocaleDateString("es-AR") : "—"}
+                </span>
+              ),
+            },
+            {
               header: "Acciones",
               align: "right",
               cell: (f) => (
@@ -226,10 +309,11 @@ export default function AdminFunds() {
               ),
             },
           ]}
-          rows={funds}
+          rows={pagedFunds}
           rowKey={(f) => f.fund_id}
           emptyLabel="No hay fondos todavía."
         />
+        <TablePagination page={page} totalPages={totalPages} totalCount={filteredCount} onPageChange={setPage} />
       </div>
 
       <FormDialog
