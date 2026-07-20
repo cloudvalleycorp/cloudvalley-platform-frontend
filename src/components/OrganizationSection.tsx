@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Users, UserMinus, Bell } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Users, UserMinus, LogOut, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/LoadingState";
@@ -44,7 +45,8 @@ const roleLabel = (r: string) => {
 };
 
 export function OrganizationSection() {
-  const { user_id, company_name, fund_name, role } = useAuth();
+  const { user_id, company_name, fund_name, role, refreshSession } = useAuth();
+  const navigate = useNavigate();
 
   const [requests, setRequests] = useState<MembershipRequest[]>([]);
   const [busyRequest, setBusyRequest] = useState<string | null>(null);
@@ -122,6 +124,7 @@ export function OrganizationSection() {
 
   const removeMember = async () => {
     if (!removeTarget) return;
+    const leavingSelf = removeTarget.user_id === user_id;
     setRemoving(true);
     try {
       const res = await fetch(REMOVE_MEMBER_URL, {
@@ -131,11 +134,19 @@ export function OrganizationSection() {
         body: JSON.stringify({ user_id: removeTarget.user_id }),
       });
       if (await handleMembershipError(res)) return;
+      if (leavingSelf) {
+        // We no longer belong here — refresh the session so company_id/fund_id
+        // clears, then send them where NoMembershipScreen picks up.
+        toast.success(`Saliste de ${role === "investor" ? "la organización" : "la startup"}`);
+        await refreshSession();
+        navigate("/", { replace: true });
+        return;
+      }
       setMembers((ms) => ms.filter((m) => m.user_id !== removeTarget.user_id));
       toast.success("Miembro eliminado");
       setRemoveTarget(null);
     } catch {
-      toast.error("No se pudo quitar al miembro");
+      toast.error(leavingSelf ? "No se pudo salir" : "No se pudo quitar al miembro");
     } finally {
       setRemoving(false);
     }
@@ -244,7 +255,15 @@ export function OrganizationSection() {
                       <UserMinus size={14} strokeWidth={1.5} />
                     </Button>
                   ) : (
-                    <div className="w-9 shrink-0" />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => setRemoveTarget(m)}
+                      title={`Salir de ${role === "investor" ? "la organización" : "la startup"}`}
+                    >
+                      <LogOut size={14} strokeWidth={1.5} />
+                    </Button>
                   )}
                 </li>
               );
@@ -256,13 +275,27 @@ export function OrganizationSection() {
       <AlertDialog open={!!removeTarget} onOpenChange={(open) => !open && setRemoveTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Quitar miembro</AlertDialogTitle>
+            <AlertDialogTitle>
+              {removeTarget?.user_id === user_id
+                ? `Salir de ${role === "investor" ? "la organización" : "la startup"}`
+                : "Quitar miembro"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Quitar a{" "}
-              <span className="text-foreground font-medium">
-                {removeTarget?.full_name || removeTarget?.email}
-              </span>{" "}
-              de la {role === "investor" ? "organización" : "startup"}? Podrá volver a solicitar unirse más tarde.
+              {removeTarget?.user_id === user_id ? (
+                <>
+                  ¿Salir de {role === "investor" ? "esta organización" : "esta startup"}? Vas a perder acceso
+                  hasta que te unas de nuevo o crees una propia.
+                </>
+              ) : (
+                <>
+                  ¿Quitar a{" "}
+                  <span className="text-foreground font-medium">
+                    {removeTarget?.full_name || removeTarget?.email}
+                  </span>{" "}
+                  de la {role === "investor" ? "organización" : "startup"}? Podrá volver a solicitar unirse más
+                  tarde.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -275,7 +308,11 @@ export function OrganizationSection() {
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {removing ? "Quitando…" : "Quitar"}
+              {removing
+                ? "Procesando…"
+                : removeTarget?.user_id === user_id
+                  ? "Salir"
+                  : "Quitar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
