@@ -33,8 +33,8 @@ type Company = {
   company_id: string;
   name: string;
   is_active: boolean;
-  // Todavía no confirmado si list-companies ya lo devuelve — se muestra "—" si falta.
-  created_at?: string;
+  // Puede venir null en entidades viejas creadas antes de que este campo existiera.
+  created_at: string | null;
 };
 type CompanyUser = {
   user_id: string;

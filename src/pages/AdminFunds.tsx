@@ -37,8 +37,8 @@ type Fund = {
   name: string;
   is_active: boolean;
   portfolio: PortfolioEntry[];
-  // Todavía no confirmado si list-funds ya lo devuelve — se muestra "—" si falta.
-  created_at?: string;
+  // Puede venir null en entidades viejas creadas antes de que este campo existiera.
+  created_at: string | null;
 };
 type Company = { company_id: string; name: string; is_active?: boolean };
 type FundUser = {
