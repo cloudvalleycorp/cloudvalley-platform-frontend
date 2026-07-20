@@ -103,10 +103,12 @@ export function NoMembershipScreen({
       setLoadingInvitations(true);
       try {
         const res = await fetch(LIST_MY_INVITATIONS_URL, { credentials: "include" });
-        if (res.status === 401) {
-          window.location.assign("/login");
-          return;
-        }
+        // Deliberately no redirect-to-login on 401 here: this tray is a secondary,
+        // best-effort fetch — the real session check already happened in
+        // AppLayout/AuthContext before this component could even mount. Treating
+        // a failure here as "log out and reload" caused a redirect loop: this
+        // request 401s → hard reload to /login → session is actually fine →
+        // bounces back to /portfolio → this effect runs again → 401 again.
         if (!res.ok) {
           setInvitations([]);
           return;
