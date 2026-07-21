@@ -1,6 +1,7 @@
 export const REQUEST_CONNECTION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/request-connection";
 export const LIST_CONNECTIONS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-connections";
 export const DECIDE_CONNECTION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/decide-connection";
+export const UPDATE_CONNECTION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/update-connection";
 export const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
 export const LIST_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-funds";
 
@@ -19,6 +20,8 @@ export type Connection = {
   requested_by_name: string;
   created_at: string;
   responded_at: string | null;
+  batch: string | null;
+  year: number | null;
 };
 
 export type ConnectionTarget = { id: string; name: string };

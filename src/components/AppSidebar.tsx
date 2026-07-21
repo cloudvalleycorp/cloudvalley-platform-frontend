@@ -1,7 +1,7 @@
 import { LayoutDashboard, Map, BarChart3, FolderOpen, Shield, Network, Building2, Users, Landmark } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
 import {
   Sidebar,
   SidebarContent,
@@ -25,26 +25,34 @@ const items = [
 ];
 
 export function AppSidebar() {
-  const { isAdmin, isOrgViewer, fund_name } = useAuth();
+  const { isAdmin, isOrgViewer, fund_name, company_id } = useAuth();
   const { startup } = useStartup();
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
-    if (!startup?.id) {
+    if (!company_id) {
       setOrgs([]);
       return;
     }
     (async () => {
-      const { data } = await supabase
-        .from("startup_organizations")
-        .select("organization_id, organizations(id, name)")
-        .eq("startup_id", startup.id);
-      const list = (data ?? [])
-        .map((r: any) => r.organizations)
-        .filter(Boolean);
-      setOrgs(list);
+      try {
+        const res = await fetch(LIST_CONNECTIONS_URL, { credentials: "include" });
+        if (!res.ok) {
+          setOrgs([]);
+          return;
+        }
+        const data = await res.json();
+        const connections: Connection[] = Array.isArray(data?.connections) ? data.connections : [];
+        setOrgs(
+          connections
+            .filter((c) => c.status === "connected")
+            .map((c) => ({ id: c.counterpart_id, name: c.counterpart_name }))
+        );
+      } catch {
+        setOrgs([]);
+      }
     })();
-  }, [startup?.id]);
+  }, [company_id]);
 
   if (isOrgViewer) {
     return (

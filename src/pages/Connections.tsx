@@ -19,18 +19,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
 import { entityWords, handleMembershipError } from "@/lib/membership";
 import {
   REQUEST_CONNECTION_URL,
   LIST_CONNECTIONS_URL,
   DECIDE_CONNECTION_URL,
+  UPDATE_CONNECTION_URL,
   LIST_COMPANIES_URL,
   LIST_FUNDS_URL,
   type Connection,
   type ConnectionTarget,
 } from "@/lib/connections";
 import { toast } from "sonner";
-import { Building2, Landmark, Search, Plus, Check, Clock, Unlink } from "lucide-react";
+import { Building2, Landmark, Search, Plus, Check, Clock, Unlink, Pencil } from "lucide-react";
 
 export default function Connections() {
   const { user, loading, role, isAdmin, company_id, fund_id, email, is_owner } = useAuth();
@@ -105,6 +107,44 @@ export default function Connections() {
   };
 
   const [disconnectTarget, setDisconnectTarget] = useState<Connection | null>(null);
+
+  // Batch/año — solo lo edita el owner del lado fondo (backend: es quien
+  // clasifica a sus startups en un cohort, no al revés).
+  const [editingBatch, setEditingBatch] = useState<Connection | null>(null);
+  const [batchInput, setBatchInput] = useState("");
+  const [yearInput, setYearInput] = useState("");
+  const [savingBatch, setSavingBatch] = useState(false);
+
+  const openBatchEdit = (c: Connection) => {
+    setEditingBatch(c);
+    setBatchInput(c.batch ?? "");
+    setYearInput(c.year != null ? String(c.year) : "");
+  };
+
+  const submitBatchEdit = async () => {
+    if (!editingBatch) return;
+    setSavingBatch(true);
+    try {
+      const res = await fetch(UPDATE_CONNECTION_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          connection_id: editingBatch.connection_id,
+          batch: batchInput.trim() || null,
+          year: yearInput.trim() ? Number(yearInput.trim()) : null,
+        }),
+      });
+      if (await handleMembershipError(res)) return;
+      toast.success("Batch/año actualizado");
+      setEditingBatch(null);
+      loadConnections();
+    } catch {
+      toast.error("No se pudo actualizar el batch/año");
+    } finally {
+      setSavingBatch(false);
+    }
+  };
 
   // Solicitar conexión
   const [browseOpen, setBrowseOpen] = useState(false);
@@ -323,22 +363,31 @@ export default function Connections() {
                         </div>
                         <div className="min-w-0">
                           <div className="font-medium truncate">{c.counterpart_name}</div>
-                          <div className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1">
+                          <div className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1 flex-wrap">
                             <Check size={11} strokeWidth={1.5} /> Conectado
                             {c.responded_at && ` · ${new Date(c.responded_at).toLocaleDateString("es-AR")}`}
+                            {c.batch && ` · ${c.batch}`}
+                            {c.year && ` · ${c.year}`}
                           </div>
                         </div>
                       </div>
-                      {is_owner && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={() => setDisconnectTarget(c)}
-                        >
-                          <Unlink size={12} className="mr-1" /> Eliminar conexión
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {is_owner && isFundSide && (
+                          <Button size="sm" variant="ghost" onClick={() => openBatchEdit(c)}>
+                            <Pencil size={12} className="mr-1" /> Batch/año
+                          </Button>
+                        )}
+                        {is_owner && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => setDisconnectTarget(c)}
+                          >
+                            <Unlink size={12} className="mr-1" /> Eliminar conexión
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -426,6 +475,35 @@ export default function Connections() {
           onChange={(e) => setMessage(e.target.value)}
           rows={4}
         />
+      </FormDialog>
+
+      <FormDialog
+        open={!!editingBatch}
+        onOpenChange={(o) => !o && setEditingBatch(null)}
+        title={`Batch/año de ${editingBatch?.counterpart_name}`}
+        onSubmit={submitBatchEdit}
+        submitLabel={savingBatch ? "Guardando…" : "Guardar"}
+        busy={savingBatch}
+      >
+        <div>
+          <Label className="text-xs">Batch</Label>
+          <Input
+            value={batchInput}
+            onChange={(e) => setBatchInput(e.target.value)}
+            placeholder="Ej: 2026-A"
+            className="mt-1"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">Año</Label>
+          <Input
+            type="number"
+            value={yearInput}
+            onChange={(e) => setYearInput(e.target.value)}
+            placeholder="Ej: 2026"
+            className="mt-1"
+          />
+        </div>
       </FormDialog>
 
       <AlertDialog open={!!disconnectTarget} onOpenChange={(open) => !open && setDisconnectTarget(null)}>
