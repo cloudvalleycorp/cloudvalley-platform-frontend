@@ -31,7 +31,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
     const allowedForOrgViewer =
       location.pathname.startsWith("/portfolio") ||
       location.pathname === "/account" ||
-      location.pathname === "/settings";
+      location.pathname === "/settings" ||
+      location.pathname === "/conexiones";
     if (!authLoading && user && isOrgViewer && !allowedForOrgViewer) {
       navigate("/portfolio", { replace: true });
     }
