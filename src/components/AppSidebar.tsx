@@ -75,6 +75,24 @@ export function AppSidebar() {
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <NavLink
+                      to="/conexiones"
+                      end
+                      className={({ isActive }) =>
+                        `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
+                          isActive
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                            : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
+                        }`
+                      }
+                    >
+                      <Network size={16} strokeWidth={1.5} />
+                      <span>Conexiones</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

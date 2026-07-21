@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import { FormDialog } from "@/components/FormDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -22,16 +21,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Link2, Unlink } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
+import { REQUEST_CONNECTION_URL, DECIDE_CONNECTION_URL } from "@/lib/connections";
 
 const LIST_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-funds";
 const MANAGE_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-funds";
 const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
 const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
 
-type PortfolioEntry = { company_id: string; company_name: string };
+type PortfolioEntry = { connection_id: string; company_id: string; company_name: string };
 type Fund = {
   fund_id: string;
   name: string;
@@ -108,7 +118,8 @@ export default function AdminFunds() {
   const [editing, setEditing] = useState<Fund | null>(null);
   const [editName, setEditName] = useState("");
   const [editActive, setEditActive] = useState(true);
-  const [editPortfolio, setEditPortfolio] = useState<Set<string>>(new Set());
+  const [connectCompanyId, setConnectCompanyId] = useState("");
+  const [disconnectTarget, setDisconnectTarget] = useState<PortfolioEntry | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const createMutation = useMutation({
@@ -133,70 +144,67 @@ export default function AdminFunds() {
     setEditing(f);
     setEditName(f.name);
     setEditActive(f.is_active);
-    setEditPortfolio(new Set(f.portfolio.map((p) => p.company_id)));
-  };
-
-  const togglePortfolio = (companyId: string) => {
-    const next = new Set(editPortfolio);
-    if (next.has(companyId)) next.delete(companyId);
-    else next.add(companyId);
-    setEditPortfolio(next);
+    setConnectCompanyId("");
   };
 
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!editing) return;
-      const nameChanged = editName.trim() !== editing.name;
-      const activeChanged = editActive !== editing.is_active;
-      if (nameChanged || activeChanged) {
-        const res = await fetch(MANAGE_FUNDS_URL, {
-          method: "PATCH",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fund_id: editing.fund_id,
-            name: editName.trim(),
-            is_active: editActive,
-          }),
-        });
-        if (await handleGatewayError(res)) throw new Error("update failed");
-      }
-
-      const prevIds = new Set(editing.portfolio.map((p) => p.company_id));
-      const toAdd = Array.from(editPortfolio).filter((id) => !prevIds.has(id));
-      const toRemove = Array.from(prevIds).filter((id) => !editPortfolio.has(id));
-
-      const ops: Promise<Response>[] = [];
-      for (const company_id of toAdd) {
-        ops.push(
-          fetch(MANAGE_FUNDS_URL, {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "add_company", fund_id: editing.fund_id, company_id }),
-          })
-        );
-      }
-      for (const company_id of toRemove) {
-        ops.push(
-          fetch(MANAGE_FUNDS_URL, {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "remove_company", fund_id: editing.fund_id, company_id }),
-          })
-        );
-      }
-      if (ops.length > 0) {
-        const results = await Promise.all(ops);
-        for (const r of results) {
-          if (await handleGatewayError(r)) throw new Error("update portfolio failed");
-        }
-      }
+      const res = await fetch(MANAGE_FUNDS_URL, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fund_id: editing.fund_id,
+          name: editName.trim(),
+          is_active: editActive,
+        }),
+      });
+      if (await handleGatewayError(res)) throw new Error("update failed");
     },
     onSuccess: () => {
       toast.success("Fondo actualizado");
       setEditing(null);
+      invalidateFunds();
+    },
+  });
+
+  // El portfolio ya no se edita como checklist: cada empresa se conecta vía
+  // POST /request-connection (admin salta el paso de aprobación y queda
+  // "connected" directo) y se desconecta vía POST /decide-connection con el
+  // connection_id que list-funds devuelve en cada item de portfolio.
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      if (!editing || !connectCompanyId) return;
+      const res = await fetch(REQUEST_CONNECTION_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_id: connectCompanyId, fund_id: editing.fund_id }),
+      });
+      if (await handleGatewayError(res)) throw new Error("connect failed");
+    },
+    onSuccess: () => {
+      toast.success("Empresa conectada al portfolio");
+      setConnectCompanyId("");
+      invalidateFunds();
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      if (!disconnectTarget) return;
+      const res = await fetch(DECIDE_CONNECTION_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connection_id: disconnectTarget.connection_id, decision: "disconnect" }),
+      });
+      if (await handleGatewayError(res)) throw new Error("disconnect failed");
+    },
+    onSuccess: () => {
+      toast.success("Empresa desconectada del portfolio");
+      setDisconnectTarget(null);
       invalidateFunds();
     },
   });
@@ -221,6 +229,10 @@ export default function AdminFunds() {
   });
 
   const busy = createMutation.isPending || updateMutation.isPending || removeMutation.isPending;
+  const currentFund = funds.find((f) => f.fund_id === editing?.fund_id) ?? editing;
+  const connectableCompanies = companies.filter(
+    (c) => !currentFund?.portfolio.some((p) => p.company_id === c.company_id)
+  );
 
   const create = () => {
     if (!newName.trim()) return toast.error("Nombre requerido");
@@ -356,26 +368,82 @@ export default function AdminFunds() {
         </div>
         <div>
           <Label className="text-xs">Empresas en el portfolio</Label>
-          <div className="mt-2 max-h-64 overflow-y-auto border border-border rounded-md divide-y divide-border">
-            {companies.length === 0 ? (
-              <div className="p-3 text-xs text-muted-foreground">No hay empresas disponibles.</div>
+          <div className="mt-2 max-h-48 overflow-y-auto border border-border rounded-md divide-y divide-border">
+            {!currentFund || currentFund.portfolio.length === 0 ? (
+              <div className="p-3 text-xs text-muted-foreground">Sin empresas conectadas.</div>
             ) : (
-              companies.map((c) => (
-                <label
-                  key={c.company_id}
-                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface cursor-pointer"
-                >
-                  <Checkbox
-                    checked={editPortfolio.has(c.company_id)}
-                    onCheckedChange={() => togglePortfolio(c.company_id)}
-                  />
-                  <span>{c.name}</span>
-                </label>
+              currentFund.portfolio.map((p) => (
+                <div key={p.company_id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <span className="truncate">{p.company_name}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="shrink-0 h-7 px-2 text-muted-foreground hover:text-destructive"
+                    onClick={() => setDisconnectTarget(p)}
+                  >
+                    <Unlink size={12} className="mr-1" /> Desconectar
+                  </Button>
+                </div>
               ))
             )}
           </div>
+          <div className="mt-2 flex items-center gap-2">
+            <Select value={connectCompanyId} onValueChange={setConnectCompanyId}>
+              <SelectTrigger className="h-9 flex-1">
+                <SelectValue placeholder="Elegir empresa para conectar…" />
+              </SelectTrigger>
+              <SelectContent>
+                {connectableCompanies.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No hay más empresas para conectar.</div>
+                ) : (
+                  connectableCompanies.map((c) => (
+                    <SelectItem key={c.company_id} value={c.company_id}>
+                      {c.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!connectCompanyId || connectMutation.isPending}
+              onClick={() => connectMutation.mutate()}
+            >
+              <Link2 size={12} className="mr-1" /> Conectar
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            La conexión queda activa de inmediato, sin pasar por aprobación.
+          </p>
         </div>
       </FormDialog>
+
+      <AlertDialog open={!!disconnectTarget} onOpenChange={(open) => !open && setDisconnectTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desconectar empresa</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Desconectar a{" "}
+              <span className="text-foreground font-medium">{disconnectTarget?.company_name}</span> del portfolio de{" "}
+              {editing?.name}? Si quieren reconectar, alguna de las dos partes deberá enviar una nueva solicitud.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={disconnectMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={disconnectMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                disconnectMutation.mutate();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {disconnectMutation.isPending ? "Procesando…" : "Desconectar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <FormDialog
         open={confirmDelete}

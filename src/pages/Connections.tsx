@@ -1,263 +1,459 @@
 import { useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
-import { useStartup } from "@/hooks/useStartup";
+import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershipScreen";
+import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormDialog } from "@/components/FormDialog";
-import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { entityWords, handleMembershipError } from "@/lib/membership";
+import {
+  REQUEST_CONNECTION_URL,
+  LIST_CONNECTIONS_URL,
+  DECIDE_CONNECTION_URL,
+  LIST_COMPANIES_URL,
+  LIST_FUNDS_URL,
+  type Connection,
+  type ConnectionTarget,
+} from "@/lib/connections";
 import { toast } from "sonner";
-import { Building2, Search, Check, X, Clock } from "lucide-react";
-
-type Org = { id: string; name: string; type: string; website: string | null };
-type Req = {
-  id: string;
-  organization_id: string;
-  status: string;
-  message: string | null;
-  batch: string | null;
-  year: number | null;
-  created_at: string;
-  responded_at: string | null;
-};
+import { Building2, Landmark, Search, Plus, Check, Clock, Unlink } from "lucide-react";
 
 export default function Connections() {
-  const { user } = useAuth();
-  const { startup } = useStartup();
-  const [tab, setTab] = useState<"explore" | "mine">("explore");
-  const [orgs, setOrgs] = useState<Org[]>([]);
-  const [requests, setRequests] = useState<Req[]>([]);
-  const [linkedOrgIds, setLinkedOrgIds] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
-  const [applyingTo, setApplyingTo] = useState<Org | null>(null);
-  const [message, setMessage] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const { user, loading, role, isAdmin, company_id, fund_id, email, is_owner } = useAuth();
+  const [dismissed, setDismissed] = useState(false);
+  const [reopen, setReopen] = useState(false);
 
-  const loadAll = async () => {
-    if (!startup) return;
-    const [orgsRes, reqRes, linksRes] = await Promise.all([
-      // TODO: migrar a backend propio
-      supabase.from("organizations").select("id, name, type, website").eq("is_active", true).order("name"),
-      // TODO: migrar a backend propio
-      supabase.from("connection_requests").select("*").eq("startup_id", startup.id).order("created_at", { ascending: false }),
-      // TODO: migrar a backend propio
-      supabase.from("startup_organizations").select("organization_id").eq("startup_id", startup.id),
-    ]);
-    setOrgs((orgsRes.data ?? []) as Org[]);
-    setRequests((reqRes.data ?? []) as Req[]);
-    setLinkedOrgIds(new Set((linksRes.data ?? []).map((l: any) => l.organization_id)));
+  const isFundSide = role === "investor";
+  const myOrgId = isFundSide ? fund_id : company_id;
+  const counterpartWords = entityWords(!isFundSide); // opposite entity: startup asks about "fondo", fondo asks about "startup"
+
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(true);
+
+  const loadConnections = async () => {
+    setLoadingConnections(true);
+    try {
+      const res = await fetch(LIST_CONNECTIONS_URL, { credentials: "include" });
+      if (await handleMembershipError(res)) {
+        setConnections([]);
+        return;
+      }
+      const data = await res.json();
+      setConnections(Array.isArray(data?.connections) ? data.connections : []);
+    } catch {
+      toast.error("No se pudieron cargar las conexiones");
+    } finally {
+      setLoadingConnections(false);
+    }
   };
 
   useEffect(() => {
-    loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startup?.id]);
+    if (!myOrgId) return;
+    loadConnections();
+  }, [myOrgId]);
 
-  const pendingByOrg = useMemo(() => {
-    const m = new Map<string, Req>();
-    for (const r of requests) if (r.status === "pending") m.set(r.organization_id, r);
+  const received = useMemo(
+    () => connections.filter((c) => c.status === "pending" && c.direction === "received"),
+    [connections]
+  );
+  const sent = useMemo(
+    () => connections.filter((c) => c.status === "pending" && c.direction === "sent"),
+    [connections]
+  );
+  const active = useMemo(() => connections.filter((c) => c.status === "connected"), [connections]);
+  const relatedStatus = useMemo(() => {
+    const m = new Map<string, "pending" | "connected">();
+    for (const c of connections) {
+      if (c.status === "pending" || c.status === "connected") m.set(c.counterpart_id, c.status);
+    }
     return m;
-  }, [requests]);
+  }, [connections]);
 
-  const filteredOrgs = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return orgs;
-    return orgs.filter((o) => o.name.toLowerCase().includes(q));
-  }, [orgs, search]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const decide = async (connection_id: string, decision: "approve" | "reject" | "cancel" | "disconnect", successMsg: string) => {
+    setBusyId(connection_id);
+    try {
+      const res = await fetch(DECIDE_CONNECTION_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connection_id, decision }),
+      });
+      if (await handleMembershipError(res)) return;
+      toast.success(successMsg);
+      setDisconnectTarget(null);
+      loadConnections();
+    } catch {
+      toast.error("No se pudo procesar la conexión");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const [disconnectTarget, setDisconnectTarget] = useState<Connection | null>(null);
+
+  // Solicitar conexión
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [orgSearch, setOrgSearch] = useState("");
+  const [targets, setTargets] = useState<ConnectionTarget[]>([]);
+  const [loadingTargets, setLoadingTargets] = useState(false);
+  const [applyingTo, setApplyingTo] = useState<ConnectionTarget | null>(null);
+  const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!browseOpen) return;
+    setLoadingTargets(true);
+    (async () => {
+      const url = isFundSide ? LIST_COMPANIES_URL : LIST_FUNDS_URL;
+      try {
+        const res = await fetch(url, { credentials: "include" });
+        if (!res.ok) {
+          toast.error(`No se pudieron cargar los ${counterpartWords.noun}s`);
+          setTargets([]);
+          return;
+        }
+        const data = await res.json();
+        const list = isFundSide ? data.companies : data.funds;
+        setTargets(
+          (Array.isArray(list) ? list : []).map((o: { company_id?: string; fund_id?: string; name: string }) => ({
+            id: isFundSide ? o.company_id! : o.fund_id!,
+            name: o.name,
+          }))
+        );
+      } catch {
+        toast.error(`No se pudieron cargar los ${counterpartWords.noun}s`);
+        setTargets([]);
+      } finally {
+        setLoadingTargets(false);
+      }
+    })();
+  }, [browseOpen, isFundSide, counterpartWords.noun]);
+
+  const filteredTargets = useMemo(() => {
+    const q = orgSearch.trim().toLowerCase();
+    if (!q) return targets;
+    return targets.filter((t) => t.name.toLowerCase().includes(q));
+  }, [targets, orgSearch]);
 
   const submitRequest = async () => {
-    if (!applyingTo || !startup || !user) return;
+    if (!applyingTo) return;
     setSubmitting(true);
-    // TODO: migrar a backend propio
-    const { error } = await supabase.from("connection_requests").insert({
-      startup_id: startup.id,
-      organization_id: applyingTo.id,
-      message: message.trim() || null,
-      requested_by: user.id,
-    });
-    setSubmitting(false);
-    if (error) {
+    try {
+      const res = await fetch(REQUEST_CONNECTION_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_id: applyingTo.id, message: message.trim() || undefined }),
+      });
+      if (await handleMembershipError(res)) return;
+      toast.success(`Solicitud enviada a ${applyingTo.name}`);
+      setApplyingTo(null);
+      setMessage("");
+      setBrowseOpen(false);
+      loadConnections();
+    } catch {
       toast.error("No se pudo enviar la solicitud");
-      return;
+    } finally {
+      setSubmitting(false);
     }
-    toast.success(`Solicitud enviada a ${applyingTo.name}`);
-    setApplyingTo(null);
-    setMessage("");
-    loadAll();
   };
 
-  const cancelRequest = async (req: Req) => {
-    const { error } = await supabase
-      .from("connection_requests")
-      .update({ status: "cancelled" })
-      .eq("id", req.id);
-    if (error) {
-      toast.error("No se pudo cancelar");
-      return;
-    }
-    toast.success("Solicitud cancelada");
-    loadAll();
-  };
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  if (isAdmin) return <Navigate to="/admin" replace />;
 
-  const orgName = (id: string) => orgs.find((o) => o.id === id)?.name ?? "—";
+  if (!myOrgId) {
+    if (!dismissed || reopen) {
+      return (
+        <AppLayout>
+          <NoMembershipScreen
+            role={isFundSide ? "investor" : "user"}
+            email={email}
+            onDismiss={() => {
+              setDismissed(true);
+              setReopen(false);
+            }}
+          />
+        </AppLayout>
+      );
+    }
+    return (
+      <AppLayout>
+        <div className="max-w-5xl mx-auto px-8 py-12">
+          <NoMembershipBanner role={isFundSide ? "investor" : "user"} onOpen={() => setReopen(true)} />
+          <div className="border border-border rounded-lg p-12 text-center text-sm text-muted-foreground bg-card">
+            No hay conexiones para mostrar hasta que te unas a {isFundSide ? "un fondo" : "una startup"}.
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  const CounterpartIcon = isFundSide ? Building2 : Landmark;
 
   return (
     <AppLayout>
       <div className="max-w-5xl mx-auto px-8 py-12 space-y-8">
         <PageHeader
           title="Conexiones"
-          subtitle="Solicitá aparecer en el portfolio de fondos y aceleradoras."
-          className="mb-0"
+          subtitle={`Conexiones institucionales con ${counterpartWords.noun}s.`}
+          action={
+            is_owner && (
+              <Button onClick={() => setBrowseOpen(true)}>
+                <Plus size={14} className="mr-1" /> Solicitar conexión
+              </Button>
+            )
+          }
         />
 
-        <div className="flex gap-1 border-b border-border">
-          {[
-            { id: "explore" as const, label: "Explorar organizaciones" },
-            { id: "mine" as const, label: `Mis solicitudes${requests.length ? ` (${requests.length})` : ""}` },
-          ].map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={cn(
-                "px-3 py-2 text-sm transition-all border-b-2 -mb-px",
-                tab === t.id
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {tab === "explore" && (
-          <div className="space-y-4">
-            <div className="relative max-w-sm">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" strokeWidth={1.5} />
-              <Input
-                placeholder="Buscar organización…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-
-            <div className="grid gap-3">
-              {filteredOrgs.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">No hay organizaciones.</p>
-              ) : (
-                filteredOrgs.map((org) => {
-                  const linked = linkedOrgIds.has(org.id);
-                  const pending = pendingByOrg.get(org.id);
-                  return (
-                    <div
-                      key={org.id}
-                      className="border border-border rounded-lg p-4 bg-card flex items-center justify-between gap-4"
-                    >
+        {loadingConnections ? (
+          <LoadingState />
+        ) : (
+          <>
+            {received.length > 0 && (
+              <section>
+                <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">
+                  Solicitudes recibidas ({received.length})
+                </h3>
+                <div className="space-y-2">
+                  {received.map((c) => (
+                    <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
-                          <Building2 size={16} strokeWidth={1.5} />
+                          <CounterpartIcon size={16} strokeWidth={1.5} />
                         </div>
                         <div className="min-w-0">
-                          <div className="font-medium truncate">{org.name}</div>
-                          <div className="text-xs text-muted-foreground capitalize">
-                            {org.type === "both" ? "Fondo y aceleradora" : org.type === "fund" ? "Fondo" : "Aceleradora"}
+                          <div className="font-medium truncate">{c.counterpart_name}</div>
+                          {c.message && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{c.message}</p>}
+                          <div className="text-xs text-tertiary mt-1">
+                            {c.requested_by_name} · {new Date(c.created_at).toLocaleDateString("es-AR")}
                           </div>
                         </div>
                       </div>
-                      <div className="shrink-0">
-                        {linked ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Check size={12} strokeWidth={1.5} /> Conectado
-                          </span>
-                        ) : pending ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Clock size={12} strokeWidth={1.5} /> Solicitud pendiente
-                          </span>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => { setApplyingTo(org); setMessage(""); }}>
-                            Solicitar conexión
+                      {is_owner && (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busyId === c.connection_id}
+                            onClick={() => decide(c.connection_id, "reject", "Solicitud rechazada")}
+                          >
+                            Rechazar
                           </Button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-
-        {tab === "mine" && (
-          <div className="space-y-3">
-            {requests.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">Todavía no enviaste solicitudes.</p>
-            ) : (
-              requests.map((r) => (
-                <div key={r.id} className="border border-border rounded-lg p-4 bg-card">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="font-medium">{orgName(r.organization_id)}</div>
-                      {r.message && (
-                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{r.message}</p>
+                          <Button
+                            size="sm"
+                            disabled={busyId === c.connection_id}
+                            onClick={() => decide(c.connection_id, "approve", "Conexión aprobada")}
+                          >
+                            Aprobar
+                          </Button>
+                        </div>
                       )}
-                      <div className="text-xs text-tertiary mt-2">
-                        {new Date(r.created_at).toLocaleDateString()}
-                        {r.status === "accepted" && r.batch && ` · ${r.batch}`}
-                        {r.status === "accepted" && r.year && ` · ${r.year}`}
-                      </div>
                     </div>
-                    <div className="shrink-0 flex items-center gap-2">
-                      <StatusBadge status={r.status} />
-                      {r.status === "pending" && (
-                        <Button size="sm" variant="ghost" onClick={() => cancelRequest(r)}>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {sent.length > 0 && (
+              <section>
+                <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">
+                  Solicitudes enviadas ({sent.length})
+                </h3>
+                <div className="space-y-2">
+                  {sent.map((c) => (
+                    <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
+                          <CounterpartIcon size={16} strokeWidth={1.5} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{c.counterpart_name}</div>
+                          <div className="text-xs text-tertiary mt-1 inline-flex items-center gap-1">
+                            <Clock size={11} strokeWidth={1.5} /> Pendiente · {new Date(c.created_at).toLocaleDateString("es-AR")}
+                          </div>
+                        </div>
+                      </div>
+                      {is_owner && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busyId === c.connection_id}
+                          onClick={() => decide(c.connection_id, "cancel", "Solicitud cancelada")}
+                        >
                           Cancelar
                         </Button>
                       )}
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))
+              </section>
             )}
-          </div>
+
+            <section>
+              <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">
+                Conexiones activas {active.length > 0 && `(${active.length})`}
+              </h3>
+              {active.length === 0 ? (
+                <div className="border border-border rounded-lg p-8 text-center text-sm text-muted-foreground bg-card">
+                  Todavía no hay conexiones activas con {counterpartWords.no} {counterpartWords.noun}.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {active.map((c) => (
+                    <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
+                          <CounterpartIcon size={16} strokeWidth={1.5} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{c.counterpart_name}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1">
+                            <Check size={11} strokeWidth={1.5} /> Conectado
+                            {c.responded_at && ` · ${new Date(c.responded_at).toLocaleDateString("es-AR")}`}
+                          </div>
+                        </div>
+                      </div>
+                      {is_owner && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => setDisconnectTarget(c)}
+                        >
+                          <Unlink size={12} className="mr-1" /> Eliminar conexión
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
         )}
       </div>
+
+      <FormDialog
+        open={browseOpen}
+        onOpenChange={(o) => {
+          setBrowseOpen(o);
+          if (!o) setOrgSearch("");
+        }}
+        title={`Buscar ${counterpartWords.a} ${counterpartWords.noun}`}
+        footer={
+          <Button variant="ghost" onClick={() => setBrowseOpen(false)}>
+            Cerrar
+          </Button>
+        }
+      >
+        <div className="relative">
+          <Search size={14} strokeWidth={1.5} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={orgSearch}
+            onChange={(e) => setOrgSearch(e.target.value)}
+            placeholder={`Buscar ${counterpartWords.noun}…`}
+            className="pl-9"
+          />
+        </div>
+        <div className="max-h-80 overflow-y-auto divide-y divide-border border border-border rounded-md">
+          {loadingTargets ? (
+            <div className="p-4">
+              <LoadingState />
+            </div>
+          ) : filteredTargets.length === 0 ? (
+            <div className="p-4 text-sm text-muted-foreground text-center">Sin resultados.</div>
+          ) : (
+            filteredTargets.map((t) => {
+              const status = relatedStatus.get(t.id);
+              return (
+                <div key={t.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <span className="text-sm truncate">{t.name}</span>
+                  {status === "connected" ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                      <Check size={11} strokeWidth={1.5} /> Conectado
+                    </span>
+                  ) : status === "pending" ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                      <Clock size={11} strokeWidth={1.5} /> Pendiente
+                    </span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={() => {
+                        setApplyingTo(t);
+                        setMessage("");
+                      }}
+                    >
+                      Solicitar
+                    </Button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </FormDialog>
 
       <FormDialog
         open={!!applyingTo}
         onOpenChange={(o) => !o && setApplyingTo(null)}
         title={`Solicitar conexión con ${applyingTo?.name}`}
-        description="Si aceptan, tu startup aparecerá en su portfolio y podrán ver tus métricas y data room públicos."
+        description="Se notificará por mail a los owners de la organización. Si aprueban, la conexión queda activa."
         onSubmit={submitRequest}
         submitLabel={submitting ? "Enviando…" : "Enviar solicitud"}
         busy={submitting}
       >
         <Textarea
-          placeholder="Mensaje (opcional). Ej: nos postulamos a su batch 2026…"
+          placeholder="Mensaje (opcional)"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           rows={4}
         />
       </FormDialog>
-    </AppLayout>
-  );
-}
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string; Icon: typeof Check }> = {
-    pending: { label: "Pendiente", cls: "bg-surface text-muted-foreground", Icon: Clock },
-    accepted: { label: "Aceptada", cls: "bg-foreground text-background", Icon: Check },
-    rejected: { label: "Rechazada", cls: "bg-surface text-muted-foreground", Icon: X },
-    cancelled: { label: "Cancelada", cls: "bg-surface text-muted-foreground", Icon: X },
-  };
-  const cfg = map[status] ?? map.pending;
-  const Icon = cfg.Icon;
-  return (
-    <span className={cn("inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md", cfg.cls)}>
-      <Icon size={11} strokeWidth={1.5} /> {cfg.label}
-    </span>
+      <AlertDialog open={!!disconnectTarget} onOpenChange={(open) => !open && setDisconnectTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar conexión</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Eliminar la conexión con{" "}
+              <span className="text-foreground font-medium">{disconnectTarget?.counterpart_name}</span>? Esta acción
+              no se puede deshacer; si quieren reconectar, alguna de las dos partes deberá enviar una nueva
+              solicitud.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busyId === disconnectTarget?.connection_id}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busyId === disconnectTarget?.connection_id}
+              onClick={(e) => {
+                e.preventDefault();
+                if (disconnectTarget) decide(disconnectTarget.connection_id, "disconnect", "Conexión eliminada");
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {busyId === disconnectTarget?.connection_id ? "Procesando…" : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </AppLayout>
   );
 }
