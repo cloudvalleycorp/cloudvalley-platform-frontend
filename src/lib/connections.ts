@@ -2,8 +2,7 @@ export const REQUEST_CONNECTION_URL = "https://auth-gateway-2rte326z.uc.gateway.
 export const LIST_CONNECTIONS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-connections";
 export const DECIDE_CONNECTION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/decide-connection";
 export const UPDATE_CONNECTION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/update-connection";
-export const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
-export const LIST_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-funds";
+export const LIST_CONNECTION_TARGETS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-connection-targets";
 
 export type ConnectionStatus = "pending" | "connected" | "rejected" | "cancelled";
 export type ConnectionDirection = "sent" | "received";
