@@ -26,8 +26,7 @@ import {
   LIST_CONNECTIONS_URL,
   DECIDE_CONNECTION_URL,
   UPDATE_CONNECTION_URL,
-  LIST_COMPANIES_URL,
-  LIST_FUNDS_URL,
+  LIST_CONNECTION_TARGETS_URL,
   type Connection,
   type ConnectionTarget,
 } from "@/lib/connections";
@@ -151,6 +150,7 @@ export default function Connections() {
   const [orgSearch, setOrgSearch] = useState("");
   const [targets, setTargets] = useState<ConnectionTarget[]>([]);
   const [loadingTargets, setLoadingTargets] = useState(false);
+  const [targetsError, setTargetsError] = useState(false);
   const [applyingTo, setApplyingTo] = useState<ConnectionTarget | null>(null);
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -158,31 +158,25 @@ export default function Connections() {
   useEffect(() => {
     if (!browseOpen) return;
     setLoadingTargets(true);
+    setTargetsError(false);
     (async () => {
-      const url = isFundSide ? LIST_COMPANIES_URL : LIST_FUNDS_URL;
       try {
-        const res = await fetch(url, { credentials: "include" });
+        const res = await fetch(LIST_CONNECTION_TARGETS_URL, { credentials: "include" });
         if (!res.ok) {
-          toast.error(`No se pudieron cargar los ${counterpartWords.noun}s`);
           setTargets([]);
+          setTargetsError(true);
           return;
         }
         const data = await res.json();
-        const list = isFundSide ? data.companies : data.funds;
-        setTargets(
-          (Array.isArray(list) ? list : []).map((o: { company_id?: string; fund_id?: string; name: string }) => ({
-            id: isFundSide ? o.company_id! : o.fund_id!,
-            name: o.name,
-          }))
-        );
+        setTargets(Array.isArray(data?.targets) ? data.targets : []);
       } catch {
-        toast.error(`No se pudieron cargar los ${counterpartWords.noun}s`);
         setTargets([]);
+        setTargetsError(true);
       } finally {
         setLoadingTargets(false);
       }
     })();
-  }, [browseOpen, isFundSide, counterpartWords.noun]);
+  }, [browseOpen]);
 
   const filteredTargets = useMemo(() => {
     const q = orgSearch.trim().toLowerCase();
@@ -423,6 +417,11 @@ export default function Connections() {
           {loadingTargets ? (
             <div className="p-4">
               <LoadingState />
+            </div>
+          ) : targetsError ? (
+            <div className="p-4 text-sm text-muted-foreground text-center">
+              No pudimos cargar la lista de {counterpartWords.noun}s. Es un problema temporal de la plataforma, no
+              tuyo — contactá a CloudValley si se repite.
             </div>
           ) : filteredTargets.length === 0 ? (
             <div className="p-4 text-sm text-muted-foreground text-center">Sin resultados.</div>
