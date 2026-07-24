@@ -97,6 +97,7 @@ export default function Connections() {
       if (await handleMembershipError(res)) return;
       toast.success(successMsg);
       setDisconnectTarget(null);
+      setApproveTarget(null);
       loadConnections();
     } catch {
       toast.error("No se pudo procesar la conexión");
@@ -106,6 +107,7 @@ export default function Connections() {
   };
 
   const [disconnectTarget, setDisconnectTarget] = useState<Connection | null>(null);
+  const [approveTarget, setApproveTarget] = useState<Connection | null>(null);
 
   // Batch/año — solo lo edita el owner del lado fondo (backend: es quien
   // clasifica a sus startups en un cohort, no al revés).
@@ -292,7 +294,7 @@ export default function Connections() {
                           <Button
                             size="sm"
                             disabled={busyId === c.connection_id}
-                            onClick={() => decide(c.connection_id, "approve", "Conexión aprobada")}
+                            onClick={() => setApproveTarget(c)}
                           >
                             Aprobar
                           </Button>
@@ -475,6 +477,43 @@ export default function Connections() {
           rows={4}
         />
       </FormDialog>
+
+      <AlertDialog open={!!approveTarget} onOpenChange={(open) => !open && setApproveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aprobar conexión</AlertDialogTitle>
+            <AlertDialogDescription>
+              {isFundSide ? (
+                <>
+                  Al aprobar, vas a poder ver las métricas y documentos que{" "}
+                  <span className="text-foreground font-medium">{approveTarget?.counterpart_name}</span> marque como
+                  públicos. Todavía no hay ninguna pantalla para verlos, pero la conexión ya queda habilitada para
+                  cuando esté disponible.
+                </>
+              ) : (
+                <>
+                  Al aprobar,{" "}
+                  <span className="text-foreground font-medium">{approveTarget?.counterpart_name}</span> va a poder
+                  ver las métricas y documentos que marques como públicos. Todavía no hay ninguna pantalla para que
+                  los vean, pero la conexión ya queda habilitada para cuando esté disponible.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busyId === approveTarget?.connection_id}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busyId === approveTarget?.connection_id}
+              onClick={(e) => {
+                e.preventDefault();
+                if (approveTarget) decide(approveTarget.connection_id, "approve", "Conexión aprobada");
+              }}
+            >
+              {busyId === approveTarget?.connection_id ? "Procesando…" : "Aprobar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <FormDialog
         open={!!editingBatch}
