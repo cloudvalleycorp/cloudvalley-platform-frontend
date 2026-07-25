@@ -21,7 +21,6 @@ const items = [
   { title: "Roadmap", url: "/roadmap", icon: Map },
   { title: "Métricas", url: "/metrics", icon: BarChart3 },
   { title: "Data Room", url: "/data-room", icon: FolderOpen },
-  { title: "Datos financieros", url: "/financial-data", icon: DollarSign },
   { title: "Conexiones", url: "/conexiones", icon: Network },
 ];
 

@@ -22,7 +22,6 @@ import AdminCompanies from "./pages/AdminCompanies";
 import AdminUsers from "./pages/AdminUsers";
 import AdminFunds from "./pages/AdminFunds";
 import AdminFinancialData from "./pages/AdminFinancialData";
-import FinancialData from "./pages/FinancialData";
 import PortfolioStartup from "./pages/PortfolioStartup";
 import InvestorPortfolio from "./pages/InvestorPortfolio";
 import InvestorCompany from "./pages/InvestorCompany";
@@ -57,7 +56,6 @@ const App = () => (
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/funds" element={<AdminFunds />} />
             <Route path="/admin/financial-data" element={<AdminFinancialData />} />
-            <Route path="/financial-data" element={<FinancialData />} />
             <Route path="/portfolio" element={<InvestorPortfolio />} />
             <Route path="/portfolio/:company_id" element={<InvestorCompany />} />
             <Route path="/portfolio/:orgId/:startupId" element={<PortfolioStartup />} />

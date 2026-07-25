@@ -3,11 +3,23 @@ export const LIST_FINANCIAL_SOURCES_URL = "https://auth-gateway-2rte326z.uc.gate
 export const SUBMIT_FINANCIAL_RECORD_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/submit-financial-record";
 export const LIST_FINANCIAL_REPORT_STATUS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-financial-report-status";
 export const LIST_FINANCIAL_IMPORT_LOG_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-financial-import-log";
+export const LIST_FINANCIAL_RECORDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-financial-records";
+export const LIST_FINANCIAL_METRICS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-financial-metrics";
+export const LIST_FINANCIAL_METRIC_PRIVACY_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-financial-metric-privacy";
+export const UPDATE_FINANCIAL_METRIC_PRIVACY_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/update-financial-metric-privacy";
 
 export type FinancialSourceType = "manual_form" | "sheet" | "stripe";
 export type ReportStatus = "reportado" | "pendiente" | "con_errores";
 
-export type FinancialMetricKey = "revenue" | "new_mrr" | "churned_mrr" | "cash_balance" | "monthly_burn" | "headcount";
+export type FinancialMetricKey =
+  | "revenue"
+  | "new_mrr"
+  | "churned_mrr"
+  | "cash_balance"
+  | "monthly_burn"
+  | "headcount"
+  | "customers"
+  | "cac";
 
 export type FinancialMetrics = Partial<Record<FinancialMetricKey, number>>;
 
@@ -54,9 +66,30 @@ export const METRIC_LABELS: Record<FinancialMetricKey, { label: string; unit: st
   cash_balance: { label: "Cash balance", unit: "USD" },
   monthly_burn: { label: "Burn mensual", unit: "USD" },
   headcount: { label: "Headcount", unit: "" },
+  customers: { label: "Customers", unit: "" },
+  cac: { label: "CAC", unit: "USD" },
 };
 
 export function currentPeriod(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
+
+// Shape returned by GET /list-financial-metrics — mirrors Supabase's
+// metric_definitions, but company-scoped and backend-managed.
+export type FinancialMetricDef = {
+  metric_id: string;
+  name: string;
+  category: string;
+  metric_type: "input" | "calculated";
+  input_key: FinancialMetricKey | null;
+  formula_expression: string | null;
+  unit: string | null;
+  display_order: number;
+};
+
+// Shape returned by GET /list-financial-records — one row per period, all 8
+// metric fields always present (null when never loaded, never a guessed 0).
+export type FinancialRecordRow = { period: string } & Record<FinancialMetricKey, number | null>;
+
+export type FinancialMetricPrivacyEntry = { metric_id: string; is_public: boolean };
