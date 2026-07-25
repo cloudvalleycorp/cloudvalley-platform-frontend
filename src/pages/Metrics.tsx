@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { useStartup } from "@/hooks/useStartup";
+import { useAuth } from "@/contexts/AuthContext";
+import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -12,12 +14,16 @@ import { AnnualGrid } from "@/components/metrics/AnnualGrid";
 import { LayoutGrid, Table2 } from "lucide-react";
 import { evalFormula, type MetricDef, type InputsMap } from "@/lib/metrics";
 
+// Revenue y Cash & Efficiency están respaldadas por el módulo nuevo en GCP
+// (useFinancialMetrics) en vez de Supabase. Acquisition y Retention siguen
+// en metric_configs/metric_entries hasta que se migren también.
 const categories = [
   { id: "revenue", label: "Revenue" },
   { id: "acquisition", label: "Acquisition" },
   { id: "retention", label: "Retention" },
   { id: "cash_efficiency", label: "Cash & Efficiency" },
 ];
+const FINANCIAL_CATEGORIES = new Set(["revenue", "cash_efficiency"]);
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const now = new Date();
@@ -25,26 +31,28 @@ const now = new Date();
 const periodKey = (m: number, y: number) => `${y}-${m}`;
 const prevMonth = (m: number, y: number) =>
   m === 1 ? { m: 12, y: y - 1 } : { m: m - 1, y };
+const toPeriodString = (m: number, y: number) => `${y}-${String(m).padStart(2, "0")}`;
 
 type ViewMode = "annual" | "monthly";
 const VIEW_KEY = "cv:metrics:view";
 
 export default function Metrics() {
   const { startup } = useStartup();
+  const { company_id } = useAuth();
   const [activeCat, setActiveCat] = useState("revenue");
+  const isFinancialCat = FINANCIAL_CATEGORIES.has(activeCat);
   const [view, setView] = useState<ViewMode>(() => {
     const stored = (typeof window !== "undefined" && localStorage.getItem(VIEW_KEY)) as ViewMode | null;
     return stored === "monthly" ? "monthly" : "annual";
   });
   const [year, setYear] = useState(now.getFullYear());
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
-  const [metrics, setMetrics] = useState<MetricDef[]>([]);
-  // entries keyed by metric_id -> "y-m" -> value
-  const [entries, setEntries] = useState<Record<string, Record<string, number>>>({});
-  // metric_id -> "y-m" -> source provider (stripe|mercury|amplitude)
-  const [sources, setSources] = useState<Record<string, Record<string, string>>>({});
-  // metric_id -> is_public (default true if not in DB)
-  const [privacy, setPrivacy] = useState<Record<string, boolean>>({});
+
+  // ---- Legacy dataset: Acquisition/Retention, Supabase-backed ----
+  const [legacyMetrics, setLegacyMetrics] = useState<MetricDef[]>([]);
+  const [legacyEntries, setLegacyEntries] = useState<Record<string, Record<string, number>>>({});
+  const [legacySources, setLegacySources] = useState<Record<string, Record<string, string>>>({});
+  const [legacyPrivacy, setLegacyPrivacy] = useState<Record<string, boolean>>({});
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
 
   useEffect(() => {
@@ -63,7 +71,7 @@ export default function Metrics() {
       const defs = (configs ?? [])
         .map((c: any) => c.metric_definitions)
         .filter(Boolean) as MetricDef[];
-      setMetrics(defs);
+      setLegacyMetrics(defs);
 
       const { data: ents } = await supabase
         .from("metric_entries")
@@ -80,8 +88,8 @@ export default function Metrics() {
           srcMap[e.metric_id][periodKey(e.period_month, e.period_year)] = e.source as string;
         }
       }
-      setEntries(map);
-      setSources(srcMap);
+      setLegacyEntries(map);
+      setLegacySources(srcMap);
 
       const { data: priv } = await supabase
         .from("metric_privacy")
@@ -89,83 +97,13 @@ export default function Metrics() {
         .eq("startup_id", startup.id);
       const privMap: Record<string, boolean> = {};
       for (const p of priv ?? []) privMap[p.metric_id] = p.is_public;
-      setPrivacy(privMap);
+      setLegacyPrivacy(privMap);
     })();
   }, [startup?.id]);
 
-  const inputDefs = useMemo(
-    () => metrics.filter((m) => m.metric_type === "input" && m.category === activeCat),
-    [metrics, activeCat]
-  );
-  const calcDefs = useMemo(
-    () => metrics.filter((m) => m.metric_type === "calculated" && m.category === activeCat),
-    [metrics, activeCat]
-  );
-  const allInputDefs = useMemo(
-    () => metrics.filter((m) => m.metric_type === "input"),
-    [metrics]
-  );
-  const inputDefByKey = useMemo(() => {
-    const map: Record<string, MetricDef> = {};
-    for (const d of allInputDefs) if (d.input_key) map[d.input_key] = d;
-    return map;
-  }, [allInputDefs]);
-
-  const inputsForPeriod = (m: number, y: number): InputsMap => {
-    const result: InputsMap = {};
-    const pk = periodKey(m, y);
-    for (const def of allInputDefs) {
-      if (!def.input_key) continue;
-      const v = entries[def.id]?.[pk];
-      if (v !== undefined) result[def.input_key] = v;
-    }
-    return result;
-  };
-
-  const currentInputs = inputsForPeriod(period.month, period.year);
-  const prev = prevMonth(period.month, period.year);
-  const prevInputs = inputsForPeriod(prev.m, prev.y);
-
-  const historyInputs = useMemo(() => {
-    const arr: InputsMap[] = [];
-    let m = period.month, y = period.year;
-    for (let i = 0; i < 6; i++) {
-      arr.unshift(inputsForPeriod(m, y));
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries, period, allInputDefs]);
-
-  // Build history (last 12 months) for the metric being inspected from the info sheet
-  const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
-    if (!openInfo) return [];
-    const out: MetricHistoryPoint[] = [];
-    let m = now.getMonth() + 1;
-    let y = now.getFullYear();
-    for (let i = 0; i < 12; i++) {
-      let v: number | null = null;
-      if (openInfo.metric_type === "input" && openInfo.input_key) {
-        const raw = entries[openInfo.id]?.[periodKey(m, y)];
-        if (raw !== undefined) v = raw;
-      } else if (openInfo.metric_type === "calculated" && openInfo.formula_expression) {
-        const inp = inputsForPeriod(m, y);
-        v = evalFormula(openInfo.formula_expression, inp);
-      }
-      if (v !== null && v !== undefined) out.unshift({ year: y, month: m, value: v });
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openInfo, entries, allInputDefs]);
-
-  const saveInput = async (inputKey: string, value: number | null) => {
+  const legacySaveInput = async (inputKey: string, value: number | null) => {
     if (!startup) return;
-    const def = inputDefByKey[inputKey];
+    const def = legacyMetrics.find((m) => m.metric_type === "input" && m.input_key === inputKey);
     if (!def) return;
 
     if (value === null) {
@@ -176,7 +114,7 @@ export default function Metrics() {
         .eq("metric_id", def.id)
         .eq("period_month", period.month)
         .eq("period_year", period.year);
-      setEntries((prev) => {
+      setLegacyEntries((prev) => {
         const next = { ...prev };
         if (next[def.id]) {
           const inner = { ...next[def.id] };
@@ -204,7 +142,7 @@ export default function Metrics() {
       toast.error("No se pudo guardar");
       return;
     }
-    setEntries((prev) => ({
+    setLegacyEntries((prev) => ({
       ...prev,
       [def.id]: {
         ...(prev[def.id] ?? {}),
@@ -213,9 +151,9 @@ export default function Metrics() {
     }));
   };
 
-  const togglePrivacy = async (metricId: string, next: boolean) => {
+  const legacyTogglePrivacy = async (metricId: string, next: boolean) => {
     if (!startup) return;
-    setPrivacy((p) => ({ ...p, [metricId]: next }));
+    setLegacyPrivacy((p) => ({ ...p, [metricId]: next }));
     const { error } = await supabase
       .from("metric_privacy")
       .upsert(
@@ -224,12 +162,11 @@ export default function Metrics() {
       );
     if (error) {
       toast.error("No se pudo actualizar la privacidad");
-      // revert
-      setPrivacy((p) => ({ ...p, [metricId]: !next }));
+      setLegacyPrivacy((p) => ({ ...p, [metricId]: !next }));
     }
   };
 
-  const saveAnnualBatch = async (
+  const legacySaveAnnualBatch = async (
     changes: { metricId: string; year: number; month: number; value: number | null }[]
   ) => {
     if (!startup || changes.length === 0) return;
@@ -266,8 +203,7 @@ export default function Metrics() {
         .eq("period_year", d.year);
     }
 
-    // Update local state
-    setEntries((prev) => {
+    setLegacyEntries((prev) => {
       const next = { ...prev };
       for (const c of changes) {
         next[c.metricId] = { ...(next[c.metricId] ?? {}) };
@@ -280,6 +216,132 @@ export default function Metrics() {
 
     toast.success(`${changes.length} cambio${changes.length === 1 ? "" : "s"} guardado${changes.length === 1 ? "" : "s"}`);
   };
+
+  // ---- Financial dataset: Revenue/Cash & Efficiency, GCP-backed ----
+  const financial = useFinancialMetrics(company_id);
+
+  const financialSaveInput = async (inputKey: string, value: number | null) => {
+    if (value === null) {
+      toast.error("Todavía no se puede vaciar un campo ya cargado — solo corregirlo con un valor nuevo.");
+      return;
+    }
+    const def = financial.metrics.find((m) => m.metric_type === "input" && m.input_key === inputKey);
+    if (!def) return;
+    const ok = await financial.submitValues(toPeriodString(period.month, period.year), { [inputKey]: value });
+    if (!ok) return;
+    financial.applyLocalEntry(def.id, period.month, period.year, value);
+    toast.success("Guardado");
+  };
+
+  const financialSaveAnnualBatch = async (
+    changes: { metricId: string; year: number; month: number; value: number | null }[]
+  ) => {
+    if (changes.length === 0) return;
+    const cleared = changes.filter((c) => c.value === null);
+    const toSave = changes.filter((c) => c.value !== null);
+    if (cleared.length > 0) {
+      toast.error(
+        `${cleared.length} campo${cleared.length === 1 ? "" : "s"} no se pudo vaciar — el módulo nuevo solo permite corregir con un valor nuevo, no borrar.`
+      );
+    }
+    const byPeriod = new Map<string, { year: number; month: number; values: Record<string, number> }>();
+    for (const c of toSave) {
+      const inputKey = financial.inputKeyByMetricId[c.metricId];
+      if (!inputKey) continue;
+      const pk = `${c.year}-${c.month}`;
+      if (!byPeriod.has(pk)) byPeriod.set(pk, { year: c.year, month: c.month, values: {} });
+      byPeriod.get(pk)!.values[inputKey] = c.value as number;
+    }
+    let anyFailed = false;
+    for (const { year: y, month: m, values } of byPeriod.values()) {
+      const ok = await financial.submitValues(toPeriodString(m, y), values);
+      if (!ok) {
+        anyFailed = true;
+        continue;
+      }
+      for (const [inputKey, value] of Object.entries(values)) {
+        const def = financial.metrics.find((d) => d.input_key === inputKey);
+        if (def) financial.applyLocalEntry(def.id, m, y, value);
+      }
+    }
+    if (!anyFailed && toSave.length > 0) {
+      toast.success(`${toSave.length} cambio${toSave.length === 1 ? "" : "s"} guardado${toSave.length === 1 ? "" : "s"}`);
+    }
+  };
+
+  // ---- Active dataset, switched by category ----
+  const activeMetrics = isFinancialCat ? financial.metrics : legacyMetrics;
+  const activeEntries = isFinancialCat ? financial.entries : legacyEntries;
+  const activeSources = isFinancialCat ? undefined : legacySources;
+  const activePrivacy = isFinancialCat ? financial.privacy : legacyPrivacy;
+  const activeTogglePrivacy = isFinancialCat ? financial.togglePrivacy : legacyTogglePrivacy;
+  const activeSaveInput = isFinancialCat ? financialSaveInput : legacySaveInput;
+  const activeSaveAnnualBatch = isFinancialCat ? financialSaveAnnualBatch : legacySaveAnnualBatch;
+
+  const inputDefs = useMemo(
+    () => activeMetrics.filter((m) => m.metric_type === "input" && m.category === activeCat),
+    [activeMetrics, activeCat]
+  );
+  const calcDefs = useMemo(
+    () => activeMetrics.filter((m) => m.metric_type === "calculated" && m.category === activeCat),
+    [activeMetrics, activeCat]
+  );
+  const allInputDefs = useMemo(
+    () => activeMetrics.filter((m) => m.metric_type === "input"),
+    [activeMetrics]
+  );
+  const inputsForPeriod = (m: number, y: number): InputsMap => {
+    const result: InputsMap = {};
+    const pk = periodKey(m, y);
+    for (const def of allInputDefs) {
+      if (!def.input_key) continue;
+      const v = activeEntries[def.id]?.[pk];
+      if (v !== undefined) result[def.input_key] = v;
+    }
+    return result;
+  };
+
+  const currentInputs = inputsForPeriod(period.month, period.year);
+  const prev = prevMonth(period.month, period.year);
+  const prevInputs = inputsForPeriod(prev.m, prev.y);
+
+  const historyInputs = useMemo(() => {
+    const arr: InputsMap[] = [];
+    let m = period.month, y = period.year;
+    for (let i = 0; i < 6; i++) {
+      arr.unshift(inputsForPeriod(m, y));
+      const p = prevMonth(m, y);
+      m = p.m;
+      y = p.y;
+    }
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEntries, period, allInputDefs]);
+
+  const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
+    if (!openInfo) return [];
+    const out: MetricHistoryPoint[] = [];
+    let m = now.getMonth() + 1;
+    let y = now.getFullYear();
+    for (let i = 0; i < 12; i++) {
+      let v: number | null = null;
+      if (openInfo.metric_type === "input" && openInfo.input_key) {
+        const raw = activeEntries[openInfo.id]?.[periodKey(m, y)];
+        if (raw !== undefined) v = raw;
+      } else if (openInfo.metric_type === "calculated" && openInfo.formula_expression) {
+        const inp = inputsForPeriod(m, y);
+        v = evalFormula(openInfo.formula_expression, inp);
+      }
+      if (v !== null && v !== undefined) out.unshift({ year: y, month: m, value: v });
+      const p = prevMonth(m, y);
+      m = p.m;
+      y = p.y;
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openInfo, activeEntries, allInputDefs]);
+
+  const loadingActive = isFinancialCat && financial.loading;
 
   return (
     <AppLayout>
@@ -351,7 +413,9 @@ export default function Metrics() {
           ))}
         </div>
 
-        {view === "annual" ? (
+        {loadingActive ? (
+          <div className="text-center py-16 text-sm text-muted-foreground">Cargando…</div>
+        ) : view === "annual" ? (
           inputDefs.length === 0 && calcDefs.length === 0 ? (
             <div className="text-center py-16 text-sm text-muted-foreground">
               No hay métricas activas en esta categoría para tu modelo de negocio.
@@ -363,11 +427,11 @@ export default function Metrics() {
               inputDefs={inputDefs}
               calcDefs={calcDefs}
               allInputDefs={allInputDefs}
-              entries={entries}
-              sources={sources}
-              onSaveBatch={saveAnnualBatch}
-              privacy={privacy}
-              onTogglePrivacy={togglePrivacy}
+              entries={activeEntries}
+              sources={activeSources}
+              onSaveBatch={activeSaveAnnualBatch}
+              privacy={activePrivacy}
+              onTogglePrivacy={activeTogglePrivacy}
               onInfo={setOpenInfo}
             />
           )
@@ -377,10 +441,10 @@ export default function Metrics() {
               <InputsPanel
                 inputs={inputDefs}
                 values={currentInputs}
-                onSave={saveInput}
+                onSave={activeSaveInput}
                 onInfo={setOpenInfo}
-                privacy={privacy}
-                onTogglePrivacy={togglePrivacy}
+                privacy={activePrivacy}
+                onTogglePrivacy={activeTogglePrivacy}
               />
             )}
 
@@ -392,8 +456,8 @@ export default function Metrics() {
                 historyInputs={historyInputs}
                 inputDefs={allInputDefs}
                 onInfo={setOpenInfo}
-                privacy={privacy}
-                onTogglePrivacy={togglePrivacy}
+                privacy={activePrivacy}
+                onTogglePrivacy={activeTogglePrivacy}
               />
             )}
 
