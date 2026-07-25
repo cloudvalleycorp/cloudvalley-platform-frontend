@@ -12,6 +12,8 @@ import Invitations from "./pages/Invitations";
 import Dashboard from "./pages/Dashboard";
 import Roadmap from "./pages/Roadmap";
 import Metrics from "./pages/Metrics";
+import Reporting from "./pages/Reporting";
+import ReportEditor from "./pages/ReportEditor";
 import DataRoom from "./pages/DataRoom";
 import Settings from "./pages/Settings";
 import Account from "./pages/Account";
@@ -46,6 +48,8 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/roadmap" element={<Roadmap />} />
             <Route path="/metrics" element={<Metrics />} />
+            <Route path="/reporting" element={<Reporting />} />
+            <Route path="/reporting/:reportId" element={<ReportEditor />} />
             <Route path="/data-room" element={<DataRoom />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/account" element={<Account />} />

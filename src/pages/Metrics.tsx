@@ -13,20 +13,35 @@ import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/M
 import { AnnualGrid } from "@/components/metrics/AnnualGrid";
 import { ImportLogTable } from "@/components/financial/ImportLogTable";
 import { LoadingState } from "@/components/LoadingState";
-import { LayoutGrid, Table2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { FormDialog } from "@/components/FormDialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { LayoutGrid, Table2, Plus } from "lucide-react";
 import { evalFormula, type MetricDef, type InputsMap } from "@/lib/metrics";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
+import { handleMembershipError } from "@/lib/membership";
+import { UPSERT_FINANCIAL_METRIC_DEFINITION_URL, RAW_INPUT_KEYS } from "@/lib/financialReports";
 
-// Revenue y Cash & Efficiency están respaldadas por el módulo nuevo en GCP
-// (useFinancialMetrics) en vez de Supabase. Acquisition y Retention siguen
-// en metric_configs/metric_entries hasta que se migren también.
-const categories = [
-  { id: "revenue", label: "Revenue" },
-  { id: "acquisition", label: "Acquisition" },
-  { id: "retention", label: "Retention" },
-  { id: "cash_efficiency", label: "Cash & Efficiency" },
-];
-const FINANCIAL_CATEGORIES = new Set(["revenue", "cash_efficiency"]);
+// Los tabs del lado GCP (useFinancialMetrics) son dinámicos: cualquier
+// category que devuelva list-financial-metrics se vuelve un tab (así una
+// métrica custom con category nueva ya aparece sin tocar código). Acquisition
+// y Retention siguen fijos porque son Supabase, hasta que se migren también.
+const FINANCIAL_CATEGORY_LABELS: Record<string, string> = {
+  revenue: "Revenue",
+  cash_efficiency: "Cash & Efficiency",
+};
+function labelForCategory(cat: string) {
+  return FINANCIAL_CATEGORY_LABELS[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1).replace(/_/g, " ");
+}
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const now = new Date();
@@ -36,9 +51,11 @@ const VIEW_KEY = "cv:metrics:view";
 
 export default function Metrics() {
   const { startup } = useStartup();
-  const { company_id } = useAuth();
+  const { company_id, is_owner } = useAuth();
   const [activeCat, setActiveCat] = useState("revenue");
-  const isFinancialCat = FINANCIAL_CATEGORIES.has(activeCat);
+  // Acquisition/Retention son las únicas categorías fijas (Supabase); todo lo
+  // demás sale de list-financial-metrics (GCP), category incluida.
+  const isFinancialCat = activeCat !== "acquisition" && activeCat !== "retention";
   const [view, setView] = useState<ViewMode>(() => {
     const stored = (typeof window !== "undefined" && localStorage.getItem(VIEW_KEY)) as ViewMode | null;
     return stored === "monthly" ? "monthly" : "annual";
@@ -215,8 +232,115 @@ export default function Metrics() {
     toast.success(`${changes.length} cambio${changes.length === 1 ? "" : "s"} guardado${changes.length === 1 ? "" : "s"}`);
   };
 
-  // ---- Financial dataset: Revenue/Cash & Efficiency, GCP-backed ----
+  // ---- Financial dataset: Revenue/Cash & Efficiency/Team/…, GCP-backed ----
   const financial = useFinancialMetrics(company_id);
+
+  const financialCategoryTabs = useMemo(() => {
+    const minOrder = new Map<string, number>();
+    for (const m of financial.metrics) {
+      const current = minOrder.get(m.category);
+      if (current === undefined || m.order_index < current) minOrder.set(m.category, m.order_index);
+    }
+    return Array.from(minOrder.entries())
+      .sort((a, b) => a[1] - b[1])
+      .map(([id]) => ({ id, label: labelForCategory(id) }));
+  }, [financial.metrics]);
+
+  const categories = useMemo(
+    () => [
+      ...financialCategoryTabs,
+      { id: "acquisition", label: "Acquisition" },
+      { id: "retention", label: "Retention" },
+    ],
+    [financialCategoryTabs]
+  );
+
+  // ---- Métrica custom (owner-only) ----
+  const [addMetricOpen, setAddMetricOpen] = useState(false);
+  const [newMetricName, setNewMetricName] = useState("");
+  const [newMetricCategory, setNewMetricCategory] = useState("");
+  const [newMetricType, setNewMetricType] = useState<"input" | "calculated">("calculated");
+  const [newMetricInputKey, setNewMetricInputKey] = useState<string>(RAW_INPUT_KEYS[0]);
+  const [newMetricFormula, setNewMetricFormula] = useState("");
+  const [newMetricUnit, setNewMetricUnit] = useState("");
+  const [newMetricDescription, setNewMetricDescription] = useState("");
+  const [savingMetric, setSavingMetric] = useState(false);
+
+  const openAddMetric = () => {
+    setNewMetricName("");
+    setNewMetricCategory(isFinancialCat ? activeCat : financialCategoryTabs[0]?.id ?? "");
+    setNewMetricType("calculated");
+    setNewMetricInputKey(RAW_INPUT_KEYS[0]);
+    setNewMetricFormula("");
+    setNewMetricUnit("");
+    setNewMetricDescription("");
+    setAddMetricOpen(true);
+  };
+
+  const DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
+  const slugify = (s: string) =>
+    s
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(DIACRITICS_RE, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+  const submitNewMetric = async () => {
+    if (!company_id) return;
+    const category = newMetricCategory.trim();
+    if (!newMetricName.trim() || !category) {
+      toast.error("Nombre y categoría son obligatorios");
+      return;
+    }
+    if (newMetricType === "calculated" && !newMetricFormula.trim()) {
+      toast.error("La fórmula es obligatoria para una métrica calculada");
+      return;
+    }
+
+    const existingIds = new Set(financial.metrics.map((m) => m.id));
+    const base = slugify(newMetricName);
+    let slug = base;
+    let suffix = 2;
+    while (existingIds.has(slug)) {
+      slug = `${base}_${suffix}`;
+      suffix++;
+    }
+    const maxOrder = Math.max(0, ...financial.metrics.filter((m) => m.category === category).map((m) => m.order_index));
+
+    const body: Record<string, unknown> = {
+      company_id,
+      metric_id: slug,
+      name: newMetricName.trim(),
+      category,
+      metric_type: newMetricType,
+      unit: newMetricUnit.trim() || null,
+      display_order: maxOrder + 1,
+    };
+    if (newMetricType === "input") body.input_key = newMetricInputKey;
+    else body.formula_expression = newMetricFormula.trim();
+    if (newMetricDescription.trim()) body.description = newMetricDescription.trim();
+
+    setSavingMetric(true);
+    try {
+      const res = await fetch(UPSERT_FINANCIAL_METRIC_DEFINITION_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (await handleMembershipError(res)) return;
+      toast.success("Métrica agregada");
+      setAddMetricOpen(false);
+      await financial.reload();
+      setActiveCat(category);
+    } catch {
+      toast.error("No se pudo agregar la métrica");
+    } finally {
+      setSavingMetric(false);
+    }
+  };
 
   const financialSaveInput = async (inputKey: string, value: number | null) => {
     if (value === null) {
@@ -394,21 +518,28 @@ export default function Metrics() {
           }
         />
 
-        <div className="flex gap-1 border-b border-border mb-8">
-          {categories.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setActiveCat(c.id)}
-              className={cn(
-                "px-3 py-2 text-sm transition-all duration-150 border-b-2 -mb-px",
-                activeCat === c.id
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {c.label}
-            </button>
-          ))}
+        <div className="flex items-center justify-between border-b border-border mb-8">
+          <div className="flex gap-1">
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setActiveCat(c.id)}
+                className={cn(
+                  "px-3 py-2 text-sm transition-all duration-150 border-b-2 -mb-px",
+                  activeCat === c.id
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          {is_owner && (
+            <Button size="sm" variant="ghost" className="mb-1" onClick={openAddMetric}>
+              <Plus size={14} className="mr-1" /> Agregar métrica
+            </Button>
+          )}
         </div>
 
         {isFinancialCat && financial.notEnabled && (
@@ -487,6 +618,94 @@ export default function Metrics() {
       </div>
 
       <MetricInfoSheet metric={openInfo} onClose={() => setOpenInfo(null)} history={infoHistory} />
+
+      <FormDialog
+        open={addMetricOpen}
+        onOpenChange={setAddMetricOpen}
+        title="Agregar métrica"
+        description="Se agrega solo para tu startup — no afecta a las demás."
+        onSubmit={submitNewMetric}
+        submitLabel={savingMetric ? "Guardando…" : "Agregar"}
+        busy={savingMetric}
+      >
+        <div>
+          <Label className="text-xs">Nombre</Label>
+          <Input value={newMetricName} onChange={(e) => setNewMetricName(e.target.value)} className="mt-1" placeholder="Ej: Revenue por empleado" />
+        </div>
+        <div>
+          <Label className="text-xs">Categoría (tab donde aparece)</Label>
+          <Input
+            value={newMetricCategory}
+            onChange={(e) => setNewMetricCategory(e.target.value)}
+            className="mt-1"
+            placeholder="Ej: revenue, cash_efficiency, o una nueva como ops"
+            list="metric-categories"
+          />
+          <datalist id="metric-categories">
+            {financialCategoryTabs.map((c) => (
+              <option key={c.id} value={c.id} />
+            ))}
+          </datalist>
+          <p className="text-xs text-muted-foreground mt-1">
+            Si escribís una categoría que no existe todavía, se crea un tab nuevo para ella.
+          </p>
+        </div>
+        <div>
+          <Label className="text-xs">Tipo</Label>
+          <Select value={newMetricType} onValueChange={(v: "input" | "calculated") => setNewMetricType(v)}>
+            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="calculated">Calculada (fórmula)</SelectItem>
+              <SelectItem value="input">Dato crudo existente</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {newMetricType === "input" ? (
+          <div>
+            <Label className="text-xs">Campo</Label>
+            <Select value={newMetricInputKey} onValueChange={setNewMetricInputKey}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {RAW_INPUT_KEYS.map((k) => (
+                  <SelectItem key={k} value={k}>{k}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Solo podés elegir uno de los campos crudos que ya se reportan — esta opción sirve para mostrar ese
+              mismo dato bajo otro nombre o en otra categoría, no para agregar un campo nuevo.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <Label className="text-xs">Fórmula</Label>
+            <Textarea
+              value={newMetricFormula}
+              onChange={(e) => setNewMetricFormula(e.target.value)}
+              className="mt-1 font-mono text-sm"
+              rows={2}
+              placeholder="Ej: revenue / headcount"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Expresión que combina {RAW_INPUT_KEYS.join(", ")}.
+            </p>
+          </div>
+        )}
+        <div>
+          <Label className="text-xs">Unidad (opcional)</Label>
+          <Input value={newMetricUnit} onChange={(e) => setNewMetricUnit(e.target.value)} className="mt-1" placeholder="USD, %, x, meses…" />
+        </div>
+        <div>
+          <Label className="text-xs">Descripción (opcional)</Label>
+          <Textarea
+            value={newMetricDescription}
+            onChange={(e) => setNewMetricDescription(e.target.value)}
+            className="mt-1"
+            rows={2}
+            placeholder="Qué es esta métrica"
+          />
+        </div>
+      </FormDialog>
     </AppLayout>
   );
 }
