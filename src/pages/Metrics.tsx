@@ -11,6 +11,8 @@ import { InputsPanel } from "@/components/metrics/InputsPanel";
 import { CalculatedMetricsGrid } from "@/components/metrics/CalculatedMetricsGrid";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
 import { AnnualGrid } from "@/components/metrics/AnnualGrid";
+import { ImportLogTable } from "@/components/financial/ImportLogTable";
+import { LoadingState } from "@/components/LoadingState";
 import { LayoutGrid, Table2 } from "lucide-react";
 import { evalFormula, type MetricDef, type InputsMap } from "@/lib/metrics";
 
@@ -413,6 +415,13 @@ export default function Metrics() {
           ))}
         </div>
 
+        {isFinancialCat && financial.notEnabled && (
+          <div className="border border-border rounded-lg p-4 mb-6 text-sm text-muted-foreground bg-surface">
+            Todavía no tenés el formulario manual habilitado para reportar datos financieros. Pedile a CloudValley
+            que lo active para tu startup.
+          </div>
+        )}
+
         {loadingActive ? (
           <div className="text-center py-16 text-sm text-muted-foreground">Cargando…</div>
         ) : view === "annual" ? (
@@ -467,6 +476,17 @@ export default function Metrics() {
               </div>
             )}
           </div>
+        )}
+
+        {isFinancialCat && !loadingActive && (
+          <section className="mt-10">
+            <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Historial de cargas</h3>
+            {financial.loadingLogs ? (
+              <LoadingState />
+            ) : (
+              <ImportLogTable logs={financial.logs} emptyLabel="Todavía no reportaste ningún dato." />
+            )}
+          </section>
         )}
       </div>
 
