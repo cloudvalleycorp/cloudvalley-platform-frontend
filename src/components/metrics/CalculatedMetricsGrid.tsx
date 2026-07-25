@@ -12,6 +12,11 @@ type Props = {
   onInfo: (m: MetricDef) => void;
   privacy?: Record<string, boolean>;
   onTogglePrivacy?: (metricId: string, next: boolean) => Promise<void>;
+  // Viewer (e.g. a connected fund) who can't load data themselves — "Cargá X
+  // para ver esta métrica" doesn't apply to them, the metric is just
+  // unavailable (the owner hasn't loaded that public input yet, or the
+  // input itself isn't marked public even though the formula is).
+  readOnly?: boolean;
 };
 
 export function CalculatedMetricsGrid({
@@ -23,6 +28,7 @@ export function CalculatedMetricsGrid({
   onInfo,
   privacy,
   onTogglePrivacy,
+  readOnly,
 }: Props) {
   const inputNameByKey = Object.fromEntries(
     inputDefs.map((d) => [d.input_key!, d.name])
@@ -79,11 +85,17 @@ export function CalculatedMetricsGrid({
                 {missing.length > 0 ? (
                   <div className="border border-dashed border-border rounded-md p-3 mt-1">
                     <p className="text-xs text-muted-foreground">
-                      Cargá{" "}
-                      <span className="text-foreground font-medium">
-                        {missing.map((k) => inputNameByKey[k] ?? k).join(" y ")}
-                      </span>{" "}
-                      para ver esta métrica.
+                      {readOnly ? (
+                        "Métrica no disponible."
+                      ) : (
+                        <>
+                          Cargá{" "}
+                          <span className="text-foreground font-medium">
+                            {missing.map((k) => inputNameByKey[k] ?? k).join(" y ")}
+                          </span>{" "}
+                          para ver esta métrica.
+                        </>
+                      )}
                     </p>
                   </div>
                 ) : (
