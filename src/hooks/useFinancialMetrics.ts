@@ -214,5 +214,6 @@ export function useFinancialMetrics(companyId: string | null) {
     applyLocalEntry,
     togglePrivacy,
     inputKeyByMetricId,
+    reload: load,
   };
 }

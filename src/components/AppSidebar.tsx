@@ -1,4 +1,4 @@
-import { LayoutDashboard, Map, BarChart3, FolderOpen, Shield, Network, Building2, Users, Landmark, DollarSign } from "lucide-react";
+import { LayoutDashboard, Map, BarChart3, FolderOpen, Shield, Network, Building2, Users, Landmark, DollarSign, FileBarChart } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
@@ -20,6 +20,7 @@ const items = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Roadmap", url: "/roadmap", icon: Map },
   { title: "Métricas", url: "/metrics", icon: BarChart3 },
+  { title: "Reporting", url: "/reporting", icon: FileBarChart },
   { title: "Data Room", url: "/data-room", icon: FolderOpen },
   { title: "Conexiones", url: "/conexiones", icon: Network },
 ];
