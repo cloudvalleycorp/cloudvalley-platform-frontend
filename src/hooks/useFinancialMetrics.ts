@@ -13,13 +13,7 @@ import {
   type ImportLogEntry,
 } from "@/lib/financialData";
 import type { MetricDef } from "@/lib/metrics";
-
-const periodKey = (m: number, y: number) => `${y}-${m}`;
-
-function parsePeriod(period: string): { y: number; m: number } {
-  const [y, m] = period.split("-").map(Number);
-  return { y, m };
-}
+import { periodKey, parsePeriodString } from "@/lib/metricPeriod";
 
 const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
   id: d.metric_id,
@@ -96,7 +90,7 @@ export function useFinancialMetrics(companyId: string | null) {
             const v = rec[def.input_key];
             const period = rec.period;
             if (typeof v !== "number" || typeof period !== "string") continue;
-            const { y, m } = parsePeriod(period);
+            const { y, m } = parsePeriodString(period);
             nextEntries[def.id] ??= {};
             nextEntries[def.id][periodKey(m, y)] = v;
           }

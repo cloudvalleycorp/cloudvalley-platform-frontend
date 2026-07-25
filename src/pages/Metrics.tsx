@@ -15,6 +15,7 @@ import { ImportLogTable } from "@/components/financial/ImportLogTable";
 import { LoadingState } from "@/components/LoadingState";
 import { LayoutGrid, Table2 } from "lucide-react";
 import { evalFormula, type MetricDef, type InputsMap } from "@/lib/metrics";
+import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 
 // Revenue y Cash & Efficiency están respaldadas por el módulo nuevo en GCP
 // (useFinancialMetrics) en vez de Supabase. Acquisition y Retention siguen
@@ -29,11 +30,6 @@ const FINANCIAL_CATEGORIES = new Set(["revenue", "cash_efficiency"]);
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const now = new Date();
-
-const periodKey = (m: number, y: number) => `${y}-${m}`;
-const prevMonth = (m: number, y: number) =>
-  m === 1 ? { m: 12, y: y - 1 } : { m: m - 1, y };
-const toPeriodString = (m: number, y: number) => `${y}-${String(m).padStart(2, "0")}`;
 
 type ViewMode = "annual" | "monthly";
 const VIEW_KEY = "cv:metrics:view";

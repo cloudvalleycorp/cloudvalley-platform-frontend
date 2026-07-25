@@ -34,13 +34,17 @@ async function fetchStartup(userId: string): Promise<Startup | null> {
 }
 
 export function useStartup() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const queryClient = useQueryClient();
 
+  // startup_members/startups son conceptos exclusivos del lado founder
+  // (role "user"). Para investor/admin, user.id cae al fallback de email
+  // (ver AuthContext.applySessionData) y esta query rompe contra la columna
+  // uuid de startup_members — directamente no corresponde correrla.
   const { data: startup, isLoading } = useQuery({
     queryKey: ["startup", user?.id],
     queryFn: () => fetchStartup(user!.id),
-    enabled: !!user,
+    enabled: !!user && role === "user",
   });
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ["startup", user?.id] });
