@@ -25,9 +25,13 @@ import {
   LIST_FINANCIAL_SOURCES_URL,
   LIST_FINANCIAL_REPORT_STATUS_URL,
   LIST_FINANCIAL_IMPORT_LOG_URL,
+  LIST_FINANCIAL_RECORDS_URL,
+  METRIC_LABELS,
   currentPeriod,
   type ReportStatus,
   type ImportLogEntry,
+  type FinancialMetricKey,
+  type FinancialRecordRow,
 } from "@/lib/financialData";
 import { toast } from "sonner";
 import { CheckCircle2, Clock, AlertCircle, History } from "lucide-react";
@@ -134,27 +138,33 @@ export default function AdminFinancialData() {
 
   const [historyCompany, setHistoryCompany] = useState<Company | null>(null);
   const [historyLogs, setHistoryLogs] = useState<ImportLogEntry[]>([]);
+  const [historyRecords, setHistoryRecords] = useState<FinancialRecordRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const openHistory = async (c: Company) => {
     setHistoryCompany(c);
     setLoadingHistory(true);
     try {
-      const res = await fetch(`${LIST_FINANCIAL_IMPORT_LOG_URL}?company_id=${encodeURIComponent(c.company_id)}`, {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        setHistoryLogs([]);
-        return;
-      }
-      const data = await res.json();
-      setHistoryLogs(Array.isArray(data?.logs) ? data.logs : []);
+      const qs = `?company_id=${encodeURIComponent(c.company_id)}`;
+      const [logsRes, recordsRes] = await Promise.all([
+        fetch(`${LIST_FINANCIAL_IMPORT_LOG_URL}${qs}`, { credentials: "include" }),
+        fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}`, { credentials: "include" }),
+      ]);
+      const logsData = logsRes.ok ? await logsRes.json() : null;
+      setHistoryLogs(Array.isArray(logsData?.logs) ? logsData.logs : []);
+      const recordsData = recordsRes.ok ? await recordsRes.json() : null;
+      setHistoryRecords(Array.isArray(recordsData?.records) ? recordsData.records : []);
     } catch {
       setHistoryLogs([]);
+      setHistoryRecords([]);
     } finally {
       setLoadingHistory(false);
     }
   };
+
+  const historyMetricKeys = (Object.keys(METRIC_LABELS) as FinancialMetricKey[]).filter((key) =>
+    historyRecords.some((r) => r[key] != null)
+  );
 
   if (loading) return null;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
@@ -237,14 +247,61 @@ export default function AdminFinancialData() {
         open={!!historyCompany}
         onOpenChange={(o) => !o && setHistoryCompany(null)}
         title={`Historial de ${historyCompany?.name}`}
-        contentClassName="sm:max-w-lg"
+        contentClassName="sm:max-w-3xl"
         footer={
           <Button variant="ghost" onClick={() => setHistoryCompany(null)}>
             Cerrar
           </Button>
         }
       >
-        {loadingHistory ? <LoadingState /> : <ImportLogTable logs={historyLogs} emptyLabel="Todavía no reportó ningún dato." />}
+        {loadingHistory ? (
+          <LoadingState />
+        ) : (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Valores reportados</h3>
+              {historyRecords.length === 0 ? (
+                <div className="border border-border rounded-lg p-6 text-center text-sm text-muted-foreground bg-card">
+                  Todavía no hay ningún valor cargado.
+                </div>
+              ) : (
+                <div className="border border-border rounded-lg bg-card overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-xs text-muted-foreground border-b border-border">
+                        <th className="text-left font-normal px-4 py-2.5">Período</th>
+                        {historyMetricKeys.map((key) => (
+                          <th key={key} className="text-right font-normal px-3 py-2.5 whitespace-nowrap">
+                            {METRIC_LABELS[key].label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyRecords
+                        .slice()
+                        .sort((a, b) => (a.period < b.period ? 1 : -1))
+                        .map((r) => (
+                          <tr key={r.period} className="border-b border-border/50 last:border-0">
+                            <td className="px-4 py-2 font-medium whitespace-nowrap">{r.period}</td>
+                            {historyMetricKeys.map((key) => (
+                              <td key={key} className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                                {r[key] != null ? r[key]!.toLocaleString() : "—"}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Intentos de carga</h3>
+              <ImportLogTable logs={historyLogs} emptyLabel="Todavía no reportó ningún dato." />
+            </div>
+          </div>
+        )}
       </FormDialog>
     </AppLayout>
   );

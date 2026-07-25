@@ -6,9 +6,11 @@ import {
   LIST_FINANCIAL_RECORDS_URL,
   LIST_FINANCIAL_METRIC_PRIVACY_URL,
   UPDATE_FINANCIAL_METRIC_PRIVACY_URL,
+  LIST_FINANCIAL_IMPORT_LOG_URL,
   SUBMIT_FINANCIAL_RECORD_URL,
   type FinancialMetricDef,
   type FinancialMetricKey,
+  type ImportLogEntry,
 } from "@/lib/financialData";
 import type { MetricDef } from "@/lib/metrics";
 
@@ -46,6 +48,10 @@ export function useFinancialMetrics(companyId: string | null) {
   const [entries, setEntries] = useState<Record<string, Record<string, number>>>({});
   const [privacy, setPrivacy] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const [notEnabled, setNotEnabled] = useState(false);
+
+  const [logs, setLogs] = useState<ImportLogEntry[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(true);
 
   const inputKeyByMetricId = useMemo(() => {
     const map: Record<string, FinancialMetricKey> = {};
@@ -112,12 +118,37 @@ export function useFinancialMetrics(companyId: string | null) {
     }
   };
 
+  const loadLogs = async () => {
+    if (!companyId) {
+      setLogs([]);
+      setLoadingLogs(false);
+      return;
+    }
+    setLoadingLogs(true);
+    try {
+      const res = await fetch(`${LIST_FINANCIAL_IMPORT_LOG_URL}?company_id=${encodeURIComponent(companyId)}`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setLogs([]);
+        return;
+      }
+      const data = await res.json();
+      setLogs(Array.isArray(data?.logs) ? data.logs : []);
+    } catch {
+      setLogs([]);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
   useEffect(() => {
     load();
+    loadLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
-  /** POST submit-financial-record for one period. Returns false on failure (already toasted). */
+  /** POST submit-financial-record for one period. Returns false on failure (already toasted, except the "not enabled" case — see `notEnabled`). */
   const submitValues = async (periodStr: string, values: Record<string, number>): Promise<boolean> => {
     if (!companyId) return false;
     try {
@@ -127,11 +158,23 @@ export function useFinancialMetrics(companyId: string | null) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company_id: companyId, period: periodStr, ...values }),
       });
+      if (res.status === 400) {
+        const data = await res.json().catch(() => ({}));
+        const msg: string = data?.error ?? "";
+        if (/manual_form/i.test(msg) || /habilitad/i.test(msg)) {
+          setNotEnabled(true);
+          return false;
+        }
+        toast.error(msg || "Solicitud inválida");
+        return false;
+      }
       if (await handleMembershipError(res)) return false;
+      setNotEnabled(false);
       const data = await res.json();
       if (Array.isArray(data?.row_errors)) {
         for (const e of data.row_errors) toast.error(`${e.field}: ${e.reason}`);
       }
+      loadLogs();
       return true;
     } catch {
       toast.error("No se pudieron guardar los datos");
@@ -165,5 +208,17 @@ export function useFinancialMetrics(companyId: string | null) {
     }
   };
 
-  return { metrics, entries, privacy, loading, submitValues, applyLocalEntry, togglePrivacy, inputKeyByMetricId };
+  return {
+    metrics,
+    entries,
+    privacy,
+    loading,
+    notEnabled,
+    logs,
+    loadingLogs,
+    submitValues,
+    applyLocalEntry,
+    togglePrivacy,
+    inputKeyByMetricId,
+  };
 }
