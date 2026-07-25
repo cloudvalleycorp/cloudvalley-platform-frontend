@@ -1,4 +1,4 @@
-import { LayoutDashboard, Map, BarChart3, FolderOpen, Shield, Network, Building2, Users, Landmark } from "lucide-react";
+import { LayoutDashboard, Map, BarChart3, FolderOpen, Shield, Network, Building2, Users, Landmark, DollarSign } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
@@ -21,6 +21,7 @@ const items = [
   { title: "Roadmap", url: "/roadmap", icon: Map },
   { title: "Métricas", url: "/metrics", icon: BarChart3 },
   { title: "Data Room", url: "/data-room", icon: FolderOpen },
+  { title: "Datos financieros", url: "/financial-data", icon: DollarSign },
   { title: "Conexiones", url: "/conexiones", icon: Network },
 ];
 
@@ -234,6 +235,24 @@ export function AppSidebar() {
                       >
                         <Landmark size={16} strokeWidth={1.5} />
                         <span>Fondos</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to="/admin/financial-data"
+                        end
+                        className={({ isActive }) =>
+                          `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
+                            isActive
+                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                              : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
+                          }`
+                        }
+                      >
+                        <DollarSign size={16} strokeWidth={1.5} />
+                        <span>Datos financieros</span>
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
