@@ -86,6 +86,9 @@ export type FinancialMetricDef = {
   formula_expression: string | null;
   unit: string | null;
   display_order: number;
+  description: string | null;
+  why_it_matters: string | null;
+  benchmark: string | null;
 };
 
 // Shape returned by GET /list-financial-records — one row per period, all 8

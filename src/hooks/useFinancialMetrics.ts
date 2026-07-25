@@ -28,9 +28,9 @@ const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
   formula_expression: d.formula_expression,
   unit: d.unit,
   formula: d.formula_expression,
-  description: null,
-  why_it_matters: null,
-  benchmark: null,
+  description: d.description ?? null,
+  why_it_matters: d.why_it_matters ?? null,
+  benchmark: d.benchmark ?? null,
   order_index: d.display_order,
 });
 
