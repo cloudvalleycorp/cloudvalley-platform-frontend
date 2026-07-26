@@ -20,7 +20,7 @@ export function DataTable<T>({
   columns: DataTableColumn<T>[];
   rows: T[];
   rowKey: (row: T) => string;
-  emptyLabel: string;
+  emptyLabel: ReactNode;
   onRowClick?: (row: T) => void;
   className?: string;
 }) {
@@ -66,8 +66,12 @@ export function DataTable<T>({
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={columns.length} className="text-center py-12 text-muted-foreground">
-                {emptyLabel}
+              <td colSpan={columns.length} className="p-0">
+                {typeof emptyLabel === "string" ? (
+                  <div className="py-12 text-center text-muted-foreground">{emptyLabel}</div>
+                ) : (
+                  emptyLabel
+                )}
               </td>
             </tr>
           )}

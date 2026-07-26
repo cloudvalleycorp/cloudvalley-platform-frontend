@@ -1,7 +1,8 @@
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function LoadingState({
-  variant = "inline",
+  variant = "centered",
   label = "Cargando…",
   className,
 }: {
@@ -11,13 +12,31 @@ export function LoadingState({
 }) {
   if (variant === "fullScreen") {
     return (
-      <div className={cn("min-h-screen flex items-center justify-center text-sm text-muted-foreground", className)}>
-        {label}
+      <div
+        role="status"
+        className={cn("min-h-screen flex items-center justify-center", className)}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <Skeleton className="h-5 w-32" />
+          <Skeleton className="h-3 w-48" />
+        </div>
+        <span className="sr-only">{label}</span>
       </div>
     );
   }
   if (variant === "centered") {
-    return <div className={cn("p-8 text-center text-sm text-muted-foreground", className)}>{label}</div>;
+    return (
+      <div role="status" className={cn("p-8 flex flex-col items-center gap-2.5", className)}>
+        <Skeleton className="h-3.5 w-40" />
+        <Skeleton className="h-3 w-56" />
+        <Skeleton className="h-3 w-32" />
+        <span className="sr-only">{label}</span>
+      </div>
+    );
   }
-  return <p className={cn("text-sm text-muted-foreground", className)}>{label}</p>;
+  return (
+    <p role="status" className={cn("text-sm text-muted-foreground", className)}>
+      {label}
+    </p>
+  );
 }

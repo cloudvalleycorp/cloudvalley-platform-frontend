@@ -84,12 +84,9 @@ export default function Admin() {
           title="Ecosistema CloudValley"
           subtitle="Vista global del portfolio"
           action={
-            <Link
-              to="/admin/organizations"
-              className="text-sm px-3 py-2 border border-border rounded-md hover:bg-surface transition-all"
-            >
-              Organizaciones →
-            </Link>
+            <Button variant="outline" asChild>
+              <Link to="/admin/organizations">Organizaciones →</Link>
+            </Button>
           }
         />
 

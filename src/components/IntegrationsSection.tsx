@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormDialog } from "@/components/FormDialog";
+import { LoadingState } from "@/components/LoadingState";
 import { toast } from "sonner";
 import { CheckCircle2, AlertCircle, RefreshCw, Plug } from "lucide-react";
 
@@ -230,7 +231,7 @@ export function IntegrationsSection() {
             </div>
           );
         })}
-        {loading && <p className="text-xs text-muted-foreground">Cargando…</p>}
+        {loading && <LoadingState variant="inline" className="text-xs" />}
       </div>
 
       <FormDialog
