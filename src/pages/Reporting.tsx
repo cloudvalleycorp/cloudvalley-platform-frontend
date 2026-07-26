@@ -24,10 +24,12 @@ import {
   CREATE_FINANCIAL_REPORT_URL,
   LIST_FINANCIAL_REPORTS_URL,
   DELETE_FINANCIAL_REPORT_URL,
+  LIST_FINANCIAL_REPORT_SHARES_URL,
   type ReportSummary,
+  type ReportShare,
 } from "@/lib/financialReports";
 import { toast } from "sonner";
-import { Plus, FileText, Pencil, Trash2 } from "lucide-react";
+import { Plus, FileText, Pencil, Trash2, Share2 } from "lucide-react";
 
 export default function Reporting() {
   const { user, loading, role, company_id, email, is_owner } = useAuth();
@@ -37,6 +39,7 @@ export default function Reporting() {
 
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [loadingReports, setLoadingReports] = useState(true);
+  const [shares, setShares] = useState<ReportShare[]>([]);
 
   const loadReports = async () => {
     if (!company_id) return;
@@ -58,10 +61,30 @@ export default function Reporting() {
     }
   };
 
+  const loadShares = async () => {
+    if (!company_id || !is_owner) return;
+    try {
+      const res = await fetch(`${LIST_FINANCIAL_REPORT_SHARES_URL}?company_id=${encodeURIComponent(company_id)}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setShares(Array.isArray(data?.shares) ? data.shares : []);
+    } catch {
+      // silencioso — el conteo de "compartido con" es informativo, no bloquea nada
+    }
+  };
+
   useEffect(() => {
     loadReports();
+    loadShares();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [company_id]);
+  }, [company_id, is_owner]);
+
+  const shareCountByReport = shares.reduce<Record<string, number>>((acc, s) => {
+    acc[s.report_id] = (acc[s.report_id] ?? 0) + 1;
+    return acc;
+  }, {});
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -180,8 +203,16 @@ export default function Reporting() {
                   </div>
                   <div className="min-w-0">
                     <div className="font-medium truncate">{r.name}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      Actualizado {new Date(r.updated_at).toLocaleDateString("es-AR")}
+                    <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3">
+                      <span>Actualizado {new Date(r.updated_at).toLocaleDateString("es-AR")}</span>
+                      {is_owner && (
+                        <span className="inline-flex items-center gap-1">
+                          <Share2 size={11} strokeWidth={1.5} />
+                          {shareCountByReport[r.report_id]
+                            ? `Compartido con ${shareCountByReport[r.report_id]} fondo${shareCountByReport[r.report_id] === 1 ? "" : "s"}`
+                            : "Sin compartir"}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
