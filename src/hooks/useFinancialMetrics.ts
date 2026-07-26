@@ -13,7 +13,7 @@ import {
   type ImportLogEntry,
 } from "@/lib/financialData";
 import type { MetricDef } from "@/lib/metrics";
-import { periodKey, parsePeriodString } from "@/lib/metricPeriod";
+import { periodKey, buildEntriesFromRecords } from "@/lib/metricPeriod";
 
 const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
   id: d.metric_id,
@@ -80,21 +80,11 @@ export function useFinancialMetrics(companyId: string | null) {
       const mapped = defs.map(toMetricDef);
       setMetrics(mapped);
 
-      const nextEntries: Record<string, Record<string, number>> = {};
+      let nextEntries: Record<string, Record<string, number>> = {};
       if (recordsRes.ok) {
         const data = await recordsRes.json();
         const records: Record<string, unknown>[] = Array.isArray(data?.records) ? data.records : [];
-        for (const def of mapped) {
-          if (def.metric_type !== "input" || !def.input_key) continue;
-          for (const rec of records) {
-            const v = rec[def.input_key];
-            const period = rec.period;
-            if (typeof v !== "number" || typeof period !== "string") continue;
-            const { y, m } = parsePeriodString(period);
-            nextEntries[def.id] ??= {};
-            nextEntries[def.id][periodKey(m, y)] = v;
-          }
-        }
+        nextEntries = buildEntriesFromRecords(mapped, records);
       }
       setEntries(nextEntries);
 
