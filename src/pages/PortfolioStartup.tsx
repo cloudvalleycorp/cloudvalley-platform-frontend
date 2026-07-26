@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { Bell, ChevronLeft, ChevronRight, Download, Info, LineChart as LineChartIcon } from "lucide-react";
+import { Bell, ChevronLeft, ChevronRight, Download, Info, LineChart as LineChartIcon, BarChart3, FolderOpen } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import type { Startup } from "@/hooks/useStartup";
@@ -9,6 +9,7 @@ import { StageBadge } from "@/components/StageBadge";
 import { StatCard } from "@/components/StatCard";
 import { BackLink } from "@/components/BackLink";
 import { LoadingState } from "@/components/LoadingState";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -317,9 +318,7 @@ export default function PortfolioStartup() {
                 </div>
 
                 {inputDefsCat.length === 0 && calcDefsCat.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-10 text-center">
-                    No hay métricas públicas en esta categoría.
-                  </p>
+                  <EmptyState icon={BarChart3} title="No hay métricas públicas en esta categoría." />
                 ) : (
                   <div className="border border-border rounded-lg bg-card overflow-x-auto">
                     <table className="w-full text-sm">
@@ -383,7 +382,7 @@ export default function PortfolioStartup() {
                   Solo lectura. Podés abrir los archivos cargados o pedirle al founder que actualice un documento.
                 </p>
                 {docs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No hay documentos visibles.</p>
+                  <EmptyState icon={FolderOpen} title="No hay documentos visibles." className="p-8" />
                 ) : (
                   <div className="space-y-2">
                     {docs.map((d) => {
