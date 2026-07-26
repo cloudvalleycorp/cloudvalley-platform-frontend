@@ -475,11 +475,11 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
                   ? "Enviando…"
                   : inviteRetrySecondsLeft > 0
                     ? `Esperá ${inviteRetrySecondsLeft}s`
-                    : "Invitar por mail"}
+                    : "Invitar por email"}
               </Button>
             </div>
             {inviteEmailNote && (
-              <p className="text-xs text-muted-foreground mt-2">{inviteEmailNote}</p>
+              <p className="text-xs text-muted-foreground mt-2" aria-live="polite">{inviteEmailNote}</p>
             )}
           </div>
         )}

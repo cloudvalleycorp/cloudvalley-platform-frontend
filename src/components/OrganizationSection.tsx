@@ -251,7 +251,7 @@ export function OrganizationSection() {
         {!loadingMembers && members.length > 0 && !members.some((m) => m.is_owner) && (
           <p className="text-xs text-muted-foreground mb-3 border border-border rounded-md px-3 py-2 bg-muted/40">
             Todavía no hay ningún owner asignado. Nadie puede aprobar solicitudes, invitar por
-            mail ni editar {role === "investor" ? "esta organización" : "esta startup"} hasta que
+            email ni editar {role === "investor" ? "esta organización" : "esta startup"} hasta que
             un admin de CloudValley le asigne el rol a alguien.
           </p>
         )}

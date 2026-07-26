@@ -501,7 +501,7 @@ export default function Connections() {
         open={!!applyingTo}
         onOpenChange={(o) => !o && setApplyingTo(null)}
         title={`Solicitar conexión con ${applyingTo?.name}`}
-        description="Se notificará por mail a los owners de la organización. Si aprueban, la conexión queda activa."
+        description="Se notificará por email a los owners de la organización. Si aprueban, la conexión queda activa."
         onSubmit={submitRequest}
         submitLabel={submitting ? "Enviando…" : "Enviar solicitud"}
         busy={submitting}

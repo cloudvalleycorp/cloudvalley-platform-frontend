@@ -239,7 +239,7 @@ export default function Account() {
           placeholder="nuevo@email.com"
           autoFocus
         />
-        {emailError && <p className="text-xs text-destructive">{emailError}</p>}
+        {emailError && <p className="text-xs text-destructive" aria-live="polite">{emailError}</p>}
       </FormDialog>
     </AppLayout>
   );

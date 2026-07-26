@@ -346,7 +346,7 @@ export default function ReportEditor() {
               sections.length === 0 ? (
                 <EmptyState icon={FileText} title="Este reporte todavía no tiene secciones." />
               ) : (
-                <div className="space-y-10">
+                <div className="space-y-10 animate-fade-in">
                   {sections.map((section, i) => (
                     <ReportSectionView
                       key={i}

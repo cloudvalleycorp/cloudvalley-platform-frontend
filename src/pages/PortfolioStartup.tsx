@@ -268,7 +268,7 @@ export default function PortfolioStartup() {
             </div>
 
             {tab === "metrics" && (
-              <div className="space-y-6">
+              <div className="space-y-6 animate-fade-in">
                 <div className="flex items-center justify-between">
                   <div className="flex gap-1 border-b border-border">
                     {categories.map((c) => (
@@ -355,7 +355,7 @@ export default function PortfolioStartup() {
             )}
 
             {tab === "roadmap" && (
-              <div className="space-y-4 max-w-2xl">
+              <div className="space-y-4 max-w-2xl animate-fade-in">
                 <StatCard label="Readiness Score" value={startup.readiness_score} suffix="/100" />
                 <div className="space-y-3">
                   {pillars.map((p) => {
@@ -377,7 +377,7 @@ export default function PortfolioStartup() {
             )}
 
             {tab === "dataroom" && (
-              <div className="space-y-3 max-w-3xl">
+              <div className="space-y-3 max-w-3xl animate-fade-in">
                 <p className="text-xs text-muted-foreground">
                   Solo lectura. Podés abrir los archivos cargados o pedirle al founder que actualice un documento.
                 </p>

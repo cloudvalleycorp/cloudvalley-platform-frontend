@@ -91,7 +91,7 @@ export default function Login() {
                 : "Enviar enlace de acceso"}
             </Button>
             <p className="text-xs text-tertiary text-center pt-2">
-              Te enviamos un link al mail. Sin contraseña.
+              Te enviamos un link a tu email. Sin contraseña.
             </p>
           </form>
         )}

@@ -550,6 +550,7 @@ export default function Metrics() {
           </div>
         )}
 
+        <div key={`${activeCat}-${view}`} className="animate-fade-in">
         {loadingActive ? (
           <LoadingState variant="centered" className="py-16" />
         ) : view === "annual" ? (
@@ -609,6 +610,7 @@ export default function Metrics() {
             )}
           </div>
         )}
+        </div>
 
         {isFinancialCat && !loadingActive && (
           <section className="mt-10">

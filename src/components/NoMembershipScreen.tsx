@@ -486,7 +486,7 @@ export function NoMembershipScreen({
             ) : (
               <div className="mt-6 space-y-3">
                 {(joinNote || retryLabel) && (
-                  <div className="rounded-lg border border-border bg-muted/40 p-4 flex items-start gap-3">
+                  <div className="rounded-lg border border-border bg-muted/40 p-4 flex items-start gap-3" aria-live="polite">
                     <Mail size={18} strokeWidth={1.5} className="mt-0.5 text-foreground shrink-0" />
                     <div className="text-sm">
                       <div className="font-medium text-foreground">

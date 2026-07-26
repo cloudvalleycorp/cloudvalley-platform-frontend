@@ -68,6 +68,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <SidebarProvider>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-3 focus:py-2 focus:rounded-md focus:bg-foreground focus:text-background focus:text-sm"
+      >
+        Saltar al contenido
+      </a>
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
@@ -137,7 +143,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </DropdownMenu>
             </div>
           </header>
-          <main className="flex-1 overflow-auto">{children}</main>
+          <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto focus:outline-none">{children}</main>
         </div>
       </div>
     </SidebarProvider>
