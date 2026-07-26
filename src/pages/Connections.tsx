@@ -30,8 +30,9 @@ import {
   type Connection,
   type ConnectionTarget,
 } from "@/lib/connections";
+import { LIST_FINANCIAL_REPORT_SHARES_URL, type ReportShare } from "@/lib/financialReports";
 import { toast } from "sonner";
-import { Building2, Landmark, Search, Plus, Check, Clock, Unlink, Pencil } from "lucide-react";
+import { Building2, Landmark, Search, Plus, Check, Clock, Unlink, Pencil, Share2 } from "lucide-react";
 
 export default function Connections() {
   const { user, loading, role, isAdmin, company_id, fund_id, email, is_owner } = useAuth();
@@ -66,6 +67,30 @@ export default function Connections() {
     if (!myOrgId) return;
     loadConnections();
   }, [myOrgId]);
+
+  // Reportes que YO (startup) compartí con cada conexión — solo aplica del
+  // lado startup, un fondo no tiene reportes propios para compartir.
+  const [reportShares, setReportShares] = useState<ReportShare[]>([]);
+  useEffect(() => {
+    if (isFundSide || !is_owner || !company_id) return;
+    (async () => {
+      try {
+        const res = await fetch(`${LIST_FINANCIAL_REPORT_SHARES_URL}?company_id=${encodeURIComponent(company_id)}`, {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setReportShares(Array.isArray(data?.shares) ? data.shares : []);
+      } catch {
+        // silencioso — es informativo, no bloquea nada
+      }
+    })();
+  }, [isFundSide, is_owner, company_id]);
+
+  const reportNamesByConnection = reportShares.reduce<Record<string, string[]>>((acc, s) => {
+    (acc[s.connection_id] ??= []).push(s.report_name);
+    return acc;
+  }, {});
 
   const received = useMemo(
     () => connections.filter((c) => c.status === "pending" && c.direction === "received"),
@@ -365,6 +390,14 @@ export default function Connections() {
                             {c.batch && ` · ${c.batch}`}
                             {c.year && ` · ${c.year}`}
                           </div>
+                          {!isFundSide && is_owner && (
+                            <div className="text-xs text-muted-foreground mt-1 inline-flex items-center gap-1">
+                              <Share2 size={11} strokeWidth={1.5} />
+                              {reportNamesByConnection[c.connection_id]?.length
+                                ? `Reportes compartidos: ${reportNamesByConnection[c.connection_id].join(", ")}`
+                                : "Sin reportes compartidos"}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
