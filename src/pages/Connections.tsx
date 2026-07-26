@@ -457,7 +457,7 @@ export default function Connections() {
               <LoadingState />
             </div>
           ) : targetsError ? (
-            <div className="p-4 text-sm text-muted-foreground text-center">
+            <div className="p-4 text-sm text-muted-foreground text-center" aria-live="polite">
               No pudimos cargar la lista de {counterpartWords.noun}s. Es un problema temporal de la plataforma, no
               tuyo. Contactá a CloudValley si se repite.
             </div>

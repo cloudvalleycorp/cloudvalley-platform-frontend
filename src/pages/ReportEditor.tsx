@@ -284,7 +284,7 @@ export default function ReportEditor() {
         {loadingReport ? (
           <LoadingState />
         ) : notFound ? (
-          <div className="text-sm text-muted-foreground">No se encontró el reporte.</div>
+          <div className="text-sm text-muted-foreground" aria-live="polite">No se encontró el reporte.</div>
         ) : (
           <>
             <PageHeader

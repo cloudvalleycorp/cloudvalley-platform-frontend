@@ -544,7 +544,7 @@ export default function Metrics() {
         </div>
 
         {isFinancialCat && financial.notEnabled && (
-          <div className="border border-border rounded-lg p-4 mb-6 text-sm text-muted-foreground bg-surface">
+          <div className="border border-border rounded-lg p-4 mb-6 text-sm text-muted-foreground bg-surface" aria-live="polite">
             Todavía no tenés el formulario manual habilitado para reportar datos financieros. Pedile a CloudValley
             que lo active para tu startup.
           </div>
