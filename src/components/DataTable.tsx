@@ -25,7 +25,7 @@ export function DataTable<T>({
   className?: string;
 }) {
   return (
-    <div className={cn("border border-border rounded-lg bg-card overflow-hidden", className)}>
+    <div className={cn("border border-border rounded-lg bg-card overflow-x-auto", className)}>
       <table className="w-full text-sm">
         <thead>
           <tr className="text-xs text-muted-foreground border-b border-border">
