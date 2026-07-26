@@ -4,6 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
+import { DataTableToolbar } from "@/components/DataTableToolbar";
+import { SkeletonSection } from "@/components/SkeletonSection";
+import { EmptyState } from "@/components/EmptyState";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { MembersCell } from "@/components/admin/MembersCell";
 import { TablePagination } from "@/components/admin/TablePagination";
 import { useTablePage } from "@/hooks/useTablePage";
@@ -21,18 +25,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search, Link2, Unlink } from "lucide-react";
+import { Plus, Pencil, Trash2, Link2, Unlink, Landmark } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
 import { REQUEST_CONNECTION_URL, DECIDE_CONNECTION_URL } from "@/lib/connections";
 
@@ -65,7 +59,7 @@ export default function AdminFunds() {
   const { isAdmin, loading } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: funds = [] } = useQuery({
+  const { data: funds = [], isLoading: fundsLoading } = useQuery({
     queryKey: ["admin-funds"],
     queryFn: async () => {
       const res = await fetch(LIST_FUNDS_URL, { credentials: "include" });
@@ -257,75 +251,85 @@ export default function AdminFunds() {
           }
         />
 
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} strokeWidth={1.5} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar fondo por nombre…"
-              className="pl-9 h-9"
-            />
-          </div>
-          <Select value={statusFilter} onValueChange={(v: StatusFilter) => setStatusFilter(v)}>
-            <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="active">Activos</SelectItem>
-              <SelectItem value="inactive">Inactivos</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <DataTable
-          columns={[
-            { header: "Nombre", cell: (f) => <span className="font-medium">{f.name}</span> },
-            { header: "Estado", cell: (f) => <StatusBadge isActive={f.is_active} /> },
-            {
-              header: "Miembros",
-              cell: (f) => <MembersCell members={users.filter((u) => u.fund_id === f.fund_id)} />,
-            },
-            {
-              header: "Portfolio",
-              cell: (f) =>
-                f.portfolio.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">Sin empresas asignadas</span>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {f.portfolio.map((p) => (
-                      <span
-                        key={p.company_id}
-                        className="inline-flex items-center px-2 py-0.5 rounded-md text-xs bg-surface border border-border"
-                      >
-                        {p.company_name}
-                      </span>
-                    ))}
-                  </div>
-                ),
-            },
-            {
-              header: "Creado",
-              cell: (f) => (
-                <span className="text-xs text-muted-foreground">
-                  {f.created_at ? new Date(f.created_at).toLocaleDateString("es-AR") : "—"}
-                </span>
-              ),
-            },
-            {
-              header: "Acciones",
-              align: "right",
-              cell: (f) => (
-                <Button size="sm" variant="ghost" onClick={() => openEdit(f)}>
-                  <Pencil size={12} className="mr-1" /> Editar
-                </Button>
-              ),
-            },
-          ]}
-          rows={pagedFunds}
-          rowKey={(f) => f.fund_id}
-          emptyLabel="No hay fondos todavía."
+        <DataTableToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar fondo por nombre…"
+          filters={
+            <Select value={statusFilter} onValueChange={(v: StatusFilter) => setStatusFilter(v)}>
+              <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="active">Activos</SelectItem>
+                <SelectItem value="inactive">Inactivos</SelectItem>
+              </SelectContent>
+            </Select>
+          }
         />
-        <TablePagination page={page} totalPages={totalPages} totalCount={filteredCount} onPageChange={setPage} />
+
+        {fundsLoading ? (
+          <SkeletonSection rows={5} columns={5} />
+        ) : (
+          <>
+            <DataTable
+              columns={[
+                { header: "Nombre", cell: (f) => <span className="font-medium">{f.name}</span> },
+                { header: "Estado", cell: (f) => <StatusBadge isActive={f.is_active} /> },
+                {
+                  header: "Miembros",
+                  cell: (f) => <MembersCell members={users.filter((u) => u.fund_id === f.fund_id)} />,
+                },
+                {
+                  header: "Portfolio",
+                  cell: (f) =>
+                    f.portfolio.length === 0 ? (
+                      <span className="text-xs text-muted-foreground">Sin empresas asignadas</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {f.portfolio.map((p) => (
+                          <span
+                            key={p.company_id}
+                            className="inline-flex items-center px-2 py-0.5 rounded-md text-xs bg-surface border border-border"
+                          >
+                            {p.company_name}
+                          </span>
+                        ))}
+                      </div>
+                    ),
+                },
+                {
+                  header: "Creado",
+                  cell: (f) => (
+                    <span className="text-xs text-muted-foreground">
+                      {f.created_at ? new Date(f.created_at).toLocaleDateString("es-AR") : "—"}
+                    </span>
+                  ),
+                },
+                {
+                  header: "Acciones",
+                  align: "right",
+                  cell: (f) => (
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(f)}>
+                      <Pencil size={12} className="mr-1" /> Editar
+                    </Button>
+                  ),
+                },
+              ]}
+              rows={pagedFunds}
+              rowKey={(f) => f.fund_id}
+              emptyLabel={
+                <EmptyState
+                  bordered={false}
+                  icon={Landmark}
+                  title="No hay fondos todavía."
+                  description="Cuando se cree un fondo, va a aparecer acá."
+                  action={{ label: "Nuevo fondo", onClick: () => setCreateOpen(true) }}
+                />
+              }
+            />
+            <TablePagination page={page} totalPages={totalPages} totalCount={filteredCount} onPageChange={setPage} />
+          </>
+        )}
       </div>
 
       <FormDialog
@@ -419,31 +423,22 @@ export default function AdminFunds() {
         </div>
       </FormDialog>
 
-      <AlertDialog open={!!disconnectTarget} onOpenChange={(open) => !open && setDisconnectTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Desconectar empresa</AlertDialogTitle>
-            <AlertDialogDescription>
-              ¿Desconectar a{" "}
-              <span className="text-foreground font-medium">{disconnectTarget?.company_name}</span> del portfolio de{" "}
-              {editing?.name}? Si quieren reconectar, alguna de las dos partes deberá enviar una nueva solicitud.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={disconnectMutation.isPending}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={disconnectMutation.isPending}
-              onClick={(e) => {
-                e.preventDefault();
-                disconnectMutation.mutate();
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {disconnectMutation.isPending ? "Procesando…" : "Desconectar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmationDialog
+        open={!!disconnectTarget}
+        onOpenChange={(open) => !open && setDisconnectTarget(null)}
+        title="Desconectar empresa"
+        description={
+          <>
+            ¿Desconectar a{" "}
+            <span className="text-foreground font-medium">{disconnectTarget?.company_name}</span> del portfolio de{" "}
+            {editing?.name}? Si quieren reconectar, alguna de las dos partes deberá enviar una nueva solicitud.
+          </>
+        }
+        confirmLabel="Desconectar"
+        variant="destructive"
+        busy={disconnectMutation.isPending}
+        onConfirm={() => disconnectMutation.mutate()}
+      />
 
       <FormDialog
         open={confirmDelete}

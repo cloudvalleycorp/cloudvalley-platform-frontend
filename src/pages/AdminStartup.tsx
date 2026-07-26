@@ -6,6 +6,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { ReadinessScore } from "@/components/ReadinessScore";
 import { StageBadge } from "@/components/StageBadge";
+import { SectionCard } from "@/components/SectionCard";
+import { LoadingCard } from "@/components/LoadingCard";
 import { calculateReadinessScore, PillarBreakdown } from "@/lib/score";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -68,12 +70,10 @@ export default function AdminStartup() {
 
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            <ReadinessScore score={score} pillars={pillars} />
+            {startup ? <ReadinessScore score={score} pillars={pillars} /> : <LoadingCard lines={4} />}
           </div>
 
-          <aside className="border border-border rounded-lg bg-card p-5">
-            <h2 className="text-sm font-medium mb-3">Notas internas</h2>
-            <p className="text-xs text-muted-foreground mb-4">Solo visible para admins de CloudValley</p>
+          <SectionCard title="Notas internas" description="Solo visible para admins de CloudValley">
             <Textarea
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
@@ -91,7 +91,7 @@ export default function AdminStartup() {
                 </div>
               ))}
             </div>
-          </aside>
+          </SectionCard>
         </div>
       </div>
     </AppLayout>

@@ -13,6 +13,7 @@ import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/M
 import { AnnualGrid } from "@/components/metrics/AnnualGrid";
 import { ImportLogTable } from "@/components/financial/ImportLogTable";
 import { LoadingState } from "@/components/LoadingState";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { LayoutGrid, Table2, Plus } from "lucide-react";
+import { LayoutGrid, Table2, Plus, BarChart3 } from "lucide-react";
 import { evalFormula, type MetricDef, type InputsMap } from "@/lib/metrics";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 import { handleMembershipError } from "@/lib/membership";
@@ -344,7 +345,7 @@ export default function Metrics() {
 
   const financialSaveInput = async (inputKey: string, value: number | null) => {
     if (value === null) {
-      toast.error("Todavía no se puede vaciar un campo ya cargado — solo corregirlo con un valor nuevo.");
+      toast.error("Todavía no se puede vaciar un campo ya cargado. Solo se puede corregir con un valor nuevo.");
       return;
     }
     const def = financial.metrics.find((m) => m.metric_type === "input" && m.input_key === inputKey);
@@ -363,7 +364,9 @@ export default function Metrics() {
     const toSave = changes.filter((c) => c.value !== null);
     if (cleared.length > 0) {
       toast.error(
-        `${cleared.length} campo${cleared.length === 1 ? "" : "s"} no se pudo vaciar — el módulo nuevo solo permite corregir con un valor nuevo, no borrar.`
+        cleared.length === 1
+          ? "1 campo no se pudo vaciar. El módulo nuevo solo permite corregir con un valor nuevo, no borrar."
+          : `${cleared.length} campos no se pudieron vaciar. El módulo nuevo solo permite corregir con un valor nuevo, no borrar.`
       );
     }
     const byPeriod = new Map<string, { year: number; month: number; values: Record<string, number> }>();
@@ -514,32 +517,30 @@ export default function Metrics() {
                   <LayoutGrid size={12} strokeWidth={1.5} /> Mensual
                 </button>
               </div>
+              {is_owner && (
+                <Button variant="outline" onClick={openAddMetric}>
+                  <Plus size={14} className="mr-1" /> Agregar métrica
+                </Button>
+              )}
             </>
           }
         />
 
-        <div className="flex items-center justify-between border-b border-border mb-8">
-          <div className="flex gap-1">
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setActiveCat(c.id)}
-                className={cn(
-                  "px-3 py-2 text-sm transition-all duration-150 border-b-2 -mb-px",
-                  activeCat === c.id
-                    ? "border-foreground text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-          {is_owner && (
-            <Button size="sm" variant="ghost" className="mb-1" onClick={openAddMetric}>
-              <Plus size={14} className="mr-1" /> Agregar métrica
-            </Button>
-          )}
+        <div className="flex gap-1 border-b border-border mb-8">
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setActiveCat(c.id)}
+              className={cn(
+                "px-3 py-2 text-sm transition-all duration-150 border-b-2 -mb-px",
+                activeCat === c.id
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {c.label}
+            </button>
+          ))}
         </div>
 
         {isFinancialCat && financial.notEnabled && (
@@ -553,9 +554,11 @@ export default function Metrics() {
           <LoadingState variant="centered" className="py-16" />
         ) : view === "annual" ? (
           inputDefs.length === 0 && calcDefs.length === 0 ? (
-            <div className="text-center py-16 text-sm text-muted-foreground">
-              No hay métricas activas en esta categoría para tu modelo de negocio.
-            </div>
+            <EmptyState
+              icon={BarChart3}
+              title="No hay métricas activas en esta categoría."
+              description="Las métricas disponibles dependen de tu modelo de negocio."
+            />
           ) : (
             <AnnualGrid
               year={year}
@@ -598,9 +601,11 @@ export default function Metrics() {
             )}
 
             {inputDefs.length === 0 && calcDefs.length === 0 && (
-              <div className="text-center py-16 text-sm text-muted-foreground">
-                No hay métricas activas en esta categoría para tu modelo de negocio.
-              </div>
+              <EmptyState
+                icon={BarChart3}
+                title="No hay métricas activas en esta categoría."
+                description="Las métricas disponibles dependen de tu modelo de negocio."
+              />
             )}
           </div>
         )}
@@ -623,7 +628,7 @@ export default function Metrics() {
         open={addMetricOpen}
         onOpenChange={setAddMetricOpen}
         title="Agregar métrica"
-        description="Se agrega solo para tu startup — no afecta a las demás."
+        description="Se agrega solo para tu startup, no afecta a las demás."
         onSubmit={submitNewMetric}
         submitLabel={savingMetric ? "Guardando…" : "Agregar"}
         busy={savingMetric}
@@ -672,7 +677,7 @@ export default function Metrics() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
-              Solo podés elegir uno de los campos crudos que ya se reportan — esta opción sirve para mostrar ese
+              Solo podés elegir uno de los campos crudos que ya se reportan. Esta opción sirve para mostrar ese
               mismo dato bajo otro nombre o en otra categoría, no para agregar un campo nuevo.
             </p>
           </div>

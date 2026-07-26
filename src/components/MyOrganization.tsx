@@ -3,6 +3,8 @@ import { Copy, Check, Building2, Pencil, RefreshCw, User as UserIcon, Link2, Roc
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { FormActions } from "@/components/FormActions";
+import { LoadingCard } from "@/components/LoadingCard";
 import {
   MANAGE_COMPANIES_URL,
   MANAGE_FUNDS_URL,
@@ -160,7 +162,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
     return () => clearInterval(id);
   }, [inviteRetryAt]);
 
-  if (!org) return null;
+  if (!org) return <LoadingCard lines={3} />;
 
   const inviteRetrySecondsLeft = Math.max(0, Math.ceil((inviteRetryAt - Date.now()) / 1000));
 
@@ -323,7 +325,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
     // would just 400 "user_id es requerido".
     const userId = org.user_id ?? sessionUserId;
     if (!userId) {
-      toast.error("No se pudo identificar tu usuario — recargá la página e intentá de nuevo.");
+      toast.error("No se pudo identificar tu usuario. Recargá la página e intentá de nuevo.");
       return;
     }
     setSavingFullName(true);
@@ -355,48 +357,41 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
         </div>
 
         {/* Nombre */}
-        <div className="flex flex-wrap items-center gap-3">
-          {editingName ? (
-            <>
-              <Input
-                value={nameDraft}
-                onChange={(e) => setNameDraft(e.target.value)}
-                className="h-9 flex-1 min-w-[200px]"
-                autoFocus
-              />
-              <Button size="sm" onClick={saveName} disabled={savingName}>
-                {savingName ? "Guardando…" : "Guardar"}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setEditingName(false);
-                  setNameDraft(org.name);
-                }}
+        {editingName ? (
+          <div className="space-y-2">
+            <Input
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              className="h-9"
+              autoFocus
+            />
+            <FormActions
+              onCancel={() => {
+                setEditingName(false);
+                setNameDraft(org.name);
+              }}
+              onSubmit={saveName}
+              busy={savingName}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-lg font-medium tracking-tight flex-1 min-w-0 truncate">
+              {org.name}
+            </div>
+            {org.is_owner && (
+              <button
+                type="button"
+                onClick={() => setEditingName(true)}
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                title="Editar nombre"
               >
-                Cancelar
-              </Button>
-            </>
-          ) : (
-            <>
-              <div className="text-lg font-medium tracking-tight flex-1 min-w-0 truncate">
-                {org.name}
-              </div>
-              {org.is_owner && (
-                <button
-                  type="button"
-                  onClick={() => setEditingName(true)}
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                  title="Editar nombre"
-                >
-                  <Pencil size={12} strokeWidth={1.5} />
-                  Editar
-                </button>
-              )}
-            </>
-          )}
-        </div>
+                <Pencil size={12} strokeWidth={1.5} />
+                Editar
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Código de invitación */}
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -555,25 +550,19 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
                   />
                 </div>
               </div>
-              <div className="flex gap-2 pt-1">
-                <Button size="sm" onClick={saveDetails} disabled={savingDetails}>
-                  {savingDetails ? "Guardando…" : "Guardar cambios"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setEditingDetails(false);
-                    setIndustryDraft(org.industry);
-                    setWebsiteDraft(org.website);
-                    setTargetDraft(org.target_raise_usd?.toString() ?? "");
-                    setCohortNumberDraft(org.cohort_number?.toString() ?? "");
-                    setCohortYearDraft(org.cohort_year?.toString() ?? "");
-                  }}
-                >
-                  Cancelar
-                </Button>
-              </div>
+              <FormActions
+                onCancel={() => {
+                  setEditingDetails(false);
+                  setIndustryDraft(org.industry);
+                  setWebsiteDraft(org.website);
+                  setTargetDraft(org.target_raise_usd?.toString() ?? "");
+                  setCohortNumberDraft(org.cohort_number?.toString() ?? "");
+                  setCohortYearDraft(org.cohort_year?.toString() ?? "");
+                }}
+                onSubmit={saveDetails}
+                submitLabel="Guardar cambios"
+                busy={savingDetails}
+              />
             </div>
           ) : (
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
@@ -617,26 +606,21 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
           <div>
             <div className="text-xs text-muted-foreground mb-1">Nombre completo</div>
             {editingFullName ? (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="space-y-2">
                 <Input
                   value={fullNameDraft}
                   onChange={(e) => setFullNameDraft(e.target.value)}
-                  className="h-9 flex-1 min-w-[200px]"
+                  className="h-9"
                   autoFocus
                 />
-                <Button size="sm" onClick={saveFullName} disabled={savingFullName}>
-                  {savingFullName ? "Guardando…" : "Guardar"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
+                <FormActions
+                  onCancel={() => {
                     setEditingFullName(false);
                     setFullNameDraft(org.full_name ?? "");
                   }}
-                >
-                  Cancelar
-                </Button>
+                  onSubmit={saveFullName}
+                  busy={savingFullName}
+                />
               </div>
             ) : (
               <div className="flex items-center gap-3">

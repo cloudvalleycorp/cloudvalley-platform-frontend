@@ -4,11 +4,14 @@ import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { DataTable } from "@/components/DataTable";
+import { DataTableToolbar } from "@/components/DataTableToolbar";
+import { SkeletonSection } from "@/components/SkeletonSection";
+import { EmptyState } from "@/components/EmptyState";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { StageBadge } from "@/components/StageBadge";
 import { Button } from "@/components/ui/button";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Rocket } from "lucide-react";
 import { toast } from "sonner";
 
 type Row = {
@@ -25,7 +28,9 @@ type Row = {
 export default function Admin() {
   const { isAdmin, loading } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
+  const [loadingRows, setLoadingRows] = useState(true);
   const [sortBy, setSortBy] = useState<"score" | "mrr">("score");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -61,13 +66,15 @@ export default function Admin() {
         enriched.push({ ...s, mrr, runway } as Row);
       }
       setRows(enriched);
+      setLoadingRows(false);
     })();
   }, [isAdmin]);
 
   if (loading) return null;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
-  const sorted = [...rows].sort((a, b) =>
+  const filtered = rows.filter((r) => r.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const sorted = [...filtered].sort((a, b) =>
     sortBy === "score" ? b.readiness_score - a.readiness_score : (b.mrr ?? 0) - (a.mrr ?? 0)
   );
 
@@ -96,45 +103,66 @@ export default function Admin() {
           <StatCard label="Score > 70" value={highScore} />
         </div>
 
-        <DataTable
-          columns={[
-            {
-              header: "Startup",
-              cell: (r) => (
-                <Link to={`/admin/startup/${r.id}`} className="font-medium hover:underline">{r.name}</Link>
-              ),
-            },
-            { header: "Etapa", cell: (r) => <StageBadge stage={r.stage} /> },
-            {
-              header: "Modelo",
-              cell: (r) => <span className="text-muted-foreground capitalize">{r.business_model?.replace("_", " ")}</span>,
-            },
-            {
-              header: <>Readiness {sortBy === "score" && "↓"}</>,
-              onHeaderClick: () => setSortBy("score"),
-              cell: (r) => (
-                <div className="flex items-center gap-2">
-                  <span className="tabular-nums">{r.readiness_score}</span>
-                  <div className="h-1 w-20 bg-surface rounded-full overflow-hidden">
-                    <div className="h-full bg-foreground" style={{ width: `${r.readiness_score}%` }} />
-                  </div>
-                </div>
-              ),
-            },
-            {
-              header: <>MRR {sortBy === "mrr" && "↓"}</>,
-              onHeaderClick: () => setSortBy("mrr"),
-              cell: (r) => <span className="tabular-nums">{r.mrr != null ? `$${r.mrr.toLocaleString()}` : "—"}</span>,
-            },
-            {
-              header: "Runway",
-              cell: (r) => <span className="tabular-nums">{r.runway != null ? `${r.runway}m` : "—"}</span>,
-            },
-          ]}
-          rows={sorted}
-          rowKey={(r) => r.id}
-          emptyLabel="No hay startups todavía."
+        <DataTableToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar startup por nombre…"
         />
+
+        {loadingRows ? (
+          <SkeletonSection rows={6} columns={5} />
+        ) : (
+          <DataTable
+            columns={[
+              {
+                header: "Startup",
+                cell: (r) => (
+                  <Link to={`/admin/startup/${r.id}`} className="font-medium hover:underline">{r.name}</Link>
+                ),
+              },
+              { header: "Etapa", cell: (r) => <StageBadge stage={r.stage} /> },
+              {
+                header: "Modelo",
+                cell: (r) => <span className="text-muted-foreground capitalize">{r.business_model?.replace("_", " ")}</span>,
+              },
+              {
+                header: <>Readiness {sortBy === "score" && "↓"}</>,
+                onHeaderClick: () => setSortBy("score"),
+                cell: (r) => (
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">{r.readiness_score}</span>
+                    <div className="h-1 w-20 bg-surface rounded-full overflow-hidden">
+                      <div className="h-full bg-foreground" style={{ width: `${r.readiness_score}%` }} />
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                header: <>MRR {sortBy === "mrr" && "↓"}</>,
+                onHeaderClick: () => setSortBy("mrr"),
+                cell: (r) => <span className="tabular-nums">{r.mrr != null ? `$${r.mrr.toLocaleString()}` : "—"}</span>,
+              },
+              {
+                header: "Runway",
+                cell: (r) => <span className="tabular-nums">{r.runway != null ? `${r.runway}m` : "—"}</span>,
+              },
+            ]}
+            rows={sorted}
+            rowKey={(r) => r.id}
+            emptyLabel={
+              <EmptyState
+                bordered={false}
+                icon={Rocket}
+                title={search ? "Ninguna startup coincide con la búsqueda." : "No hay startups todavía."}
+                description={
+                  search
+                    ? "Probá con otro nombre."
+                    : "Cuando una startup se sume al ecosistema, va a aparecer acá."
+                }
+              />
+            }
+          />
+        )}
       </div>
     </AppLayout>
   );

@@ -8,6 +8,8 @@ import { StageBadge } from "@/components/StageBadge";
 import { useConnectedCompanyMetrics } from "@/hooks/useConnectedCompanyMetrics";
 import { useSharedFinancialReports } from "@/hooks/useSharedFinancialReports";
 import { LoadingState } from "@/components/LoadingState";
+import { EmptyState } from "@/components/EmptyState";
+import { FileText } from "lucide-react";
 import { ReportSectionView } from "@/components/metrics/ReportSectionView";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
 import {
@@ -232,15 +234,11 @@ export default function InvestorCompany() {
                 {shared.loadingReports ? (
                   <LoadingState />
                 ) : shared.reports.length === 0 ? (
-                  <div className="border border-border rounded-lg p-8 text-center text-sm text-muted-foreground bg-card">
-                    {profile.name} todavía no te compartió ningún reporte.
-                  </div>
+                  <EmptyState icon={FileText} title={`${profile.name} todavía no te compartió ningún reporte.`} className="p-8" />
                 ) : shared.loadingDetail || metrics.loading ? (
                   <LoadingState />
                 ) : !shared.sections || shared.sections.length === 0 ? (
-                  <div className="border border-border rounded-lg p-8 text-center text-sm text-muted-foreground bg-card">
-                    Este reporte todavía no tiene secciones.
-                  </div>
+                  <EmptyState icon={FileText} title="Este reporte todavía no tiene secciones." className="p-8" />
                 ) : (
                   <div className="space-y-10">
                     {shared.sections.map((section, i) => (

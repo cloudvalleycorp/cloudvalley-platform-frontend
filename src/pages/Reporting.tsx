@@ -4,21 +4,13 @@ import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershipScreen";
 import { LoadingState } from "@/components/LoadingState";
+import { EmptyState } from "@/components/EmptyState";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormDialog } from "@/components/FormDialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { handleMembershipError } from "@/lib/membership";
 import {
   CREATE_FINANCIAL_REPORT_URL,
@@ -177,7 +169,7 @@ export default function Reporting() {
       <div className="max-w-3xl mx-auto px-8 py-12">
         <PageHeader
           title="Reporting"
-          subtitle="Armá reportes curados de tus métricas y compartilos con fondos puntuales."
+          subtitle="Armá un reporte con las métricas que quieras y compartilo con un fondo puntual."
           action={
             is_owner && (
               <Button onClick={() => setCreateOpen(true)}>
@@ -190,13 +182,20 @@ export default function Reporting() {
         {loadingReports ? (
           <LoadingState />
         ) : reports.length === 0 ? (
-          <div className="border border-border rounded-lg p-12 text-center text-sm text-muted-foreground bg-card">
-            Todavía no armaste ningún reporte.
-          </div>
+          <EmptyState
+            icon={FileText}
+            title="Todavía no armaste ningún reporte."
+            description="Un reporte agrupa las métricas que elijas para compartir con un fondo puntual."
+            action={is_owner ? { label: "Nuevo reporte", onClick: () => setCreateOpen(true) } : undefined}
+          />
         ) : (
           <div className="space-y-2">
             {reports.map((r) => (
-              <div key={r.report_id} className="border border-border rounded-lg p-4 bg-card flex items-center justify-between gap-4">
+              <div
+                key={r.report_id}
+                onClick={() => navigate(`/reporting/${r.report_id}`)}
+                className="border border-border rounded-lg p-4 bg-card flex items-center justify-between gap-4 cursor-pointer hover:border-foreground/30 transition-all"
+              >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
                     <FileText size={16} strokeWidth={1.5} />
@@ -217,7 +216,14 @@ export default function Reporting() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button size="sm" variant="outline" onClick={() => navigate(`/reporting/${r.report_id}`)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/reporting/${r.report_id}`);
+                    }}
+                  >
                     <Pencil size={12} className="mr-1" /> {is_owner ? "Editar" : "Ver"}
                   </Button>
                   {is_owner && (
@@ -225,7 +231,10 @@ export default function Reporting() {
                       size="sm"
                       variant="ghost"
                       className="text-muted-foreground hover:text-destructive"
-                      onClick={() => setDeleteTarget(r)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(r);
+                      }}
                     >
                       <Trash2 size={12} />
                     </Button>
@@ -254,30 +263,21 @@ export default function Reporting() {
         />
       </FormDialog>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar reporte</AlertDialogTitle>
-            <AlertDialogDescription>
-              ¿Eliminar <span className="text-foreground font-medium">{deleteTarget?.name}</span>? Se deja de
-              compartir con todas las conexiones que lo tuvieran. Esta acción no se puede deshacer.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={deleting}
-              onClick={(e) => {
-                e.preventDefault();
-                deleteReport();
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleting ? "Procesando…" : "Eliminar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmationDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Eliminar reporte"
+        description={
+          <>
+            ¿Eliminar <span className="text-foreground font-medium">{deleteTarget?.name}</span>? Se deja de
+            compartir con todas las conexiones que lo tuvieran. Esta acción no se puede deshacer.
+          </>
+        }
+        confirmLabel="Eliminar reporte"
+        variant="destructive"
+        busy={deleting}
+        onConfirm={deleteReport}
+      />
     </AppLayout>
   );
 }

@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
+import { DataTableToolbar } from "@/components/DataTableToolbar";
+import { SkeletonSection } from "@/components/SkeletonSection";
+import { EmptyState } from "@/components/EmptyState";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Link2, Copy, Check } from "lucide-react";
+import { Plus, Pencil, Trash2, Link2, Copy, Check, Users as UsersIcon } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
 
 const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
@@ -50,7 +53,7 @@ export default function AdminUsers() {
   const { isAdmin, loading, email: currentEmail } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: users = [] } = useQuery({
+  const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ["admin-users"],
     queryFn: async () => {
       const res = await fetch(LIST_USERS_URL, { credentials: "include" });
@@ -59,6 +62,15 @@ export default function AdminUsers() {
       return (data.users ?? []) as User[];
     },
     enabled: isAdmin,
+  });
+
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | Role>("all");
+  const visibleUsers = users.filter((u) => {
+    if (roleFilter !== "all" && u.role !== roleFilter) return false;
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (u.full_name ?? "").toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
   });
 
   const { data: companies = [] } = useQuery({
@@ -298,35 +310,68 @@ export default function AdminUsers() {
           }
         />
 
-        <DataTable
-          columns={[
-            { header: "Nombre", cell: (u) => <span className="font-medium">{u.full_name ?? "—"}</span> },
-            { header: "Email", cell: (u) => <span className="text-muted-foreground">{u.email}</span> },
-            { header: "Rol", cell: (u) => <RoleBadge role={u.role} /> },
-            {
-              header: "Empresa / Fondo",
-              cell: (u) => (
-                <span className="text-muted-foreground">
-                  {u.role === "investor" ? (u.fund_name ?? "—") : (u.company_name ?? "—")}
-                </span>
-              ),
-            },
-            { header: "Estado", cell: (u) => <StatusBadge isActive={u.is_active} /> },
-            {
-              header: "Acciones",
-              align: "right",
-              cellClassName: "whitespace-nowrap",
-              cell: (u) => (
-                <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>
-                  <Pencil size={12} className="mr-1" /> Editar
-                </Button>
-              ),
-            },
-          ]}
-          rows={users}
-          rowKey={(u) => u.user_id}
-          emptyLabel="No hay usuarios todavía."
+        <DataTableToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar por nombre o email…"
+          filters={
+            <Select value={roleFilter} onValueChange={(v: "all" | Role) => setRoleFilter(v)}>
+              <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los roles</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="user">Usuario</SelectItem>
+                <SelectItem value="investor">Inversor</SelectItem>
+              </SelectContent>
+            </Select>
+          }
         />
+
+        {usersLoading ? (
+          <SkeletonSection rows={6} columns={5} />
+        ) : (
+          <DataTable
+            columns={[
+              { header: "Nombre", cell: (u) => <span className="font-medium">{u.full_name ?? "—"}</span> },
+              { header: "Email", cell: (u) => <span className="text-muted-foreground">{u.email}</span> },
+              { header: "Rol", cell: (u) => <RoleBadge role={u.role} /> },
+              {
+                header: "Empresa / Fondo",
+                cell: (u) => (
+                  <span className="text-muted-foreground">
+                    {u.role === "investor" ? (u.fund_name ?? "—") : (u.company_name ?? "—")}
+                  </span>
+                ),
+              },
+              { header: "Estado", cell: (u) => <StatusBadge isActive={u.is_active} /> },
+              {
+                header: "Acciones",
+                align: "right",
+                cellClassName: "whitespace-nowrap",
+                cell: (u) => (
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>
+                    <Pencil size={12} className="mr-1" /> Editar
+                  </Button>
+                ),
+              },
+            ]}
+            rows={visibleUsers}
+            rowKey={(u) => u.user_id}
+            emptyLabel={
+              <EmptyState
+                bordered={false}
+                icon={UsersIcon}
+                title={search || roleFilter !== "all" ? "Ningún usuario coincide con el filtro." : "No hay usuarios todavía."}
+                description={
+                  search || roleFilter !== "all"
+                    ? "Probá con otro nombre, email o rol."
+                    : "Cuando se cree un usuario, va a aparecer acá."
+                }
+                action={{ label: "Nuevo usuario", onClick: openCreate }}
+              />
+            }
+          />
+        )}
       </div>
 
       <FormDialog
@@ -350,9 +395,9 @@ export default function AdminUsers() {
           <Select value={form.role} onValueChange={(v: Role) => setForm({ ...form, role: v })}>
             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="admin">admin</SelectItem>
-              <SelectItem value="user">user</SelectItem>
-              <SelectItem value="investor">investor</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="user">Usuario</SelectItem>
+              <SelectItem value="investor">Inversor</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -432,9 +477,9 @@ export default function AdminUsers() {
           <Select value={editForm.role} onValueChange={(v: Role) => setEditForm({ ...editForm, role: v })}>
             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="admin">admin</SelectItem>
-              <SelectItem value="user">user</SelectItem>
-              <SelectItem value="investor">investor</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="user">Usuario</SelectItem>
+              <SelectItem value="investor">Inversor</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -526,8 +571,8 @@ export default function AdminUsers() {
             <Select value={inviteRole} onValueChange={(v: "user" | "investor") => setInviteRole(v)}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="user">user (empresa)</SelectItem>
-                <SelectItem value="investor">investor (fondo)</SelectItem>
+                <SelectItem value="user">Usuario (empresa)</SelectItem>
+                <SelectItem value="investor">Inversor (fondo)</SelectItem>
               </SelectContent>
             </Select>
           </div>

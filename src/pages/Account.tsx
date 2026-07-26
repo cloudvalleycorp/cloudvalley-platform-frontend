@@ -70,7 +70,7 @@ export default function Account() {
     // manage-users only accepts user_id, no email fallback — sending email instead
     // would just 400 "user_id es requerido", so don't even try.
     if (!user_id) {
-      toast.error("Todavía no se cargó tu cuenta — esperá un segundo y volvé a intentar.");
+      toast.error("Todavía no se cargó tu cuenta. Esperá un segundo y volvé a intentar.");
       return;
     }
     setSavingName(true);

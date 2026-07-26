@@ -104,7 +104,7 @@ export function CalculatedMetricsGrid({
                       {formatMetricValue(current, m.unit)}
                     </div>
                     {change != null && (
-                      <div className="text-xs text-muted-foreground mt-1 inline-flex items-center gap-1">
+                      <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                         {change >= 0 ? (
                           <ArrowUp size={12} strokeWidth={1.5} />
                         ) : (

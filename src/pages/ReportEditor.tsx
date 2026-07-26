@@ -4,6 +4,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { BackLink } from "@/components/BackLink";
 import { LoadingState } from "@/components/LoadingState";
+import { EmptyState } from "@/components/EmptyState";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,7 @@ import {
   type ReportShare,
 } from "@/lib/financialReports";
 import { toast } from "sonner";
-import { ChevronUp, ChevronDown, X, Plus, Save, GripVertical, Eye, Pencil, Share2 } from "lucide-react";
+import { ChevronUp, ChevronDown, X, Plus, Save, GripVertical, Eye, Pencil, Share2, FileText } from "lucide-react";
 
 const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
   id: d.metric_id,
@@ -343,9 +344,7 @@ export default function ReportEditor() {
 
             {mode === "preview" ? (
               sections.length === 0 ? (
-                <div className="border border-border rounded-lg p-8 text-center text-sm text-muted-foreground bg-card">
-                  Este reporte todavía no tiene secciones.
-                </div>
+                <EmptyState icon={FileText} title="Este reporte todavía no tiene secciones." />
               ) : (
                 <div className="space-y-10">
                   {sections.map((section, i) => (
@@ -476,7 +475,7 @@ export default function ReportEditor() {
                   )}
 
                   {sections.length === 0 && !is_owner && (
-                    <div className="text-sm text-muted-foreground text-center py-8">Este reporte todavía no tiene secciones.</div>
+                    <EmptyState icon={FileText} title="Este reporte todavía no tiene secciones." />
                   )}
                 </div>
 

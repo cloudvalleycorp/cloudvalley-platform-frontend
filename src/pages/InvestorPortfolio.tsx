@@ -4,6 +4,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershipScreen";
 import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { Building2 } from "lucide-react";
 
 export default function InvestorPortfolio() {
   const {
@@ -41,9 +43,11 @@ export default function InvestorPortfolio() {
       <AppLayout>
         <div className="max-w-7xl mx-auto px-8 py-12">
           <NoMembershipBanner role="investor" onOpen={() => setReopen(true)} />
-          <div className="border border-border rounded-lg p-12 text-center text-sm text-muted-foreground bg-card">
-            No hay portfolio para mostrar hasta que te unas a un fondo.
-          </div>
+          <EmptyState
+            icon={Building2}
+            title="No hay portfolio para mostrar."
+            description="Vas a ver acá las empresas de tu fondo apenas te unas a uno."
+          />
         </div>
       </AppLayout>
     );
@@ -63,9 +67,11 @@ export default function InvestorPortfolio() {
         />
 
         {companies.length === 0 ? (
-          <div className="border border-border rounded-lg p-12 text-center text-sm text-muted-foreground bg-card">
-            Tu fondo todavía no tiene empresas asignadas.
-          </div>
+          <EmptyState
+            icon={Building2}
+            title="Tu fondo todavía no tiene empresas conectadas."
+            description="Las conexiones con startups se gestionan desde Conexiones. Cuando tu fondo conecte con una, va a aparecer acá."
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {companies.map((c) => (

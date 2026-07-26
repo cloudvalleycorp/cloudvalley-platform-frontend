@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
-import { Info, Upload, ChevronDown } from "lucide-react";
+import { Info, Upload, ChevronDown, Map } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
+import { PageHeader } from "@/components/PageHeader";
+import { SkeletonSection } from "@/components/SkeletonSection";
+import { EmptyState } from "@/components/EmptyState";
 import { useStartup } from "@/hooks/useStartup";
 import { supabase } from "@/integrations/supabase/client";
 import { calculateReadinessScore } from "@/lib/score";
@@ -33,6 +36,7 @@ export default function Roadmap() {
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const [score, setScore] = useState(0);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [loadingRoadmap, setLoadingRoadmap] = useState(true);
 
   const load = async () => {
     if (!startup) return;
@@ -61,6 +65,7 @@ export default function Roadmap() {
     setTasks(flattened);
 
     setScore(startup.readiness_score);
+    setLoadingRoadmap(false);
   };
 
   useEffect(() => { load(); }, [startup?.id]);
@@ -103,16 +108,26 @@ export default function Roadmap() {
   return (
     <AppLayout>
       <div className="max-w-5xl mx-auto px-8 py-12">
-        <header className="mb-8 flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-medium tracking-tight">Fundraising Roadmap</h1>
-            <div className="flex items-center gap-2 mt-2">
+        <PageHeader
+          title="Fundraising Roadmap"
+          subtitle={
+            <span className="inline-flex items-center gap-2">
               <StageBadge stage={startup?.stage} />
-              <span className="text-xs text-muted-foreground">Readiness {score}/100</span>
-            </div>
-          </div>
-        </header>
+              <span>Readiness {score}/100</span>
+            </span>
+          }
+        />
 
+        {loadingRoadmap ? (
+          <SkeletonSection rows={4} columns={2} />
+        ) : grouped.length === 0 ? (
+          <EmptyState
+            icon={Map}
+            title="Todavía no hay tareas en tu roadmap."
+            description="Cuando se generen las tareas de tu etapa, van a aparecer acá agrupadas por pilar."
+          />
+        ) : (
+          <>
         {/* Pillar tabs */}
         <div className="flex gap-1 border-b border-border mb-8 overflow-x-auto">
           <button
@@ -193,6 +208,8 @@ export default function Roadmap() {
             );
           })}
         </div>
+        </>
+        )}
       </div>
 
       <Sheet open={!!openTask} onOpenChange={(o) => !o && setOpenTask(null)}>

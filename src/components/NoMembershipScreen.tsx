@@ -445,7 +445,7 @@ export function NoMembershipScreen({
                 }}
                 className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
               >
-                Ya me aprobaron — actualizar sesión
+                Ya me aprobaron, actualizar sesión
               </button>
             </div>
           </>
@@ -558,7 +558,7 @@ export function NoMembershipScreen({
                     <Copy size={16} strokeWidth={1.5} className="text-muted-foreground" />
                   )}
                 </button>
-                <Button className="w-full" onClick={continueAfterCreate}>Continuar</Button>
+                <Button className="w-full" onClick={continueAfterCreate}>Ir a mi {w.noun}</Button>
               </div>
             ) : (
               <div className="mt-6 space-y-3">
