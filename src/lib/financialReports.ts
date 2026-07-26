@@ -7,6 +7,9 @@ export const DELETE_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gat
 export const SHARE_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/share-financial-report";
 export const UNSHARE_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/unshare-financial-report";
 export const LIST_FINANCIAL_REPORT_SHARES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-financial-report-shares";
+export const LIST_SHARED_FINANCIAL_REPORTS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-shared-financial-reports";
+
+export type SharedReportSummary = { report_id: string; name: string };
 
 export type ReportSummary = { report_id: string; name: string; updated_at: string };
 
