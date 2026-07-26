@@ -4,7 +4,7 @@ import {
   LIST_FINANCIAL_RECORDS_URL,
   type FinancialMetricDef,
 } from "@/lib/financialData";
-import { periodKey, parsePeriodString } from "@/lib/metricPeriod";
+import { buildEntriesFromRecords } from "@/lib/metricPeriod";
 import type { MetricDef } from "@/lib/metrics";
 
 const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
@@ -69,23 +69,13 @@ export function useConnectedCompanyMetrics(companyId: string | null) {
         const mapped = defs.map(toMetricDef);
         setMetrics(mapped);
 
-        const nextEntries: Record<string, Record<string, number>> = {};
+        // Métricas no compartidas vienen ausentes del objeto (undefined), no
+        // null — buildEntriesFromRecords ya filtra ambos casos por igual.
+        let nextEntries: Record<string, Record<string, number>> = {};
         if (recordsRes.ok) {
           const data = await recordsRes.json();
           const records: Record<string, unknown>[] = Array.isArray(data?.records) ? data.records : [];
-          for (const def of mapped) {
-            if (def.metric_type !== "input" || !def.input_key) continue;
-            for (const rec of records) {
-              const v = rec[def.input_key];
-              const period = rec.period;
-              // Métricas no públicas vienen ausentes del objeto (undefined),
-              // no null — typeof number ya filtra ambos casos por igual.
-              if (typeof v !== "number" || typeof period !== "string") continue;
-              const { y, m } = parsePeriodString(period);
-              nextEntries[def.id] ??= {};
-              nextEntries[def.id][periodKey(m, y)] = v;
-            }
-          }
+          nextEntries = buildEntriesFromRecords(mapped, records);
         }
         setEntries(nextEntries);
       } catch {
