@@ -6,19 +6,21 @@ import { BackLink } from "@/components/BackLink";
 import { PageHeader } from "@/components/PageHeader";
 import { StageBadge } from "@/components/StageBadge";
 import { useConnectedCompanyMetrics } from "@/hooks/useConnectedCompanyMetrics";
+import { useSharedFinancialReports } from "@/hooks/useSharedFinancialReports";
 import { LoadingState } from "@/components/LoadingState";
-import { CalculatedMetricsGrid } from "@/components/metrics/CalculatedMetricsGrid";
+import { ReportSectionView } from "@/components/metrics/ReportSectionView";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { evalFormula, type MetricDef, type InputsMap } from "@/lib/metrics";
 import { periodKey, prevMonth } from "@/lib/metricPeriod";
-import { Info } from "lucide-react";
 
 const GET_COMPANY_PROFILE_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-company-profile";
-
-const CATEGORY_LABELS: Record<string, string> = {
-  revenue: "Revenue",
-  cash_efficiency: "Cash & Efficiency",
-};
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const now = new Date();
@@ -75,14 +77,12 @@ export default function InvestorCompany() {
   }, [company_id]);
 
   const metrics = useConnectedCompanyMetrics(company_id ?? null);
+  const shared = useSharedFinancialReports(company_id ?? null);
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
 
+  const metricById = useMemo(() => Object.fromEntries(metrics.metrics.map((m) => [m.id, m])), [metrics.metrics]);
   const allInputDefs = useMemo(() => metrics.metrics.filter((m) => m.metric_type === "input"), [metrics.metrics]);
-  const categoriesPresent = useMemo(
-    () => Array.from(new Set(metrics.metrics.map((m) => m.category))),
-    [metrics.metrics]
-  );
 
   const inputsForPeriod = (m: number, y: number): InputsMap => {
     const result: InputsMap = {};
@@ -194,85 +194,66 @@ export default function InvestorCompany() {
               </dl>
 
               <div className="mt-10 pt-8 border-t border-border">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-sm font-medium">Métricas</h2>
-                  <select
-                    value={`${period.year}-${period.month}`}
-                    onChange={(e) => {
-                      const [y, m] = e.target.value.split("-").map(Number);
-                      setPeriod({ month: m, year: y });
-                    }}
-                    className="border border-border rounded-md px-3 py-1.5 text-sm bg-background h-9"
-                  >
-                    {Array.from({ length: 12 }, (_, i) => {
-                      const d = new Date(now.getFullYear(), now.getMonth() - i);
-                      return (
-                        <option key={i} value={`${d.getFullYear()}-${d.getMonth() + 1}`}>
-                          {months[d.getMonth()]} {d.getFullYear()}
-                        </option>
-                      );
-                    })}
-                  </select>
+                <div className="flex items-center justify-between mb-6 gap-2">
+                  <h2 className="text-sm font-medium">Reporte</h2>
+                  <div className="flex items-center gap-2">
+                    {shared.reports.length > 1 && (
+                      <Select value={shared.selectedId ?? undefined} onValueChange={shared.setSelectedId}>
+                        <SelectTrigger className="w-56 h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {shared.reports.map((r) => (
+                            <SelectItem key={r.report_id} value={r.report_id}>{r.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {shared.reports.length > 0 && (
+                      <select
+                        value={`${period.year}-${period.month}`}
+                        onChange={(e) => {
+                          const [y, m] = e.target.value.split("-").map(Number);
+                          setPeriod({ month: m, year: y });
+                        }}
+                        className="border border-border rounded-md px-3 py-1.5 text-sm bg-background h-9"
+                      >
+                        {Array.from({ length: 12 }, (_, i) => {
+                          const d = new Date(now.getFullYear(), now.getMonth() - i);
+                          return (
+                            <option key={i} value={`${d.getFullYear()}-${d.getMonth() + 1}`}>
+                              {months[d.getMonth()]} {d.getFullYear()}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+                  </div>
                 </div>
 
-                {metrics.loading ? (
+                {shared.loadingReports ? (
                   <LoadingState />
-                ) : metrics.forbidden || metrics.metrics.length === 0 ? (
+                ) : shared.reports.length === 0 ? (
                   <div className="border border-border rounded-lg p-8 text-center text-sm text-muted-foreground bg-card">
-                    {profile.name} no compartió ninguna métrica pública todavía.
+                    {profile.name} todavía no te compartió ningún reporte.
+                  </div>
+                ) : shared.loadingDetail || metrics.loading ? (
+                  <LoadingState />
+                ) : !shared.sections || shared.sections.length === 0 ? (
+                  <div className="border border-border rounded-lg p-8 text-center text-sm text-muted-foreground bg-card">
+                    Este reporte todavía no tiene secciones.
                   </div>
                 ) : (
                   <div className="space-y-10">
-                    {categoriesPresent.map((cat) => {
-                      const inputDefs = metrics.metrics.filter((m) => m.metric_type === "input" && m.category === cat);
-                      const calcDefs = metrics.metrics.filter((m) => m.metric_type === "calculated" && m.category === cat);
-                      return (
-                        <div key={cat} className="space-y-6">
-                          <h3 className="text-xs font-medium text-foreground uppercase tracking-wide">
-                            {CATEGORY_LABELS[cat] ?? cat}
-                          </h3>
-
-                          {inputDefs.length > 0 && (
-                            <div className="border border-border rounded-lg bg-card overflow-hidden">
-                              <div className="divide-y divide-border">
-                                {inputDefs.map((m) => (
-                                  <div key={m.id} className="flex items-center justify-between px-5 py-3">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <span className="text-sm">{m.name}</span>
-                                      {m.unit && <span className="text-xs text-muted-foreground">({m.unit})</span>}
-                                      <button
-                                        onClick={() => setOpenInfo(m)}
-                                        className="text-muted-foreground hover:text-foreground"
-                                        aria-label={`Info sobre ${m.name}`}
-                                      >
-                                        <Info size={14} strokeWidth={1.5} />
-                                      </button>
-                                    </div>
-                                    <span className="text-sm font-medium">
-                                      {m.input_key && currentInputs[m.input_key] !== undefined
-                                        ? currentInputs[m.input_key].toLocaleString()
-                                        : "—"}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {calcDefs.length > 0 && (
-                            <CalculatedMetricsGrid
-                              metrics={calcDefs}
-                              currentInputs={currentInputs}
-                              prevInputs={prevInputs}
-                              historyInputs={historyInputs}
-                              inputDefs={allInputDefs}
-                              onInfo={setOpenInfo}
-                              readOnly
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
+                    {shared.sections.map((section, i) => (
+                      <ReportSectionView
+                        key={i}
+                        section={section}
+                        metricById={metricById}
+                        currentInputs={currentInputs}
+                        prevInputs={prevInputs}
+                        historyInputs={historyInputs}
+                        onInfo={setOpenInfo}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
