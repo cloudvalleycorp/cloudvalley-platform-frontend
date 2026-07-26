@@ -222,7 +222,7 @@ export default function AdminFinancialData() {
                       disabled={loadingSources || assigningId === c.company_id}
                       onCheckedChange={(checked) => assign(c.company_id, checked)}
                     />
-                    {loadingSources && <span className="text-xs text-muted-foreground">Cargando…</span>}
+                    {loadingSources && <LoadingState variant="inline" className="text-xs" />}
                   </div>
                 ),
               },

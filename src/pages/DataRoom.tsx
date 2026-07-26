@@ -372,7 +372,7 @@ export default function DataRoom() {
                                 (uploading || (isOther && !newName)) && "opacity-50 pointer-events-none"
                               )}>
                                 <Upload size={14} strokeWidth={1.5} />
-                                {uploading ? "Cargando..." : "Elegir archivo"}
+                                {uploading ? "Subiendo…" : "Elegir archivo"}
                                 <input
                                   type="file" className="hidden"
                                   onChange={(e) => e.target.files?.[0] && addAndUpload(cat.id, e.target.files[0])}

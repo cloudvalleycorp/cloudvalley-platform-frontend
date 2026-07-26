@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 export function StatusBadge({
   isActive,
@@ -10,15 +10,8 @@ export function StatusBadge({
   inactiveLabel?: string;
 }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border",
-        isActive
-          ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-          : "bg-red-100 text-red-800 border-red-200",
-      )}
-    >
+    <Badge variant={isActive ? "success" : "destructive"}>
       {isActive ? activeLabel : inactiveLabel}
-    </span>
+    </Badge>
   );
 }

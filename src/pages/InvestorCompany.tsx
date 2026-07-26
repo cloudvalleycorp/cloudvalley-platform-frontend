@@ -150,7 +150,7 @@ export default function InvestorCompany() {
             Esta empresa no forma parte del portfolio de {fund_name ?? "tu fondo"}.
           </div>
         ) : status === "loading" ? (
-          <div className="text-sm text-muted-foreground">Cargando…</div>
+          <LoadingState variant="inline" />
         ) : status === "forbidden" ? (
           <div className="text-sm text-muted-foreground">No tenés acceso a este perfil.</div>
         ) : status === "not_found" ? (

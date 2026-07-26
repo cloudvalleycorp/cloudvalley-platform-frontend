@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/BrandMark";
+import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
 import { DECIDE_INVITATION_URL } from "@/lib/membership";
 
@@ -124,9 +125,7 @@ export default function Invitations() {
       <BrandMark />
       <div className="w-full max-w-xl">
         {phase === "loading" ? (
-          <div className="text-center text-sm text-muted-foreground animate-fade-in">
-            Cargando invitación…
-          </div>
+          <LoadingState variant="inline" label="Cargando invitación…" className="text-center animate-fade-in" />
         ) : phase === "error" ? (
           <div className="animate-fade-in text-center space-y-5">
             <h1 className="text-3xl font-medium tracking-tight">No pudimos cargar esto</h1>

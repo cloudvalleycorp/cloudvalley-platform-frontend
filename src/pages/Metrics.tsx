@@ -550,7 +550,7 @@ export default function Metrics() {
         )}
 
         {loadingActive ? (
-          <div className="text-center py-16 text-sm text-muted-foreground">Cargando…</div>
+          <LoadingState variant="centered" className="py-16" />
         ) : view === "annual" ? (
           inputDefs.length === 0 && calcDefs.length === 0 ? (
             <div className="text-center py-16 text-sm text-muted-foreground">

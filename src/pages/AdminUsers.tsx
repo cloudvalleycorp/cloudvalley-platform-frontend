@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { FormDialog } from "@/components/FormDialog";
 import { StatusBadge } from "@/components/StatusBadge";
+import { RoleBadge } from "@/components/RoleBadge";
 import {
   Select,
   SelectContent,
@@ -44,19 +45,6 @@ type User = {
 
 type Company = { company_id: string; name: string };
 type Fund = { fund_id: string; name: string };
-
-function RoleBadge({ role }: { role: Role }) {
-  const styles: Record<Role, string> = {
-    admin: "bg-purple-100 text-purple-800 border-purple-200",
-    user: "bg-blue-100 text-blue-800 border-blue-200",
-    investor: "bg-amber-100 text-amber-800 border-amber-200",
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${styles[role]}`}>
-      {role}
-    </span>
-  );
-}
 
 export default function AdminUsers() {
   const { isAdmin, loading, email: currentEmail } = useAuth();

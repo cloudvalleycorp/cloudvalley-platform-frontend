@@ -1,12 +1,13 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Navigate, useNavigate, useLocation, Link } from "react-router-dom";
+import { useTheme } from "next-themes";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
 import { CompleteProfileScreen } from "@/components/CompleteProfileScreen";
-import { LogOut, Settings as SettingsIcon, UserCircle } from "lucide-react";
+import { LogOut, Settings as SettingsIcon, UserCircle, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -23,6 +24,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [profilePromptDismissed, setProfilePromptDismissed] = useState(false);
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mountedTheme, setMountedTheme] = useState(false);
+
+  useEffect(() => {
+    setMountedTheme(true);
+  }, []);
 
   useEffect(() => {
     // Los inversores viven en modo lectura dentro de /portfolio, pero igual
@@ -85,6 +92,19 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   Modo lectura
                 </span>
               )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                aria-label={mountedTheme && resolvedTheme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+              >
+                {mountedTheme && resolvedTheme === "dark" ? (
+                  <Sun size={16} strokeWidth={1.5} />
+                ) : (
+                  <Moon size={16} strokeWidth={1.5} />
+                )}
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
