@@ -468,7 +468,12 @@ function MetricRow({
     <tr className="border-t border-border/40">
       <td className="px-4 py-2 sticky left-0 bg-card">
         <div className="flex items-center gap-2">
-          <button onClick={() => onChart(def)} className="text-tertiary hover:text-foreground transition-all" title="Ver gráfico">
+          <button
+            onClick={() => onChart(def)}
+            className="p-1.5 -m-1.5 text-tertiary hover:text-foreground transition-all"
+            title="Ver gráfico"
+            aria-label={`Ver gráfico de ${def.name}`}
+          >
             <LineChartIcon size={14} strokeWidth={1.5} />
           </button>
           <button onClick={() => onInfo(def)} className="flex items-center gap-2 text-left hover:text-foreground">

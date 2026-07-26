@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Info, Upload, ChevronDown, Map } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -99,11 +99,15 @@ export default function Roadmap() {
     load();
   };
 
-  const filtered = activePillar === "all" ? tasks : tasks.filter((t) => t.pillar_id === activePillar);
-  const grouped = pillars.map((p) => ({
-    ...p,
-    items: filtered.filter((t) => t.pillar_id === p.id),
-  })).filter((p) => p.items.length > 0);
+  const grouped = useMemo(() => {
+    const filtered = activePillar === "all" ? tasks : tasks.filter((t) => t.pillar_id === activePillar);
+    return pillars
+      .map((p) => ({
+        ...p,
+        items: filtered.filter((t) => t.pillar_id === p.id),
+      }))
+      .filter((p) => p.items.length > 0);
+  }, [tasks, pillars, activePillar]);
 
   return (
     <AppLayout>
@@ -197,7 +201,11 @@ export default function Roadmap() {
                             <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && handleUpload(t, e.target.files[0])} />
                           </label>
                         )}
-                        <button onClick={() => setOpenTask(t)} className="text-muted-foreground hover:text-foreground transition-all">
+                        <button
+                          onClick={() => setOpenTask(t)}
+                          className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground transition-all"
+                          aria-label={`Info sobre ${t.title}`}
+                        >
                           <Info size={14} strokeWidth={1.5} />
                         </button>
                       </li>

@@ -6,7 +6,7 @@ export function LoadingCard({ lines = 3, className }: { lines?: number; classNam
     <div
       role="status"
       aria-label="Cargando…"
-      className={cn("border border-border rounded-lg bg-card p-6 space-y-4", className)}
+      className={cn("border border-border rounded-lg bg-card p-6 space-y-4 animate-fade-in", className)}
     >
       <Skeleton className="h-4 w-1/3" />
       <div className="space-y-2.5">

@@ -73,6 +73,7 @@ export function CompleteProfileScreen({ onSkip }: { onSkip: () => void }) {
           <div className="space-y-3">
             <Input
               placeholder="Tu nombre completo"
+              aria-label="Tu nombre completo"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               className="h-11"

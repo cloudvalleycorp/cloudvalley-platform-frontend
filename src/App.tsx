@@ -1,33 +1,40 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { LoadingState } from "@/components/LoadingState";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
 import Invitations from "./pages/Invitations";
 import Dashboard from "./pages/Dashboard";
-import Roadmap from "./pages/Roadmap";
-import Metrics from "./pages/Metrics";
-import Reporting from "./pages/Reporting";
-import ReportEditor from "./pages/ReportEditor";
-import DataRoom from "./pages/DataRoom";
 import Settings from "./pages/Settings";
 import Account from "./pages/Account";
-import Admin from "./pages/Admin";
-import AdminStartup from "./pages/AdminStartup";
-import AdminOrganizations from "./pages/AdminOrganizations";
-import AdminCompanies from "./pages/AdminCompanies";
-import AdminUsers from "./pages/AdminUsers";
-import AdminFunds from "./pages/AdminFunds";
-import AdminFinancialData from "./pages/AdminFinancialData";
-import PortfolioStartup from "./pages/PortfolioStartup";
-import InvestorPortfolio from "./pages/InvestorPortfolio";
-import InvestorCompany from "./pages/InvestorCompany";
 import Connections from "./pages/Connections";
 import NotFound from "./pages/NotFound";
+
+// Role-gated route groups — lazy-loaded so an admin never downloads the
+// founder/investor chunks (recharts included) and vice versa.
+const Roadmap = lazy(() => import("./pages/Roadmap"));
+const Metrics = lazy(() => import("./pages/Metrics"));
+const Reporting = lazy(() => import("./pages/Reporting"));
+const ReportEditor = lazy(() => import("./pages/ReportEditor"));
+const DataRoom = lazy(() => import("./pages/DataRoom"));
+
+const Admin = lazy(() => import("./pages/Admin"));
+const AdminStartup = lazy(() => import("./pages/AdminStartup"));
+const AdminOrganizations = lazy(() => import("./pages/AdminOrganizations"));
+const AdminCompanies = lazy(() => import("./pages/AdminCompanies"));
+const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const AdminFunds = lazy(() => import("./pages/AdminFunds"));
+const AdminFinancialData = lazy(() => import("./pages/AdminFinancialData"));
+
+const PortfolioStartup = lazy(() => import("./pages/PortfolioStartup"));
+const InvestorPortfolio = lazy(() => import("./pages/InvestorPortfolio"));
+const InvestorCompany = lazy(() => import("./pages/InvestorCompany"));
 
 const queryClient = new QueryClient();
 
@@ -38,6 +45,7 @@ const App = () => (
       <Analytics />
       <BrowserRouter>
         <AuthProvider>
+          <Suspense fallback={<LoadingState variant="fullScreen" />}>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
@@ -64,6 +72,7 @@ const App = () => (
             <Route path="/conexiones" element={<Connections />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

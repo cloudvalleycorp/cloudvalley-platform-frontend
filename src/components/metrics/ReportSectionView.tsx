@@ -79,7 +79,7 @@ function MetricBlockCard({
     <div className="border border-border rounded-lg bg-card p-5">
       <div className="flex items-start justify-between">
         <h4 className="text-sm font-medium text-muted-foreground">{def.name}</h4>
-        <button onClick={() => onInfo(def)} className="text-muted-foreground hover:text-foreground" aria-label={`Info sobre ${def.name}`}>
+        <button onClick={() => onInfo(def)} className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground" aria-label={`Info sobre ${def.name}`}>
           <Info size={14} strokeWidth={1.5} />
         </button>
       </div>

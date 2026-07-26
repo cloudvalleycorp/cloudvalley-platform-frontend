@@ -399,13 +399,13 @@ export default function ReportEditor() {
                         </div>
                         {is_owner && (
                           <div className="flex items-center gap-0.5 shrink-0">
-                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" disabled={si === 0} onClick={() => moveSection(si, -1)} title="Mover sección arriba">
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" disabled={si === 0} onClick={() => moveSection(si, -1)} title="Mover sección arriba" aria-label="Mover sección arriba">
                               <ChevronUp size={14} />
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" disabled={si === sections.length - 1} onClick={() => moveSection(si, 1)} title="Mover sección abajo">
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" disabled={si === sections.length - 1} onClick={() => moveSection(si, 1)} title="Mover sección abajo" aria-label="Mover sección abajo">
                               <ChevronDown size={14} />
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => removeSection(si)} title="Eliminar sección">
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => removeSection(si)} title="Eliminar sección" aria-label="Eliminar sección">
                               <X size={14} />
                             </Button>
                           </div>
@@ -427,13 +427,13 @@ export default function ReportEditor() {
                                 </span>
                                 {is_owner && (
                                   <div className="flex items-center gap-0.5 shrink-0">
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={bi === 0} onClick={() => moveBlock(si, bi, -1)} title="Mover arriba">
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={bi === 0} onClick={() => moveBlock(si, bi, -1)} title="Mover arriba" aria-label="Mover métrica arriba">
                                       <ChevronUp size={12} />
                                     </Button>
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={bi === section.blocks.length - 1} onClick={() => moveBlock(si, bi, 1)} title="Mover abajo">
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={bi === section.blocks.length - 1} onClick={() => moveBlock(si, bi, 1)} title="Mover abajo" aria-label="Mover métrica abajo">
                                       <ChevronDown size={12} />
                                     </Button>
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => removeBlock(si, bi)} title="Quitar">
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => removeBlock(si, bi)} title="Quitar" aria-label="Quitar métrica">
                                       <X size={12} />
                                     </Button>
                                   </div>

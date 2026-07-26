@@ -502,6 +502,7 @@ export function NoMembershipScreen({
                 )}
                 <Input
                   placeholder="Código de acceso"
+                  aria-label="Código de acceso"
                   value={joinCode}
                   onChange={(e) => { setJoinCode(extractJoinCode(e.target.value)); setJoinNote(null); }}
                   className="h-11 font-mono tracking-widest uppercase"
@@ -564,6 +565,7 @@ export function NoMembershipScreen({
               <div className="mt-6 space-y-3">
                 <Input
                   placeholder={`Nombre ${w.ofThe} ${w.noun}`}
+                  aria-label={`Nombre ${w.ofThe} ${w.noun}`}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="h-11"

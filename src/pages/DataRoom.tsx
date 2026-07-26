@@ -285,8 +285,9 @@ export default function DataRoom() {
                         {d.file_url && (
                           <button
                             onClick={() => openDoc(d)}
-                            className="text-muted-foreground hover:text-foreground transition-all"
+                            className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground transition-all"
                             title="Abrir"
+                            aria-label={`Abrir ${d.name}`}
                           >
                             <ExternalLink size={14} strokeWidth={1.5} />
                           </button>
@@ -316,8 +317,9 @@ export default function DataRoom() {
                         </label>
                         <button
                           onClick={() => setDeletingDoc(d)}
-                          className="text-muted-foreground hover:text-destructive transition-all"
+                          className="p-1.5 -m-1.5 text-muted-foreground hover:text-destructive transition-all"
                           title="Eliminar documento"
+                          aria-label={`Eliminar ${d.name}`}
                         >
                           <Trash2 size={14} strokeWidth={1.5} />
                         </button>
@@ -363,6 +365,7 @@ export default function DataRoom() {
                                   autoFocus value={newName}
                                   onChange={(e) => setNewName(e.target.value)}
                                   placeholder="Nombre del documento"
+                                  aria-label="Nombre del documento"
                                   className="flex-1 h-9"
                                 />
                               )}

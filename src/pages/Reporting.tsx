@@ -193,7 +193,15 @@ export default function Reporting() {
             {reports.map((r) => (
               <div
                 key={r.report_id}
+                role="button"
+                tabIndex={0}
                 onClick={() => navigate(`/reporting/${r.report_id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/reporting/${r.report_id}`);
+                  }
+                }}
                 className="border border-border rounded-lg p-4 bg-card flex items-center justify-between gap-4 cursor-pointer hover:border-foreground/30 transition-all"
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -235,6 +243,7 @@ export default function Reporting() {
                         e.stopPropagation();
                         setDeleteTarget(r);
                       }}
+                      aria-label={`Eliminar reporte ${r.name}`}
                     >
                       <Trash2 size={12} />
                     </Button>
