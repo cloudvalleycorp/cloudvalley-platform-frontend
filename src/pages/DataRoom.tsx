@@ -11,17 +11,8 @@ import { cn } from "@/lib/utils";
 import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { calculateReadinessScore } from "@/lib/score";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { SkeletonSection } from "@/components/SkeletonSection";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 
 const categories = [
   { id: "corporate", label: "Corporate" },
@@ -71,6 +62,8 @@ export default function DataRoom() {
   const [tasks, setTasks] = useState<RoadmapTask[]>([]);
   const [uploading, setUploading] = useState(false);
   const [deletingDoc, setDeletingDoc] = useState<Doc | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [loadingDocs, setLoadingDocs] = useState(true);
 
   const load = async () => {
     if (!startup) return;
@@ -99,6 +92,7 @@ export default function DataRoom() {
         startup_task_id: r.id,
       }));
     setTasks(t);
+    setLoadingDocs(false);
   };
 
   useEffect(() => { load(); }, [startup?.id]);
@@ -200,7 +194,7 @@ export default function DataRoom() {
 
   const deleteDoc = async (doc: Doc) => {
     if (!startup) return;
-    setDeletingDoc(null);
+    setDeleting(true);
     if (doc.file_url) {
       await supabase.storage.from("documents").remove([doc.file_url]);
     }
@@ -219,6 +213,8 @@ export default function DataRoom() {
       }
     }
     toast.success("Documento eliminado");
+    setDeleting(false);
+    setDeletingDoc(null);
     load();
   };
 
@@ -242,6 +238,9 @@ export default function DataRoom() {
           }
         />
 
+        {loadingDocs ? (
+          <SkeletonSection rows={6} columns={3} />
+        ) : (
         <div className="space-y-4">
           {categories.map((cat) => {
             const items = docs.filter((d) => d.category === cat.id);
@@ -397,27 +396,23 @@ export default function DataRoom() {
             );
           })}
         </div>
+        )}
       </div>
 
-      <AlertDialog open={!!deletingDoc} onOpenChange={(open) => !open && setDeletingDoc(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar documento?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Se eliminará <strong>{deletingDoc?.name}</strong> del Data Room. Esta acción no se puede deshacer.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeletingDoc(null)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deletingDoc && deleteDoc(deletingDoc)}
-            >
-              Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmationDialog
+        open={!!deletingDoc}
+        onOpenChange={(open) => !open && setDeletingDoc(null)}
+        title="Eliminar documento"
+        description={
+          <>
+            Se eliminará <strong>{deletingDoc?.name}</strong> del Data Room. Esta acción no se puede deshacer.
+          </>
+        }
+        confirmLabel="Eliminar documento"
+        variant="destructive"
+        busy={deleting}
+        onConfirm={() => deletingDoc && deleteDoc(deletingDoc)}
+      />
     </AppLayout>
   );
 }

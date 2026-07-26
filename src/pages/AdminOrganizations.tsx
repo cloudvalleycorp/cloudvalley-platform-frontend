@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
+import { DataTableToolbar } from "@/components/DataTableToolbar";
+import { SkeletonSection } from "@/components/SkeletonSection";
+import { EmptyState } from "@/components/EmptyState";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { InviteViewerDialog } from "@/components/InviteViewerDialog";
 import { FormDialog } from "@/components/FormDialog";
 import { toast } from "sonner";
-import { Plus, Trash2, Mail } from "lucide-react";
+import { Plus, Trash2, Mail, Building2 } from "lucide-react";
 
 type Org = {
   id: string;
@@ -77,7 +80,7 @@ export default function AdminOrganizations() {
   const { isAdmin, loading } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: orgs = [] } = useQuery({
+  const { data: orgs = [], isLoading: orgsLoading } = useQuery({
     queryKey: ["admin-organizations"],
     queryFn: async () => {
       const { data } = await supabase
@@ -88,6 +91,9 @@ export default function AdminOrganizations() {
     },
     enabled: isAdmin,
   });
+
+  const [search, setSearch] = useState("");
+  const visibleOrgs = orgs.filter((o) => o.name.toLowerCase().includes(search.trim().toLowerCase()));
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newOrg, setNewOrg] = useState({ name: "", type: "accelerator", website: "" });
@@ -178,18 +184,36 @@ export default function AdminOrganizations() {
           }
         />
 
-        <DataTable
-          columns={[
-            { header: "Nombre", cell: (o) => <span className="font-medium">{o.name}</span> },
-            { header: "Tipo", cell: (o) => <span className="text-muted-foreground capitalize">{o.type}</span> },
-            { header: "Website", cell: (o) => <span className="text-muted-foreground">{o.website ?? "—"}</span> },
-            { header: "Estado", cell: (o) => <span className="text-muted-foreground">{o.is_active ? "Activa" : "Inactiva"}</span> },
-          ]}
-          rows={orgs}
-          rowKey={(o) => o.id}
-          emptyLabel="No hay organizaciones todavía."
-          onRowClick={loadOrgDetails}
+        <DataTableToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar organización por nombre…"
         />
+
+        {orgsLoading ? (
+          <SkeletonSection rows={5} columns={4} />
+        ) : (
+          <DataTable
+            columns={[
+              { header: "Nombre", cell: (o) => <span className="font-medium">{o.name}</span> },
+              { header: "Tipo", cell: (o) => <span className="text-muted-foreground capitalize">{o.type}</span> },
+              { header: "Website", cell: (o) => <span className="text-muted-foreground">{o.website ?? "—"}</span> },
+              { header: "Estado", cell: (o) => <span className="text-muted-foreground">{o.is_active ? "Activa" : "Inactiva"}</span> },
+            ]}
+            rows={visibleOrgs}
+            rowKey={(o) => o.id}
+            emptyLabel={
+              <EmptyState
+                bordered={false}
+                icon={Building2}
+                title={search ? "Ninguna organización coincide con la búsqueda." : "No hay organizaciones todavía."}
+                description={search ? "Probá con otro nombre." : "Cuando se cree una organización, va a aparecer acá."}
+                action={{ label: "Nueva organización", onClick: () => setCreateOpen(true) }}
+              />
+            }
+            onRowClick={loadOrgDetails}
+          />
+        )}
       </div>
 
       <FormDialog

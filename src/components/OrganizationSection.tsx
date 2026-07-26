@@ -4,17 +4,8 @@ import { Users, UserMinus, LogOut, Bell, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/LoadingState";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   DECIDE_MEMBERSHIP_URL,
   LIST_MEMBERSHIP_REQUESTS_URL,
@@ -259,7 +250,7 @@ export function OrganizationSection() {
         </h3>
         {!loadingMembers && members.length > 0 && !members.some((m) => m.is_owner) && (
           <p className="text-xs text-muted-foreground mb-3 border border-border rounded-md px-3 py-2 bg-muted/40">
-            Todavía no hay ningún owner asignado — nadie puede aprobar solicitudes, invitar por
+            Todavía no hay ningún owner asignado. Nadie puede aprobar solicitudes, invitar por
             mail ni editar {role === "investor" ? "esta organización" : "esta startup"} hasta que
             un admin de CloudValley le asigne el rol a alguien.
           </p>
@@ -342,51 +333,36 @@ export function OrganizationSection() {
         )}
       </div>
 
-      <AlertDialog open={!!removeTarget} onOpenChange={(open) => !open && setRemoveTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {removeTarget?.user_id === user_id
-                ? `Salir de ${role === "investor" ? "la organización" : "la startup"}`
-                : "Quitar miembro"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {removeTarget?.user_id === user_id ? (
-                <>
-                  ¿Salir de {role === "investor" ? "esta organización" : "esta startup"}? Vas a perder acceso
-                  hasta que te unas de nuevo o crees una propia.
-                </>
-              ) : (
-                <>
-                  ¿Quitar a{" "}
-                  <span className="text-foreground font-medium">
-                    {removeTarget?.full_name || removeTarget?.email}
-                  </span>{" "}
-                  de la {role === "investor" ? "organización" : "startup"}? Podrá volver a solicitar unirse más
-                  tarde.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={removing}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={removing}
-              onClick={(e) => {
-                e.preventDefault();
-                removeMember();
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {removing
-                ? "Procesando…"
-                : removeTarget?.user_id === user_id
-                  ? "Salir"
-                  : "Quitar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmationDialog
+        open={!!removeTarget}
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
+        title={
+          removeTarget?.user_id === user_id
+            ? `Salir de ${role === "investor" ? "la organización" : "la startup"}`
+            : "Quitar miembro"
+        }
+        description={
+          removeTarget?.user_id === user_id ? (
+            <>
+              ¿Salir de {role === "investor" ? "esta organización" : "esta startup"}? Vas a perder acceso
+              hasta que te unas de nuevo o crees una propia.
+            </>
+          ) : (
+            <>
+              ¿Quitar a{" "}
+              <span className="text-foreground font-medium">
+                {removeTarget?.full_name || removeTarget?.email}
+              </span>{" "}
+              de la {role === "investor" ? "organización" : "startup"}? Podrá volver a solicitar unirse más
+              tarde.
+            </>
+          )
+        }
+        confirmLabel={removeTarget?.user_id === user_id ? "Salir" : "Quitar"}
+        variant="destructive"
+        busy={removing}
+        onConfirm={removeMember}
+      />
     </section>
   );
 }

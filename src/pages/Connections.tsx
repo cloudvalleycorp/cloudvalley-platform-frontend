@@ -4,21 +4,13 @@ import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershipScreen";
 import { LoadingState } from "@/components/LoadingState";
+import { EmptyState } from "@/components/EmptyState";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormDialog } from "@/components/FormDialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { entityWords, handleMembershipError } from "@/lib/membership";
 import {
@@ -257,9 +249,11 @@ export default function Connections() {
       <AppLayout>
         <div className="max-w-5xl mx-auto px-8 py-12">
           <NoMembershipBanner role={isFundSide ? "investor" : "user"} onOpen={() => setReopen(true)} />
-          <div className="border border-border rounded-lg p-12 text-center text-sm text-muted-foreground bg-card">
-            No hay conexiones para mostrar hasta que te unas a {isFundSide ? "un fondo" : "una startup"}.
-          </div>
+          <EmptyState
+            icon={isFundSide ? Building2 : Landmark}
+            title="No hay conexiones para mostrar."
+            description={`Vas a poder conectar con ${counterpartWords.noun}s apenas te unas a ${isFundSide ? "un fondo" : "una startup"}.`}
+          />
         </div>
       </AppLayout>
     );
@@ -345,7 +339,7 @@ export default function Connections() {
                         </div>
                         <div className="min-w-0">
                           <div className="font-medium truncate">{c.counterpart_name}</div>
-                          <div className="text-xs text-tertiary mt-1 inline-flex items-center gap-1">
+                          <div className="text-xs text-tertiary mt-1 flex items-center gap-1">
                             <Clock size={11} strokeWidth={1.5} /> Pendiente · {new Date(c.created_at).toLocaleDateString("es-AR")}
                           </div>
                         </div>
@@ -371,9 +365,17 @@ export default function Connections() {
                 Conexiones activas {active.length > 0 && `(${active.length})`}
               </h3>
               {active.length === 0 ? (
-                <div className="border border-border rounded-lg p-8 text-center text-sm text-muted-foreground bg-card">
-                  Todavía no hay conexiones activas con {counterpartWords.no} {counterpartWords.noun}.
-                </div>
+                <EmptyState
+                  icon={CounterpartIcon}
+                  title={`Todavía no hay conexiones activas con ${counterpartWords.no} ${counterpartWords.noun}.`}
+                  description={
+                    is_owner
+                      ? `Solicitá una conexión para empezar a compartir información con ${counterpartWords.a} ${counterpartWords.noun}.`
+                      : undefined
+                  }
+                  action={is_owner ? { label: "Solicitar conexión", onClick: () => setBrowseOpen(true) } : undefined}
+                  className="p-8"
+                />
               ) : (
                 <div className="space-y-2">
                   {active.map((c) => (
@@ -384,14 +386,14 @@ export default function Connections() {
                         </div>
                         <div className="min-w-0">
                           <div className="font-medium truncate">{c.counterpart_name}</div>
-                          <div className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1 flex-wrap">
+                          <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 flex-wrap">
                             <Check size={11} strokeWidth={1.5} /> Conectado
                             {c.responded_at && ` · ${new Date(c.responded_at).toLocaleDateString("es-AR")}`}
                             {c.batch && ` · ${c.batch}`}
                             {c.year && ` · ${c.year}`}
                           </div>
                           {!isFundSide && is_owner && (
-                            <div className="text-xs text-muted-foreground mt-1 inline-flex items-center gap-1">
+                            <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                               <Share2 size={11} strokeWidth={1.5} />
                               {reportNamesByConnection[c.connection_id]?.length
                                 ? `Reportes compartidos: ${reportNamesByConnection[c.connection_id].join(", ")}`
@@ -456,7 +458,7 @@ export default function Connections() {
           ) : targetsError ? (
             <div className="p-4 text-sm text-muted-foreground text-center">
               No pudimos cargar la lista de {counterpartWords.noun}s. Es un problema temporal de la plataforma, no
-              tuyo — contactá a CloudValley si se repite.
+              tuyo. Contactá a CloudValley si se repite.
             </div>
           ) : filteredTargets.length === 0 ? (
             <div className="p-4 text-sm text-muted-foreground text-center">Sin resultados.</div>
@@ -511,42 +513,31 @@ export default function Connections() {
         />
       </FormDialog>
 
-      <AlertDialog open={!!approveTarget} onOpenChange={(open) => !open && setApproveTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Aprobar conexión</AlertDialogTitle>
-            <AlertDialogDescription>
-              {isFundSide ? (
-                <>
-                  Al aprobar, vas a poder ver las métricas y documentos que{" "}
-                  <span className="text-foreground font-medium">{approveTarget?.counterpart_name}</span> marque como
-                  públicos. Todavía no hay ninguna pantalla para verlos, pero la conexión ya queda habilitada para
-                  cuando esté disponible.
-                </>
-              ) : (
-                <>
-                  Al aprobar,{" "}
-                  <span className="text-foreground font-medium">{approveTarget?.counterpart_name}</span> va a poder
-                  ver las métricas y documentos que marques como públicos. Todavía no hay ninguna pantalla para que
-                  los vean, pero la conexión ya queda habilitada para cuando esté disponible.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busyId === approveTarget?.connection_id}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={busyId === approveTarget?.connection_id}
-              onClick={(e) => {
-                e.preventDefault();
-                if (approveTarget) decide(approveTarget.connection_id, "approve", "Conexión aprobada");
-              }}
-            >
-              {busyId === approveTarget?.connection_id ? "Procesando…" : "Aprobar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmationDialog
+        open={!!approveTarget}
+        onOpenChange={(open) => !open && setApproveTarget(null)}
+        title="Aprobar conexión"
+        description={
+          isFundSide ? (
+            <>
+              Al aprobar, vas a poder ver las métricas y documentos que{" "}
+              <span className="text-foreground font-medium">{approveTarget?.counterpart_name}</span> marque como
+              públicos. Todavía no hay ninguna pantalla para verlos, pero la conexión ya queda habilitada para
+              cuando esté disponible.
+            </>
+          ) : (
+            <>
+              Al aprobar,{" "}
+              <span className="text-foreground font-medium">{approveTarget?.counterpart_name}</span> va a poder
+              ver las métricas y documentos que marques como públicos. Todavía no hay ninguna pantalla para que
+              los vean, pero la conexión ya queda habilitada para cuando esté disponible.
+            </>
+          )
+        }
+        confirmLabel="Aprobar"
+        busy={busyId === approveTarget?.connection_id}
+        onConfirm={() => approveTarget && decide(approveTarget.connection_id, "approve", "Conexión aprobada")}
+      />
 
       <FormDialog
         open={!!editingBatch}
@@ -577,32 +568,23 @@ export default function Connections() {
         </div>
       </FormDialog>
 
-      <AlertDialog open={!!disconnectTarget} onOpenChange={(open) => !open && setDisconnectTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar conexión</AlertDialogTitle>
-            <AlertDialogDescription>
-              ¿Eliminar la conexión con{" "}
-              <span className="text-foreground font-medium">{disconnectTarget?.counterpart_name}</span>? Esta acción
-              no se puede deshacer; si quieren reconectar, alguna de las dos partes deberá enviar una nueva
-              solicitud.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busyId === disconnectTarget?.connection_id}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={busyId === disconnectTarget?.connection_id}
-              onClick={(e) => {
-                e.preventDefault();
-                if (disconnectTarget) decide(disconnectTarget.connection_id, "disconnect", "Conexión eliminada");
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {busyId === disconnectTarget?.connection_id ? "Procesando…" : "Eliminar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmationDialog
+        open={!!disconnectTarget}
+        onOpenChange={(open) => !open && setDisconnectTarget(null)}
+        title="Eliminar conexión"
+        description={
+          <>
+            ¿Eliminar la conexión con{" "}
+            <span className="text-foreground font-medium">{disconnectTarget?.counterpart_name}</span>? Esta acción
+            no se puede deshacer; si quieren reconectar, alguna de las dos partes deberá enviar una nueva
+            solicitud.
+          </>
+        }
+        confirmLabel="Eliminar conexión"
+        variant="destructive"
+        busy={busyId === disconnectTarget?.connection_id}
+        onConfirm={() => disconnectTarget && decide(disconnectTarget.connection_id, "disconnect", "Conexión eliminada")}
+      />
     </AppLayout>
   );
 }

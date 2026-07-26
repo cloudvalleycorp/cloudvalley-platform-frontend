@@ -5,6 +5,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
 import { LoadingState } from "@/components/LoadingState";
+import { EmptyState } from "@/components/EmptyState";
 import { ImportLogTable } from "@/components/financial/ImportLogTable";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,7 @@ import {
   type FinancialRecordRow,
 } from "@/lib/financialData";
 import { toast } from "sonner";
-import { CheckCircle2, Clock, AlertCircle, History } from "lucide-react";
+import { CheckCircle2, Clock, AlertCircle, History, Building2 } from "lucide-react";
 
 const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
 
@@ -238,7 +239,9 @@ export default function AdminFinancialData() {
             ]}
             rows={companyFilter === "all" ? companies : companies.filter((c) => c.company_id === companyFilter)}
             rowKey={(c) => c.company_id}
-            emptyLabel="No hay empresas todavía."
+            emptyLabel={
+              <EmptyState bordered={false} icon={Building2} title="No hay empresas todavía." />
+            }
           />
         )}
       </div>

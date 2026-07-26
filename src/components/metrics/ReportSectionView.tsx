@@ -92,7 +92,7 @@ function MetricBlockCard({
           <>
             <div className="text-3xl font-medium tracking-tight">{formatMetricValue(current, def.unit)}</div>
             {change != null && (
-              <div className="text-xs text-muted-foreground mt-1 inline-flex items-center gap-1">
+              <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                 {change >= 0 ? <ArrowUp size={12} strokeWidth={1.5} /> : <ArrowDown size={12} strokeWidth={1.5} />}
                 {Math.abs(change).toFixed(1)}% vs mes anterior
               </div>

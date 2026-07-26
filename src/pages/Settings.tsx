@@ -9,6 +9,7 @@ import { Eye, Lock, ShieldCheck } from "lucide-react";
 import { IntegrationsSection } from "@/components/IntegrationsSection";
 import { MyOrganization } from "@/components/MyOrganization";
 import { OrganizationSection } from "@/components/OrganizationSection";
+import { SectionCard } from "@/components/SectionCard";
 
 export default function Settings() {
   const { startup } = useStartup();
@@ -89,14 +90,15 @@ export default function Settings() {
         {role === "user" && (
           <>
             {/* Privacidad */}
-            <section className="border border-border rounded-lg p-6 bg-card space-y-4">
-              <div className="flex items-center gap-2">
-                <ShieldCheck size={14} strokeWidth={1.5} className="text-muted-foreground" />
-                <h2 className="text-sm font-medium text-foreground">Privacidad</h2>
-              </div>
-              <p className="text-xs text-muted-foreground -mt-2">
-                Controlá qué métricas y documentos pueden ver tus organizaciones.
-              </p>
+            <SectionCard
+              title={
+                <span className="inline-flex items-center gap-2">
+                  <ShieldCheck size={14} strokeWidth={1.5} className="text-muted-foreground" />
+                  Privacidad
+                </span>
+              }
+              description="Controlá qué métricas y documentos pueden ver tus organizaciones."
+            >
               <div className="grid grid-cols-2 gap-3">
                 <Link
                   to="/metrics"
@@ -141,7 +143,7 @@ export default function Settings() {
                   </div>
                 </Link>
               </div>
-            </section>
+            </SectionCard>
 
             <IntegrationsSection />
           </>

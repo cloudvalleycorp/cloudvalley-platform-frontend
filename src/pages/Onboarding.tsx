@@ -194,7 +194,7 @@ export default function Onboarding() {
           <div className="animate-fade-in space-y-6">
             <h2 className="text-2xl font-medium tracking-tight">Contanos quién sos</h2>
             <p className="text-sm text-muted-foreground -mt-4">
-              Tu nombre y el de tu startup. Ambos son obligatorios — así te identificamos en la plataforma.
+              Tu nombre y el de tu startup. Ambos son obligatorios: así te identificamos en la plataforma.
             </p>
             <div className="space-y-3">
               <Input

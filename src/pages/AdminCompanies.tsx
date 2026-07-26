@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
+import { DataTableToolbar } from "@/components/DataTableToolbar";
+import { SkeletonSection } from "@/components/SkeletonSection";
+import { EmptyState } from "@/components/EmptyState";
 import { MembersCell } from "@/components/admin/MembersCell";
 import { TablePagination } from "@/components/admin/TablePagination";
 import { useTablePage } from "@/hooks/useTablePage";
@@ -22,7 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Building2 } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
 
 const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
@@ -50,7 +53,7 @@ export default function AdminCompanies() {
   const { isAdmin, loading } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: companies = [] } = useQuery({
+  const { data: companies = [], isLoading: companiesLoading } = useQuery({
     queryKey: ["admin-companies"],
     queryFn: async () => {
       const res = await fetch(LIST_COMPANIES_URL, { credentials: "include" });
@@ -184,60 +187,70 @@ export default function AdminCompanies() {
           }
         />
 
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} strokeWidth={1.5} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar empresa por nombre…"
-              className="pl-9 h-9"
-            />
-          </div>
-          <Select value={statusFilter} onValueChange={(v: StatusFilter) => setStatusFilter(v)}>
-            <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              <SelectItem value="active">Activas</SelectItem>
-              <SelectItem value="inactive">Inactivas</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <DataTable
-          columns={[
-            { header: "Nombre", cell: (c) => <span className="font-medium">{c.name}</span> },
-            {
-              header: "Usuarios",
-              cell: (c) => <MembersCell members={users.filter((u) => u.company_id === c.company_id)} />,
-            },
-            {
-              header: "Estado",
-              cell: (c) => <StatusBadge isActive={c.is_active} activeLabel="Activa" inactiveLabel="Inactiva" />,
-            },
-            {
-              header: "Creada",
-              cell: (c) => (
-                <span className="text-xs text-muted-foreground">
-                  {c.created_at ? new Date(c.created_at).toLocaleDateString("es-AR") : "—"}
-                </span>
-              ),
-            },
-            {
-              header: "Acciones",
-              align: "right",
-              cell: (c) => (
-                <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>
-                  <Pencil size={12} className="mr-1" /> Editar
-                </Button>
-              ),
-            },
-          ]}
-          rows={pagedCompanies}
-          rowKey={(c) => c.company_id}
-          emptyLabel="No hay empresas todavía."
+        <DataTableToolbar
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar empresa por nombre…"
+          filters={
+            <Select value={statusFilter} onValueChange={(v: StatusFilter) => setStatusFilter(v)}>
+              <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="active">Activas</SelectItem>
+                <SelectItem value="inactive">Inactivas</SelectItem>
+              </SelectContent>
+            </Select>
+          }
         />
-        <TablePagination page={page} totalPages={totalPages} totalCount={filteredCount} onPageChange={setPage} />
+
+        {companiesLoading ? (
+          <SkeletonSection rows={5} columns={5} />
+        ) : (
+          <>
+            <DataTable
+              columns={[
+                { header: "Nombre", cell: (c) => <span className="font-medium">{c.name}</span> },
+                {
+                  header: "Usuarios",
+                  cell: (c) => <MembersCell members={users.filter((u) => u.company_id === c.company_id)} />,
+                },
+                {
+                  header: "Estado",
+                  cell: (c) => <StatusBadge isActive={c.is_active} activeLabel="Activa" inactiveLabel="Inactiva" />,
+                },
+                {
+                  header: "Creada",
+                  cell: (c) => (
+                    <span className="text-xs text-muted-foreground">
+                      {c.created_at ? new Date(c.created_at).toLocaleDateString("es-AR") : "—"}
+                    </span>
+                  ),
+                },
+                {
+                  header: "Acciones",
+                  align: "right",
+                  cell: (c) => (
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>
+                      <Pencil size={12} className="mr-1" /> Editar
+                    </Button>
+                  ),
+                },
+              ]}
+              rows={pagedCompanies}
+              rowKey={(c) => c.company_id}
+              emptyLabel={
+                <EmptyState
+                  bordered={false}
+                  icon={Building2}
+                  title="No hay empresas todavía."
+                  description="Cuando se cree una empresa en el ecosistema, va a aparecer acá."
+                  action={{ label: "Nueva empresa", onClick: () => setCreateOpen(true) }}
+                />
+              }
+            />
+            <TablePagination page={page} totalPages={totalPages} totalCount={filteredCount} onPageChange={setPage} />
+          </>
+        )}
       </div>
 
       <FormDialog

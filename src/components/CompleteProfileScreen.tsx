@@ -24,7 +24,7 @@ export function CompleteProfileScreen({ onSkip }: { onSkip: () => void }) {
     // be present by the time someone can reach "Continuar"; the check is a
     // safeguard against a race, not the expected path.
     if (!user_id) {
-      toast.error("Todavía no se cargó tu cuenta — esperá un segundo y volvé a intentar.");
+      toast.error("Todavía no se cargó tu cuenta. Esperá un segundo y volvé a intentar.");
       return;
     }
     setSaving(true);

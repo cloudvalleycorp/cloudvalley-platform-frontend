@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormDialog } from "@/components/FormDialog";
-import { LoadingState } from "@/components/LoadingState";
+import { SkeletonSection } from "@/components/SkeletonSection";
 import { toast } from "sonner";
 import { CheckCircle2, AlertCircle, RefreshCw, Plug } from "lucide-react";
 
@@ -165,6 +165,9 @@ export function IntegrationsSection() {
         </p>
       </div>
 
+      {loading ? (
+        <SkeletonSection rows={3} columns={2} />
+      ) : (
       <div className="space-y-3">
         {PROVIDERS.map((p) => {
           const item = byProvider(p.id);
@@ -231,8 +234,8 @@ export function IntegrationsSection() {
             </div>
           );
         })}
-        {loading && <LoadingState variant="inline" className="text-xs" />}
       </div>
+      )}
 
       <FormDialog
         open={!!dialogProvider}
