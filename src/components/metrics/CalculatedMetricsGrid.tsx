@@ -75,7 +75,8 @@ export function CalculatedMetricsGrid({
                 </div>
                 <button
                   onClick={() => onInfo(m)}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"
+                  aria-label={`Info sobre ${m.name}`}
                 >
                   <Info size={14} strokeWidth={1.5} />
                 </button>

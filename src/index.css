@@ -30,7 +30,7 @@
     --muted: 60 9% 98%;
     --muted-foreground: 0 0% 42%;     /* #6B6B6B */
 
-    --tertiary: 0 0% 67%;             /* #ABABAB tertiary text */
+    --tertiary: 0 0% 56%;              /* WCAG: ~3.2:1 vs background */
 
     --accent: 60 9% 96%;
     --accent-foreground: 0 0% 4%;
@@ -42,7 +42,7 @@
     --success-foreground: 0 0% 100%;
 
     --warning: 38 92% 42%;
-    --warning-foreground: 0 0% 100%;
+    --warning-foreground: 0 0% 4%;    /* WCAG: dark text, ~6.8:1 vs warning */
 
     --border: 60 6% 91%;              /* #E8E8E6 subtle border */
     --input: 60 6% 91%;
@@ -83,7 +83,7 @@
     --muted: 0 0% 14%;
     --muted-foreground: 0 0% 63%;
 
-    --tertiary: 0 0% 45%;
+    --tertiary: 0 0% 50%;              /* WCAG: ~4.5:1 vs background */
 
     --accent: 0 0% 16%;
     --accent-foreground: 0 0% 95%;
@@ -115,6 +115,10 @@
 @layer base {
   * {
     @apply border-border transition-colors duration-200;
+  }
+
+  button {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md;
   }
 
   html {

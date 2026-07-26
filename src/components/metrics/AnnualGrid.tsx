@@ -223,7 +223,8 @@ export function AnnualGrid({
                         )}
                         <button
                           onClick={() => onInfo(def)}
-                          className="text-muted-foreground hover:text-foreground"
+                          className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"
+                          aria-label={`Info sobre ${def.name}`}
                         >
                           <Info size={12} strokeWidth={1.5} />
                         </button>
@@ -262,11 +263,15 @@ export function AnnualGrid({
                                 display === "—" && "text-tertiary"
                               )}
                               title={src ? `Sincronizado desde ${src}` : undefined}
+                              aria-label={isPending ? `${display}, cambio sin guardar` : undefined}
                             >
                               {src && (
                                 <Zap size={9} strokeWidth={2} className="text-foreground/70 fill-foreground/70" />
                               )}
                               {display}
+                              {isPending && (
+                                <span className="h-1 w-1 rounded-full bg-foreground" aria-hidden="true" />
+                              )}
                             </button>
                           )}
                         </td>
@@ -295,7 +300,8 @@ export function AnnualGrid({
                         <span className="text-sm">{def.name}</span>
                         <button
                           onClick={() => onInfo(def)}
-                          className="text-muted-foreground hover:text-foreground"
+                          className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"
+                          aria-label={`Info sobre ${def.name}`}
                         >
                           <Info size={12} strokeWidth={1.5} />
                         </button>

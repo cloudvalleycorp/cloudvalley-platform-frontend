@@ -300,6 +300,7 @@ export function OrganizationSection() {
                       disabled={ownerBusyId === m.user_id}
                       onClick={() => toggleOwner(m, !m.is_owner)}
                       title={m.is_owner ? "Quitar owner" : "Hacer owner"}
+                      aria-label={m.is_owner ? "Quitar owner" : "Hacer owner"}
                     >
                       <Crown size={14} strokeWidth={1.5} fill={m.is_owner ? "currentColor" : "none"} />
                     </Button>
@@ -311,6 +312,7 @@ export function OrganizationSection() {
                       className="shrink-0 text-muted-foreground hover:text-destructive"
                       onClick={() => setRemoveTarget(m)}
                       title={`Quitar de la ${role === "investor" ? "organización" : "startup"}`}
+                      aria-label={`Quitar a ${m.full_name || m.email} de la ${role === "investor" ? "organización" : "startup"}`}
                     >
                       <UserMinus size={14} strokeWidth={1.5} />
                     </Button>
@@ -322,6 +324,7 @@ export function OrganizationSection() {
                       className="shrink-0 text-muted-foreground hover:text-destructive"
                       onClick={() => setRemoveTarget(m)}
                       title={`Salir de ${role === "investor" ? "la organización" : "la startup"}`}
+                      aria-label={`Salir de ${role === "investor" ? "la organización" : "la startup"}`}
                     >
                       <LogOut size={14} strokeWidth={1.5} />
                     </Button>

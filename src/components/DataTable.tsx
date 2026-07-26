@@ -33,6 +33,18 @@ export function DataTable<T>({
               <th
                 key={i}
                 onClick={col.onHeaderClick}
+                tabIndex={col.onHeaderClick ? 0 : undefined}
+                role={col.onHeaderClick ? "button" : undefined}
+                onKeyDown={
+                  col.onHeaderClick
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          col.onHeaderClick!();
+                        }
+                      }
+                    : undefined
+                }
                 className={cn(
                   "font-normal px-5 py-3",
                   col.align === "right" ? "text-right" : "text-left",
@@ -53,6 +65,18 @@ export function DataTable<T>({
                 onRowClick && "cursor-pointer",
               )}
               onClick={() => onRowClick?.(row)}
+              tabIndex={onRowClick ? 0 : undefined}
+              role={onRowClick ? "button" : undefined}
+              onKeyDown={
+                onRowClick
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onRowClick(row);
+                      }
+                    }
+                  : undefined
+              }
             >
               {columns.map((col, i) => (
                 <td

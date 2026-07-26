@@ -447,6 +447,7 @@ export default function Connections() {
             value={orgSearch}
             onChange={(e) => setOrgSearch(e.target.value)}
             placeholder={`Buscar ${counterpartWords.noun}…`}
+            aria-label={`Buscar ${counterpartWords.noun}`}
             className="pl-9"
           />
         </div>

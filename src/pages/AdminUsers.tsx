@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
@@ -66,12 +66,16 @@ export default function AdminUsers() {
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | Role>("all");
-  const visibleUsers = users.filter((u) => {
-    if (roleFilter !== "all" && u.role !== roleFilter) return false;
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return (u.full_name ?? "").toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-  });
+  const visibleUsers = useMemo(
+    () =>
+      users.filter((u) => {
+        if (roleFilter !== "all" && u.role !== roleFilter) return false;
+        const q = search.trim().toLowerCase();
+        if (!q) return true;
+        return (u.full_name ?? "").toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+      }),
+    [users, search, roleFilter]
+  );
 
   const { data: companies = [] } = useQuery({
     queryKey: ["admin-companies"],

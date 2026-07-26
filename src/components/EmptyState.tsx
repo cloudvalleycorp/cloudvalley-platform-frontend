@@ -28,7 +28,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "p-12 text-center",
+        "p-12 text-center animate-fade-in",
         bordered && "border border-border rounded-lg bg-card",
         className,
       )}

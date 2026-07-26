@@ -456,6 +456,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
               <Input
                 type="email"
                 placeholder="email@ejemplo.com"
+                aria-label="Email de la persona a invitar"
                 value={inviteEmail}
                 onChange={(e) => {
                   setInviteEmail(e.target.value);

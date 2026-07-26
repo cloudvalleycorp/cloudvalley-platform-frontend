@@ -26,6 +26,7 @@ export function TablePagination({
             size="sm"
             disabled={page <= 1}
             onClick={() => onPageChange(page - 1)}
+            aria-label="Página anterior"
           >
             <ChevronLeft size={14} strokeWidth={1.5} />
           </Button>
@@ -34,6 +35,7 @@ export function TablePagination({
             size="sm"
             disabled={page >= totalPages}
             onClick={() => onPageChange(page + 1)}
+            aria-label="Página siguiente"
           >
             <ChevronRight size={14} strokeWidth={1.5} />
           </Button>

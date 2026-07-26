@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
@@ -93,7 +93,10 @@ export default function AdminOrganizations() {
   });
 
   const [search, setSearch] = useState("");
-  const visibleOrgs = orgs.filter((o) => o.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const visibleOrgs = useMemo(
+    () => orgs.filter((o) => o.name.toLowerCase().includes(search.trim().toLowerCase())),
+    [orgs, search]
+  );
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newOrg, setNewOrg] = useState({ name: "", type: "accelerator", website: "" });
@@ -108,6 +111,7 @@ export default function AdminOrganizations() {
   const members = details?.members ?? [];
   const linked = details?.linked ?? [];
   const invites = details?.invites ?? [];
+  const pendingInvites = useMemo(() => invites.filter((i) => i.status === "pending"), [invites]);
 
   const loadOrgDetails = (org: Org) => setSelectedOrg(org);
 
@@ -272,7 +276,12 @@ export default function AdminOrganizations() {
                         <div className="font-medium">{m.name || m.email || "—"}</div>
                         <div className="text-xs text-muted-foreground">{m.email}</div>
                       </div>
-                      <Button size="sm" variant="ghost" onClick={() => removeMember(m.user_id)}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => removeMember(m.user_id)}
+                        aria-label={`Quitar viewer ${m.name || m.email || ""}`}
+                      >
                         <Trash2 size={12} />
                       </Button>
                     </div>
@@ -281,11 +290,11 @@ export default function AdminOrganizations() {
               </section>
 
               {/* Invitaciones pendientes */}
-              {invites.filter((i) => i.status === "pending").length > 0 && (
+              {pendingInvites.length > 0 && (
                 <section>
                   <h3 className="text-sm font-medium mb-3">Invitaciones pendientes</h3>
                   <div className="border border-border rounded-lg divide-y divide-border">
-                    {invites.filter((i) => i.status === "pending").map((inv) => (
+                    {pendingInvites.map((inv) => (
                       <div key={inv.id} className="flex items-center justify-between px-4 py-3 text-sm">
                         <div>
                           <div>{inv.email}</div>

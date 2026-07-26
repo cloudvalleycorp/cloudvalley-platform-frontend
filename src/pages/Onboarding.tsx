@@ -199,6 +199,7 @@ export default function Onboarding() {
             <div className="space-y-3">
               <Input
                 placeholder="Tu nombre completo"
+                aria-label="Tu nombre completo"
                 value={founderName}
                 onChange={(e) => setFounderName(e.target.value)}
                 className="h-11"
@@ -210,12 +211,14 @@ export default function Onboarding() {
               </div>
               <Input
                 placeholder="Nombre de la startup"
+                aria-label="Nombre de la startup"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="h-11"
               />
               <Input
                 placeholder="Industria (ej. Fintech, HealthTech)"
+                aria-label="Industria"
                 value={industry}
                 onChange={(e) => setIndustry(e.target.value)}
                 className="h-11"
@@ -278,6 +281,7 @@ export default function Onboarding() {
                   type="number"
                   min="1"
                   placeholder="Nº de cohort"
+                  aria-label="Número de cohort"
                   value={cohortNumber}
                   onChange={(e) => setCohortNumber(e.target.value)}
                   className="h-11"
@@ -287,6 +291,7 @@ export default function Onboarding() {
                   min="2000"
                   max="2100"
                   placeholder="Año del programa"
+                  aria-label="Año del programa"
                   value={cohortYear}
                   onChange={(e) => setCohortYear(e.target.value)}
                   className="h-11"
@@ -295,6 +300,7 @@ export default function Onboarding() {
               <Input
                 type="number"
                 placeholder="Objetivo de ronda en USD (opcional)"
+                aria-label="Objetivo de ronda en USD"
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
                 className="h-11"
@@ -500,6 +506,7 @@ function CodeInvite({ code }: { code: string }) {
               <Input
                 type="email"
                 placeholder="tu@email.com"
+                aria-label="Tu email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="h-11"
@@ -571,6 +578,7 @@ function TokenInvite({ token }: { token: string }) {
             <Input
               type="email"
               placeholder="tu@email.com"
+              aria-label="Tu email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="h-11"
@@ -698,6 +706,7 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
                 <div className="space-y-3">
                   <Input
                     placeholder="Tu nombre completo"
+                aria-label="Tu nombre completo"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="h-11"
@@ -705,6 +714,7 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
                   <Input
                     type="email"
                     placeholder="tu@email.com"
+                aria-label="Tu email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="h-11"
@@ -762,6 +772,7 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
                 </p>
                 <Input
                   placeholder="Código de acceso"
+                  aria-label="Código de acceso"
                   value={joinCode}
                   onChange={(e) => setJoinCode(extractJoinCode(e.target.value))}
                   className="h-11 tracking-widest font-mono"
@@ -779,6 +790,7 @@ function PublicInvite({ role }: { role: "user" | "investor" }) {
                 </p>
                 <Input
                   placeholder={`Nombre ${w.ofThe} ${w.noun}`}
+                  aria-label={`Nombre ${w.ofThe} ${w.noun}`}
                   value={entityName}
                   onChange={(e) => setEntityName(e.target.value)}
                   className="h-11"

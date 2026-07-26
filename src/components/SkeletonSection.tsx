@@ -14,7 +14,7 @@ export function SkeletonSection({
     <div
       role="status"
       aria-label="Cargando…"
-      className={cn("border border-border rounded-lg bg-card overflow-hidden", className)}
+      className={cn("border border-border rounded-lg bg-card overflow-hidden animate-fade-in", className)}
     >
       {Array.from({ length: rows }, (_, row) => (
         <div

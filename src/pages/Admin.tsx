@@ -168,6 +168,32 @@ export default function Admin() {
   );
 }
 
+function InviteRow({
+  role,
+  label,
+  copied,
+  onCopy,
+}: {
+  role: "user" | "investor";
+  label: string;
+  copied: "user" | "investor" | null;
+  onCopy: (role: "user" | "investor") => void;
+}) {
+  const url = `${window.location.origin}/onboarding?role=${role}`;
+  return (
+    <div className="flex items-center gap-3 py-2">
+      <Button variant="outline" size="sm" onClick={() => onCopy(role)}>
+        {copied === role ? (
+          <><Check size={14} strokeWidth={1.5} className="mr-1.5" /> Copiado</>
+        ) : (
+          <><Copy size={14} strokeWidth={1.5} className="mr-1.5" /> {label}</>
+        )}
+      </Button>
+      <code className="text-xs text-muted-foreground truncate">{url}</code>
+    </div>
+  );
+}
+
 function InviteSection() {
   const [copied, setCopied] = useState<"user" | "investor" | null>(null);
 
@@ -183,22 +209,6 @@ function InviteSection() {
     }
   };
 
-  const Row = ({ role, label }: { role: "user" | "investor"; label: string }) => {
-    const url = `${window.location.origin}/onboarding?role=${role}`;
-    return (
-      <div className="flex items-center gap-3 py-2">
-        <Button variant="outline" size="sm" onClick={() => copy(role)}>
-          {copied === role ? (
-            <><Check size={14} strokeWidth={1.5} className="mr-1.5" /> Copiado</>
-          ) : (
-            <><Copy size={14} strokeWidth={1.5} className="mr-1.5" /> {label}</>
-          )}
-        </Button>
-        <code className="text-xs text-muted-foreground truncate">{url}</code>
-      </div>
-    );
-  };
-
   return (
     <div className="mb-8 border border-border rounded-lg p-5 bg-card">
       <h2 className="text-sm font-medium text-foreground">Invitar</h2>
@@ -206,8 +216,8 @@ function InviteSection() {
         Copiá el link y compartilo por fuera (mail, WhatsApp, etc).
       </p>
       <div className="mt-3 divide-y divide-border/50">
-        <Row role="user" label="Invitar usuario" />
-        <Row role="investor" label="Invitar inversor" />
+        <InviteRow role="user" label="Invitar usuario" copied={copied} onCopy={copy} />
+        <InviteRow role="investor" label="Invitar inversor" copied={copied} onCopy={copy} />
       </div>
     </div>
   );
