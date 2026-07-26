@@ -303,14 +303,14 @@ export default function AdminUsers() {
           title="Usuarios"
           subtitle="Gestión de usuarios y roles."
           action={
-            <div className="flex gap-2">
+            <>
               <Button variant="outline" onClick={openInvite}>
                 <Link2 size={14} className="mr-1" /> Generar link de invitación
               </Button>
               <Button onClick={openCreate}>
                 <Plus size={14} className="mr-1" /> Nuevo usuario
               </Button>
-            </div>
+            </>
           }
         />
 

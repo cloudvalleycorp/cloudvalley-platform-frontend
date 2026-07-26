@@ -17,6 +17,8 @@ import {
 } from "@/lib/membership";
 import { GET_SESSION_URL } from "@/contexts/AuthContext";
 import { BrandMark } from "@/components/BrandMark";
+import { EmptyState } from "@/components/EmptyState";
+import { Link2Off } from "lucide-react";
 
 const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
 
@@ -65,13 +67,13 @@ export default function Onboarding() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-6">
         <BrandMark />
-        <div className="max-w-sm text-center space-y-5">
-          <div className="text-sm text-muted-foreground">
-            Este link de invitación no es válido o ya venció.
-          </div>
-          <Button variant="outline" onClick={() => (window.location.href = "/login")}>
-            Ir al inicio
-          </Button>
+        <div className="max-w-sm">
+          <EmptyState
+            icon={Link2Off}
+            title="Este link de invitación no es válido o ya venció."
+            description="Pedile a quien te invitó que te comparta uno nuevo."
+            action={{ label: "Ir al inicio", onClick: () => (window.location.href = "/login") }}
+          />
         </div>
       </div>
     );

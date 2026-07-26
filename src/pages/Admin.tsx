@@ -213,7 +213,7 @@ function InviteSection() {
     <div className="mb-8 border border-border rounded-lg p-5 bg-card">
       <h2 className="text-sm font-medium text-foreground">Invitar</h2>
       <p className="text-xs text-muted-foreground mt-1">
-        Copiá el link y compartilo por fuera (mail, WhatsApp, etc).
+        Copiá el link y compartilo por fuera (email, WhatsApp, etc).
       </p>
       <div className="mt-3 divide-y divide-border/50">
         <InviteRow role="user" label="Invitar usuario" copied={copied} onCopy={copy} />

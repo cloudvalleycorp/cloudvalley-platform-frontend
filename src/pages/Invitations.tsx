@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/BrandMark";
 import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
-import { DECIDE_INVITATION_URL } from "@/lib/membership";
+import { DECIDE_INVITATION_URL, entityWords } from "@/lib/membership";
 
 type InvitationInfo = {
   invitation_id: string;
@@ -76,7 +76,7 @@ export default function Invitations() {
     };
   }, [invitationId]);
 
-  const label = info?.target_type === "fund" ? "fondo" : "empresa";
+  const w = entityWords(info?.target_type === "fund");
 
   const decide = async (decision: "accept" | "decline") => {
     if (!invitationId) return;
@@ -137,7 +137,7 @@ export default function Invitations() {
         ) : phase === "declined" ? (
           <div className="animate-fade-in text-center space-y-5">
             <h1 className="text-3xl font-medium tracking-tight">Listo</h1>
-            <p className="text-sm text-muted-foreground">No te uniste a {label === "fondo" ? "este fondo" : "esta empresa"}.</p>
+            <p className="text-sm text-muted-foreground">No te uniste a {w.demonstrative} {w.noun}.</p>
             <Button onClick={() => navigate("/")}>Ir a la plataforma</Button>
           </div>
         ) : info && info.status !== "pending" ? (
@@ -158,12 +158,12 @@ export default function Invitations() {
                   {info.invited_by_name} te invitó a unirte a {info.target_name}
                 </h1>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Vas a formar parte de {label === "fondo" ? "este fondo" : "esta empresa"} como miembro.
+                  Vas a formar parte de {w.demonstrative} {w.noun} como miembro.
                 </p>
               </div>
 
               {decideError && (
-                <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-foreground text-center space-y-3">
+                <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-foreground text-center space-y-3" aria-live="polite">
                   <p>{decideError}</p>
                   <Link
                     to="/settings"
