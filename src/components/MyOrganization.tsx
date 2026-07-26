@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FormActions } from "@/components/FormActions";
+import { FormField } from "@/components/FormField";
+import { InfoRow } from "@/components/InfoRow";
 import { LoadingCard } from "@/components/LoadingCard";
 import {
   MANAGE_COMPANIES_URL,
@@ -504,12 +506,10 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
 
           {editingDetails ? (
             <div className="space-y-3">
-              <div>
-                <span className="text-xs text-muted-foreground mb-1 block">Industria</span>
+              <FormField label="Industria">
                 <Input value={industryDraft} onChange={(e) => setIndustryDraft(e.target.value)} className="h-9" />
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground mb-1 block">Website</span>
+              </FormField>
+              <FormField label="Website">
                 <Input
                   type="url"
                   placeholder="https://"
@@ -517,19 +517,17 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
                   onChange={(e) => setWebsiteDraft(e.target.value)}
                   className="h-9"
                 />
-              </div>
-              <div>
-                <span className="text-xs text-muted-foreground mb-1 block">Objetivo de ronda (USD)</span>
+              </FormField>
+              <FormField label="Objetivo de ronda (USD)">
                 <Input
                   type="number"
                   value={targetDraft}
                   onChange={(e) => setTargetDraft(e.target.value)}
                   className="h-9"
                 />
-              </div>
+              </FormField>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <span className="text-xs text-muted-foreground mb-1 block">Nº de cohort</span>
+                <FormField label="Nº de cohort">
                   <Input
                     type="number"
                     min="1"
@@ -537,9 +535,8 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
                     onChange={(e) => setCohortNumberDraft(e.target.value)}
                     className="h-9"
                   />
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground mb-1 block">Año del cohort</span>
+                </FormField>
+                <FormField label="Año del cohort">
                   <Input
                     type="number"
                     min="2000"
@@ -548,7 +545,7 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
                     onChange={(e) => setCohortYearDraft(e.target.value)}
                     className="h-9"
                   />
-                </div>
+                </FormField>
               </div>
               <FormActions
                 onCancel={() => {
@@ -598,35 +595,31 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
           <UserIcon size={14} strokeWidth={1.5} className="text-muted-foreground" />
           <h2 className="text-sm font-medium text-foreground">Mi perfil</h2>
         </div>
-        <div className="space-y-3">
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Email</div>
-            <div className="text-sm text-foreground">{email ?? "—"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Nombre completo</div>
-            {editingFullName ? (
-              <div className="space-y-2">
-                <Input
-                  value={fullNameDraft}
-                  onChange={(e) => setFullNameDraft(e.target.value)}
-                  className="h-9"
-                  autoFocus
-                />
-                <FormActions
-                  onCancel={() => {
-                    setEditingFullName(false);
-                    setFullNameDraft(org.full_name ?? "");
-                  }}
-                  onSubmit={saveFullName}
-                  busy={savingFullName}
-                />
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <div className="text-sm text-foreground flex-1">
-                  {org.full_name || <span className="text-muted-foreground">—</span>}
-                </div>
+        <div className="space-y-1">
+          <InfoRow label="Email" value={email ?? "—"} />
+          {editingFullName ? (
+            <div className="py-2 space-y-2">
+              <div className="text-xs text-muted-foreground">Nombre completo</div>
+              <Input
+                value={fullNameDraft}
+                onChange={(e) => setFullNameDraft(e.target.value)}
+                className="h-9"
+                autoFocus
+              />
+              <FormActions
+                onCancel={() => {
+                  setEditingFullName(false);
+                  setFullNameDraft(org.full_name ?? "");
+                }}
+                onSubmit={saveFullName}
+                busy={savingFullName}
+              />
+            </div>
+          ) : (
+            <InfoRow
+              label="Nombre completo"
+              value={org.full_name || "—"}
+              action={
                 <button
                   type="button"
                   onClick={() => setEditingFullName(true)}
@@ -636,9 +629,9 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
                   <Pencil size={12} strokeWidth={1.5} />
                   Editar
                 </button>
-              </div>
-            )}
-          </div>
+              }
+            />
+          )}
         </div>
       </div>
       )}
