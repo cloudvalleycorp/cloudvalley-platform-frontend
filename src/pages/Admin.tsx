@@ -97,7 +97,7 @@ export default function Admin() {
           }
         />
 
-        <div className="grid grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
           <StatCard label="Total startups" value={rows.length} />
           <StatCard label="Score promedio" value={avgScore} />
           <StatCard label="Score > 70" value={highScore} />
