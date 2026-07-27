@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { FormDialog } from "@/components/FormDialog";
 import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -26,6 +25,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
 import { LayoutGrid, Table2, Plus, BarChart3 } from "lucide-react";
 import { type MetricDef, type InputsMap, type PeriodInputs, type ValueType, formatMetricValue } from "@/lib/metrics";
 import { evalFormula, evalFormulaDetailed } from "@/lib/formulaEngine";
@@ -118,6 +134,7 @@ export default function Metrics() {
   const [newMetricDescription, setNewMetricDescription] = useState("");
   const [savingMetric, setSavingMetric] = useState(false);
   const [editingMetricId, setEditingMetricId] = useState<string | null>(null);
+  const [varPickerOpen, setVarPickerOpen] = useState(false);
   const formulaTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Métricas calculadas que se pueden referenciar desde la fórmula que se
@@ -650,206 +667,231 @@ export default function Metrics() {
         onConfirm={confirmDeleteMetric}
       />
 
-      <FormDialog
+      <Sheet
         open={addMetricOpen}
         onOpenChange={(o) => {
           setAddMetricOpen(o);
           if (!o) setEditingMetricId(null);
         }}
-        title={editingMetricId ? "Editar métrica" : "Agregar métrica"}
-        description={
-          editingMetricId
-            ? "Los cambios aplican solo para tu startup."
-            : "Se agrega solo para tu startup, no afecta a las demás."
-        }
-        onSubmit={submitNewMetric}
-        submitLabel={savingMetric ? "Guardando…" : editingMetricId ? "Guardar" : "Agregar"}
-        busy={savingMetric}
-        contentClassName="sm:max-w-2xl"
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <Label className="text-xs">Nombre</Label>
-            <Input value={newMetricName} onChange={(e) => setNewMetricName(e.target.value)} className="mt-1" placeholder="Ej: Revenue por empleado" />
-          </div>
-          <div>
-            <Label className="text-xs">Categoría (tab donde aparece)</Label>
-            <Input
-              value={newMetricCategory}
-              onChange={(e) => setNewMetricCategory(e.target.value)}
-              className="mt-1"
-              placeholder="Ej: revenue, cash_efficiency, o una nueva como ops"
-              list="metric-categories"
-            />
-            <datalist id="metric-categories">
-              {financialCategoryTabs.map((c) => (
-                <option key={c.id} value={c.id} />
-              ))}
-            </datalist>
-            <p className="text-xs text-muted-foreground mt-1">
-              Si escribís una que no existe todavía, se crea un tab nuevo.
-            </p>
-          </div>
-        </div>
+        <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col gap-0">
+          <SheetHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0 text-left">
+            <SheetTitle>{editingMetricId ? "Editar métrica" : "Agregar métrica"}</SheetTitle>
+            <SheetDescription>
+              {editingMetricId
+                ? "Los cambios aplican solo para tu startup."
+                : "Se agrega solo para tu startup, no afecta a las demás."}
+            </SheetDescription>
+          </SheetHeader>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <Label className="text-xs">Tipo</Label>
-            <Select value={newMetricType} onValueChange={(v: "input" | "calculated") => setNewMetricType(v)}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="calculated">Calculada (fórmula)</SelectItem>
-                <SelectItem value="input">Dato crudo existente</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Unidad (opcional)</Label>
-            <Input value={newMetricUnit} onChange={(e) => setNewMetricUnit(e.target.value)} className="mt-1" placeholder="USD, %, x, meses…" />
-          </div>
-        </div>
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Nombre</Label>
+                <Input value={newMetricName} onChange={(e) => setNewMetricName(e.target.value)} className="mt-1" placeholder="Ej: Revenue por empleado" />
+              </div>
+              <div>
+                <Label className="text-xs">Categoría (tab donde aparece)</Label>
+                <Input
+                  value={newMetricCategory}
+                  onChange={(e) => setNewMetricCategory(e.target.value)}
+                  className="mt-1"
+                  placeholder="Ej: revenue, cash_efficiency, o una nueva como ops"
+                  list="metric-categories"
+                />
+                <datalist id="metric-categories">
+                  {financialCategoryTabs.map((c) => (
+                    <option key={c.id} value={c.id} />
+                  ))}
+                </datalist>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Si escribís una que no existe todavía, se crea un tab nuevo.
+                </p>
+              </div>
+            </div>
 
-        {newMetricType === "input" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Tipo</Label>
+                <Select value={newMetricType} onValueChange={(v: "input" | "calculated") => setNewMetricType(v)}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="calculated">Calculada (fórmula)</SelectItem>
+                    <SelectItem value="input">Dato crudo existente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Unidad (opcional)</Label>
+                <Input value={newMetricUnit} onChange={(e) => setNewMetricUnit(e.target.value)} className="mt-1" placeholder="USD, %, x, meses…" />
+              </div>
+            </div>
+
+            {newMetricType === "input" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Campo</Label>
+                  <Input
+                    value={newMetricInputKey}
+                    onChange={(e) => setNewMetricInputKey(e.target.value)}
+                    className="mt-1"
+                    placeholder="Ej: new_customers"
+                    list="metric-input-keys"
+                  />
+                  <datalist id="metric-input-keys">
+                    {inputKeySuggestions.map((k) => (
+                      <option key={k} value={k} />
+                    ))}
+                  </datalist>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    El dato crudo que vas a cargar cada mes. Podés reusar uno que ya se reporta o escribir uno nuevo.
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs">Tipo de valor</Label>
+                  <Select value={newMetricValueType} onValueChange={(v: ValueType) => setNewMetricValueType(v)}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="money">Moneda</SelectItem>
+                      <SelectItem value="count">Entero</SelectItem>
+                      <SelectItem value="percentage">Porcentaje</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Define el formulario de carga que vas a ver todos los meses.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {newMetricType === "calculated" && (
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Fórmula</Label>
+                  <Popover open={varPickerOpen} onOpenChange={setVarPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1">
+                        <Plus size={12} /> Insertar variable
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 p-0" align="end">
+                      <Command>
+                        <CommandInput placeholder="Buscar campo o métrica…" />
+                        <CommandList>
+                          <CommandEmpty>Sin resultados.</CommandEmpty>
+                          {allRawInputKeys.length > 0 && (
+                            <CommandGroup heading="Campos">
+                              {allRawInputKeys.map((k) => (
+                                <CommandItem
+                                  key={k}
+                                  value={k}
+                                  onSelect={() => {
+                                    insertAtFormulaCursor(k);
+                                    setVarPickerOpen(false);
+                                  }}
+                                >
+                                  <span className="font-mono text-xs">{k}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          )}
+                          {reusableCalcMetrics.length > 0 && (
+                            <CommandGroup heading="Métricas">
+                              {reusableCalcMetrics.map((m) => (
+                                <CommandItem
+                                  key={m.id}
+                                  value={m.name}
+                                  onSelect={() => {
+                                    insertAtFormulaCursor(m.id);
+                                    setVarPickerOpen(false);
+                                  }}
+                                >
+                                  {m.name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          )}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <Textarea
+                  ref={formulaTextareaRef}
+                  value={newMetricFormula}
+                  onChange={(e) => setNewMetricFormula(e.target.value)}
+                  className="mt-1.5 font-mono text-sm"
+                  rows={6}
+                  placeholder='Ej: SUM(revenue, headcount) o revenue / headcount'
+                />
+
+                {newMetricFormula.trim() && (
+                  <div
+                    aria-live="polite"
+                    className={cn(
+                      "mt-1.5 rounded-md border px-3 py-2 text-xs",
+                      formulaPreview.error
+                        ? "border-destructive/40 bg-destructive/5 text-destructive"
+                        : formulaPreview.value !== null
+                          ? "border-success/40 bg-success/5 text-foreground"
+                          : "border-border bg-surface text-muted-foreground"
+                    )}
+                  >
+                    {formulaPreview.error ? (
+                      <>No se puede calcular: {formulaPreview.error}</>
+                    ) : formulaPreview.value !== null ? (
+                      <>
+                        Con los datos del período actual da{" "}
+                        <span className="font-medium">
+                          {formatMetricValue(formulaPreview.value, newMetricUnit.trim() || null)}
+                        </span>
+                        .
+                      </>
+                    ) : (
+                      <>
+                        Todavía no se puede calcular: falta cargar{" "}
+                        {formulaPreview.missing
+                          .map((k) => reusableCalcMetrics.find((m) => m.id === k)?.name ?? k)
+                          .join(", ")}
+                        .
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Funciona como Google Sheets: operadores (<code>+ - * /</code>) y funciones (
+                  <code>SUM</code>, <code>IF</code>, <code>ROUND</code>, <code>MIN</code>, <code>MAX</code>,{" "}
+                  <code>AVERAGE</code>, y más). Para promediar o sumar meses anteriores usá{" "}
+                  <code>SUMLAST("revenue", 3)</code>, <code>AVGLAST("revenue", 3)</code> o{" "}
+                  <code>YTD("revenue")</code>. El nombre del campo va entre comillas solo en esas tres.
+                </p>
+              </div>
+            )}
+
             <div>
-              <Label className="text-xs">Campo</Label>
-              <Input
-                value={newMetricInputKey}
-                onChange={(e) => setNewMetricInputKey(e.target.value)}
+              <Label className="text-xs">Descripción (opcional)</Label>
+              <Textarea
+                value={newMetricDescription}
+                onChange={(e) => setNewMetricDescription(e.target.value)}
                 className="mt-1"
-                placeholder="Ej: new_customers"
-                list="metric-input-keys"
+                rows={2}
+                placeholder="Qué es esta métrica"
               />
-              <datalist id="metric-input-keys">
-                {inputKeySuggestions.map((k) => (
-                  <option key={k} value={k} />
-                ))}
-              </datalist>
-              <p className="text-xs text-muted-foreground mt-1">
-                El dato crudo que vas a cargar cada mes. Podés reusar uno que ya se reporta o escribir uno nuevo.
-              </p>
-            </div>
-            <div>
-              <Label className="text-xs">Tipo de valor</Label>
-              <Select value={newMetricValueType} onValueChange={(v: ValueType) => setNewMetricValueType(v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="money">Moneda</SelectItem>
-                  <SelectItem value="count">Entero</SelectItem>
-                  <SelectItem value="percentage">Porcentaje</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                Define el formulario de carga que vas a ver todos los meses.
-              </p>
             </div>
           </div>
-        )}
 
-        {newMetricType === "calculated" && (
-          <div>
-            <Label className="text-xs">Fórmula</Label>
-
-            {(allRawInputKeys.length > 0 || reusableCalcMetrics.length > 0) && (
-              <div className="space-y-1.5 mt-1.5">
-                {allRawInputKeys.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1">
-                    <span className="text-[10px] uppercase tracking-wide text-tertiary mr-0.5">Campos</span>
-                    {allRawInputKeys.map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => insertAtFormulaCursor(k)}
-                        className="text-[11px] font-mono px-1.5 py-0.5 rounded border border-border bg-surface text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-                      >
-                        {k}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {reusableCalcMetrics.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1">
-                    <span className="text-[10px] uppercase tracking-wide text-tertiary mr-0.5">Métricas</span>
-                    {reusableCalcMetrics.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => insertAtFormulaCursor(m.id)}
-                        title={m.formula ?? undefined}
-                        className="text-[11px] px-1.5 py-0.5 rounded border border-primary/30 bg-primary/5 text-primary hover:border-primary/60 transition-colors"
-                      >
-                        {m.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <Textarea
-              ref={formulaTextareaRef}
-              value={newMetricFormula}
-              onChange={(e) => setNewMetricFormula(e.target.value)}
-              className="mt-1.5 font-mono text-sm"
-              rows={3}
-              placeholder='Ej: SUM(revenue, headcount) o revenue / headcount'
-            />
-
-            {newMetricFormula.trim() && (
-              <div
-                aria-live="polite"
-                className={cn(
-                  "mt-1.5 rounded-md border px-3 py-2 text-xs",
-                  formulaPreview.error
-                    ? "border-destructive/40 bg-destructive/5 text-destructive"
-                    : formulaPreview.value !== null
-                      ? "border-success/40 bg-success/5 text-foreground"
-                      : "border-border bg-surface text-muted-foreground"
-                )}
-              >
-                {formulaPreview.error ? (
-                  <>No se puede calcular: {formulaPreview.error}</>
-                ) : formulaPreview.value !== null ? (
-                  <>
-                    Con los datos del período actual da{" "}
-                    <span className="font-medium">
-                      {formatMetricValue(formulaPreview.value, newMetricUnit.trim() || null)}
-                    </span>
-                    .
-                  </>
-                ) : (
-                  <>
-                    Todavía no se puede calcular: falta cargar{" "}
-                    {formulaPreview.missing
-                      .map((k) => reusableCalcMetrics.find((m) => m.id === k)?.name ?? k)
-                      .join(", ")}
-                    .
-                  </>
-                )}
-              </div>
-            )}
-
-            <p className="text-xs text-muted-foreground mt-1.5">
-              Funciona como Google Sheets: operadores (<code>+ - * /</code>) y funciones (
-              <code>SUM</code>, <code>IF</code>, <code>ROUND</code>, <code>MIN</code>, <code>MAX</code>,{" "}
-              <code>AVERAGE</code>, y más). Para promediar o sumar meses anteriores usá{" "}
-              <code>SUMLAST("revenue", 3)</code>, <code>AVGLAST("revenue", 3)</code> o{" "}
-              <code>YTD("revenue")</code>. El nombre del campo va entre comillas solo en esas tres.
-            </p>
-          </div>
-        )}
-
-        <div>
-          <Label className="text-xs">Descripción (opcional)</Label>
-          <Textarea
-            value={newMetricDescription}
-            onChange={(e) => setNewMetricDescription(e.target.value)}
-            className="mt-1"
-            rows={2}
-            placeholder="Qué es esta métrica"
-          />
-        </div>
-      </FormDialog>
+          <SheetFooter className="px-6 py-4 border-t border-border shrink-0">
+            <Button variant="ghost" onClick={() => setAddMetricOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={submitNewMetric} disabled={savingMetric}>
+              {savingMetric ? "Guardando…" : editingMetricId ? "Guardar" : "Agregar"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </AppLayout>
   );
 }
