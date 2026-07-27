@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
@@ -27,11 +27,11 @@ import {
   LIST_FINANCIAL_REPORT_STATUS_URL,
   LIST_FINANCIAL_IMPORT_LOG_URL,
   LIST_FINANCIAL_RECORDS_URL,
-  METRIC_LABELS,
+  LIST_FINANCIAL_METRICS_URL,
   currentPeriod,
   type ReportStatus,
   type ImportLogEntry,
-  type FinancialMetricKey,
+  type FinancialMetricDef,
   type FinancialRecordRow,
 } from "@/lib/financialData";
 import { toast } from "sonner";
@@ -140,6 +140,7 @@ export default function AdminFinancialData() {
   const [historyCompany, setHistoryCompany] = useState<Company | null>(null);
   const [historyLogs, setHistoryLogs] = useState<ImportLogEntry[]>([]);
   const [historyRecords, setHistoryRecords] = useState<FinancialRecordRow[]>([]);
+  const [historyMetricDefs, setHistoryMetricDefs] = useState<FinancialMetricDef[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const openHistory = async (c: Company) => {
@@ -147,25 +148,45 @@ export default function AdminFinancialData() {
     setLoadingHistory(true);
     try {
       const qs = `?company_id=${encodeURIComponent(c.company_id)}`;
-      const [logsRes, recordsRes] = await Promise.all([
+      const [logsRes, recordsRes, metricsRes] = await Promise.all([
         fetch(`${LIST_FINANCIAL_IMPORT_LOG_URL}${qs}`, { credentials: "include" }),
         fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}`, { credentials: "include" }),
+        fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
       ]);
       const logsData = logsRes.ok ? await logsRes.json() : null;
       setHistoryLogs(Array.isArray(logsData?.logs) ? logsData.logs : []);
       const recordsData = recordsRes.ok ? await recordsRes.json() : null;
       setHistoryRecords(Array.isArray(recordsData?.records) ? recordsData.records : []);
+      const metricsData = metricsRes.ok ? await metricsRes.json() : null;
+      setHistoryMetricDefs(Array.isArray(metricsData?.metrics) ? metricsData.metrics : []);
     } catch {
       setHistoryLogs([]);
       setHistoryRecords([]);
+      setHistoryMetricDefs([]);
     } finally {
       setLoadingHistory(false);
     }
   };
 
-  const historyMetricKeys = (Object.keys(METRIC_LABELS) as FinancialMetricKey[]).filter((key) =>
-    historyRecords.some((r) => r[key] != null)
-  );
+  // Columnas 100% dinámicas: cualquier input_key que tenga al menos un valor
+  // cargado se muestra, custom o del catálogo default de Acquisition/
+  // Retention incluidos — no solo los 8 campos originales. El label sale de
+  // la métrica actual con ese input_key; si ya no existe (renombrada o
+  // borrada), se muestra el campo crudo tal cual para no ocultar datos.
+  const historyColumns = useMemo(() => {
+    const labelByKey = new Map<string, string>();
+    for (const def of historyMetricDefs) {
+      if (def.metric_type === "input" && def.input_key) labelByKey.set(def.input_key, def.name);
+    }
+    const keysWithData = new Set<string>();
+    for (const r of historyRecords) {
+      for (const [key, value] of Object.entries(r)) {
+        if (key === "period" || value == null) continue;
+        keysWithData.add(key);
+      }
+    }
+    return Array.from(keysWithData).map((key) => ({ key, label: labelByKey.get(key) ?? key }));
+  }, [historyMetricDefs, historyRecords]);
 
   if (loading) return null;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
@@ -273,9 +294,9 @@ export default function AdminFinancialData() {
                     <thead>
                       <tr className="text-xs text-muted-foreground border-b border-border">
                         <th className="text-left font-normal px-4 py-2.5">Período</th>
-                        {historyMetricKeys.map((key) => (
-                          <th key={key} className="text-right font-normal px-3 py-2.5 whitespace-nowrap">
-                            {METRIC_LABELS[key].label}
+                        {historyColumns.map((col) => (
+                          <th key={col.key} className="text-right font-normal px-3 py-2.5 whitespace-nowrap">
+                            {col.label}
                           </th>
                         ))}
                       </tr>
@@ -287,9 +308,9 @@ export default function AdminFinancialData() {
                         .map((r) => (
                           <tr key={r.period} className="border-b border-border/50 last:border-0">
                             <td className="px-4 py-2 font-medium whitespace-nowrap">{r.period}</td>
-                            {historyMetricKeys.map((key) => (
-                              <td key={key} className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                                {r[key] != null ? r[key]!.toLocaleString() : "—"}
+                            {historyColumns.map((col) => (
+                              <td key={col.key} className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                                {r[col.key] != null ? r[col.key]!.toLocaleString() : "—"}
                               </td>
                             ))}
                           </tr>

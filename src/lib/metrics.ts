@@ -1,4 +1,5 @@
 export type MetricType = "input" | "calculated";
+export type ValueType = "money" | "count" | "percentage";
 
 export type MetricDef = {
   id: string;
@@ -6,6 +7,7 @@ export type MetricDef = {
   category: string;
   metric_type: MetricType;
   input_key: string | null;
+  value_type: ValueType | null;
   formula_expression: string | null;
   unit: string | null;
   formula: string | null;

@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
-import { useStartup } from "@/hooks/useStartup";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
-import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { InputsPanel } from "@/components/metrics/InputsPanel";
@@ -27,16 +25,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LayoutGrid, Table2, Plus, BarChart3 } from "lucide-react";
-import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { type MetricDef, type InputsMap, type PeriodInputs, type ValueType } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 import { handleMembershipError } from "@/lib/membership";
 import { UPSERT_FINANCIAL_METRIC_DEFINITION_URL, RAW_INPUT_KEYS } from "@/lib/financialReports";
 
-// Los tabs del lado GCP (useFinancialMetrics) son dinámicos: cualquier
-// category que devuelva list-financial-metrics se vuelve un tab (así una
-// métrica custom con category nueva ya aparece sin tocar código). Acquisition
-// y Retention siguen fijos porque son Supabase, hasta que se migren también.
+// Los tabs son 100% dinámicos: cualquier category que devuelva list-metrics
+// se vuelve un tab (así una métrica custom con category nueva, o el catálogo
+// default de Acquisition/Retention, ya aparecen sin tocar código).
 const FINANCIAL_CATEGORY_LABELS: Record<string, string> = {
   revenue: "Revenue",
   cash_efficiency: "Cash & Efficiency",
@@ -52,189 +49,22 @@ type ViewMode = "annual" | "monthly";
 const VIEW_KEY = "cv:metrics:view";
 
 export default function Metrics() {
-  const { startup } = useStartup();
   const { company_id, is_owner } = useAuth();
   const [activeCat, setActiveCat] = useState("revenue");
-  // Acquisition/Retention son las únicas categorías fijas (Supabase); todo lo
-  // demás sale de list-financial-metrics (GCP), category incluida.
-  const isFinancialCat = activeCat !== "acquisition" && activeCat !== "retention";
   const [view, setView] = useState<ViewMode>(() => {
     const stored = (typeof window !== "undefined" && localStorage.getItem(VIEW_KEY)) as ViewMode | null;
     return stored === "monthly" ? "monthly" : "annual";
   });
   const [year, setYear] = useState(now.getFullYear());
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
-
-  // ---- Legacy dataset: Acquisition/Retention, Supabase-backed ----
-  const [legacyMetrics, setLegacyMetrics] = useState<MetricDef[]>([]);
-  const [legacyEntries, setLegacyEntries] = useState<Record<string, Record<string, number>>>({});
-  const [legacySources, setLegacySources] = useState<Record<string, Record<string, string>>>({});
-  const [legacyPrivacy, setLegacyPrivacy] = useState<Record<string, boolean>>({});
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
 
   useEffect(() => {
     localStorage.setItem(VIEW_KEY, view);
   }, [view]);
 
-  useEffect(() => {
-    if (!startup) return;
-    (async () => {
-      const { data: configs } = await supabase
-        .from("metric_configs")
-        .select("metric_id, display_order, metric_definitions(*)")
-        .eq("startup_id", startup.id)
-        .eq("is_active", true)
-        .order("display_order");
-      const defs = (configs ?? [])
-        .map((c: any) => c.metric_definitions)
-        .filter(Boolean) as MetricDef[];
-      setLegacyMetrics(defs);
-
-      const { data: ents } = await supabase
-        .from("metric_entries")
-        .select("metric_id, value, period_month, period_year, source")
-        .eq("startup_id", startup.id);
-      const map: Record<string, Record<string, number>> = {};
-      const srcMap: Record<string, Record<string, string>> = {};
-      for (const e of ents ?? []) {
-        if (e.value === null || e.value === undefined) continue;
-        map[e.metric_id] ??= {};
-        map[e.metric_id][periodKey(e.period_month, e.period_year)] = Number(e.value);
-        if (e.source) {
-          srcMap[e.metric_id] ??= {};
-          srcMap[e.metric_id][periodKey(e.period_month, e.period_year)] = e.source as string;
-        }
-      }
-      setLegacyEntries(map);
-      setLegacySources(srcMap);
-
-      const { data: priv } = await supabase
-        .from("metric_privacy")
-        .select("metric_id, is_public")
-        .eq("startup_id", startup.id);
-      const privMap: Record<string, boolean> = {};
-      for (const p of priv ?? []) privMap[p.metric_id] = p.is_public;
-      setLegacyPrivacy(privMap);
-    })();
-  }, [startup?.id]);
-
-  const legacySaveInput = async (inputKey: string, value: number | null) => {
-    if (!startup) return;
-    const def = legacyMetrics.find((m) => m.metric_type === "input" && m.input_key === inputKey);
-    if (!def) return;
-
-    if (value === null) {
-      await supabase
-        .from("metric_entries")
-        .delete()
-        .eq("startup_id", startup.id)
-        .eq("metric_id", def.id)
-        .eq("period_month", period.month)
-        .eq("period_year", period.year);
-      setLegacyEntries((prev) => {
-        const next = { ...prev };
-        if (next[def.id]) {
-          const inner = { ...next[def.id] };
-          delete inner[periodKey(period.month, period.year)];
-          next[def.id] = inner;
-        }
-        return next;
-      });
-      return;
-    }
-
-    const { error } = await supabase
-      .from("metric_entries")
-      .upsert(
-        {
-          startup_id: startup.id,
-          metric_id: def.id,
-          period_month: period.month,
-          period_year: period.year,
-          value,
-        },
-        { onConflict: "startup_id,metric_id,period_month,period_year" }
-      );
-    if (error) {
-      toast.error("No se pudo guardar");
-      return;
-    }
-    setLegacyEntries((prev) => ({
-      ...prev,
-      [def.id]: {
-        ...(prev[def.id] ?? {}),
-        [periodKey(period.month, period.year)]: value,
-      },
-    }));
-  };
-
-  const legacyTogglePrivacy = async (metricId: string, next: boolean) => {
-    if (!startup) return;
-    setLegacyPrivacy((p) => ({ ...p, [metricId]: next }));
-    const { error } = await supabase
-      .from("metric_privacy")
-      .upsert(
-        { startup_id: startup.id, metric_id: metricId, is_public: next },
-        { onConflict: "startup_id,metric_id" }
-      );
-    if (error) {
-      toast.error("No se pudo actualizar la privacidad");
-      setLegacyPrivacy((p) => ({ ...p, [metricId]: !next }));
-    }
-  };
-
-  const legacySaveAnnualBatch = async (
-    changes: { metricId: string; year: number; month: number; value: number | null }[]
-  ) => {
-    if (!startup || changes.length === 0) return;
-
-    const toUpsert = changes.filter((c) => c.value !== null);
-    const toDelete = changes.filter((c) => c.value === null);
-
-    if (toUpsert.length > 0) {
-      const { error } = await supabase
-        .from("metric_entries")
-        .upsert(
-          toUpsert.map((c) => ({
-            startup_id: startup.id,
-            metric_id: c.metricId,
-            period_month: c.month,
-            period_year: c.year,
-            value: c.value!,
-          })),
-          { onConflict: "startup_id,metric_id,period_month,period_year" }
-        );
-      if (error) {
-        toast.error("No se pudieron guardar todos los cambios");
-        return;
-      }
-    }
-
-    for (const d of toDelete) {
-      await supabase
-        .from("metric_entries")
-        .delete()
-        .eq("startup_id", startup.id)
-        .eq("metric_id", d.metricId)
-        .eq("period_month", d.month)
-        .eq("period_year", d.year);
-    }
-
-    setLegacyEntries((prev) => {
-      const next = { ...prev };
-      for (const c of changes) {
-        next[c.metricId] = { ...(next[c.metricId] ?? {}) };
-        const pk = periodKey(c.month, c.year);
-        if (c.value === null) delete next[c.metricId][pk];
-        else next[c.metricId][pk] = c.value;
-      }
-      return next;
-    });
-
-    toast.success(`${changes.length} cambio${changes.length === 1 ? "" : "s"} guardado${changes.length === 1 ? "" : "s"}`);
-  };
-
-  // ---- Financial dataset: Revenue/Cash & Efficiency/Team/…, GCP-backed ----
+  // ---- Todas las categorías (Revenue, Cash & Efficiency, Acquisition,
+  // Retention, y cualquier custom) salen de acá, GCP-backed. ----
   const financial = useFinancialMetrics(company_id);
 
   const financialCategoryTabs = useMemo(() => {
@@ -248,21 +78,26 @@ export default function Metrics() {
       .map(([id]) => ({ id, label: labelForCategory(id) }));
   }, [financial.metrics]);
 
-  const categories = useMemo(
-    () => [
-      ...financialCategoryTabs,
-      { id: "acquisition", label: "Acquisition" },
-      { id: "retention", label: "Retention" },
-    ],
-    [financialCategoryTabs]
-  );
+  // input_key ya no está restringido a RAW_INPUT_KEYS (los 8 campos
+  // originales) — se suman los que ya existan como sugerencia, tanto para
+  // el datalist del campo "Campo" como para el hint de la fórmula.
+  const allRawInputKeys = useMemo(() => {
+    const keys = new Set<string>(RAW_INPUT_KEYS);
+    for (const m of financial.metrics) {
+      if (m.metric_type === "input" && m.input_key) keys.add(m.input_key);
+    }
+    return Array.from(keys);
+  }, [financial.metrics]);
+
+  const inputKeySuggestions = allRawInputKeys;
 
   // ---- Métrica custom (owner-only) ----
   const [addMetricOpen, setAddMetricOpen] = useState(false);
   const [newMetricName, setNewMetricName] = useState("");
   const [newMetricCategory, setNewMetricCategory] = useState("");
   const [newMetricType, setNewMetricType] = useState<"input" | "calculated">("calculated");
-  const [newMetricInputKey, setNewMetricInputKey] = useState<string>(RAW_INPUT_KEYS[0]);
+  const [newMetricInputKey, setNewMetricInputKey] = useState("");
+  const [newMetricValueType, setNewMetricValueType] = useState<ValueType>("count");
   const [newMetricFormula, setNewMetricFormula] = useState("");
   const [newMetricUnit, setNewMetricUnit] = useState("");
   const [newMetricDescription, setNewMetricDescription] = useState("");
@@ -270,9 +105,10 @@ export default function Metrics() {
 
   const openAddMetric = () => {
     setNewMetricName("");
-    setNewMetricCategory(isFinancialCat ? activeCat : financialCategoryTabs[0]?.id ?? "");
+    setNewMetricCategory(activeCat);
     setNewMetricType("calculated");
-    setNewMetricInputKey(RAW_INPUT_KEYS[0]);
+    setNewMetricInputKey("");
+    setNewMetricValueType("count");
     setNewMetricFormula("");
     setNewMetricUnit("");
     setNewMetricDescription("");
@@ -300,6 +136,11 @@ export default function Metrics() {
       toast.error("La fórmula es obligatoria para una métrica calculada");
       return;
     }
+    const inputKeySlug = slugify(newMetricInputKey);
+    if (newMetricType === "input" && !inputKeySlug) {
+      toast.error("El campo es obligatorio para un dato crudo");
+      return;
+    }
 
     const existingIds = new Set(financial.metrics.map((m) => m.id));
     const base = slugify(newMetricName);
@@ -320,8 +161,12 @@ export default function Metrics() {
       unit: newMetricUnit.trim() || null,
       display_order: maxOrder + 1,
     };
-    if (newMetricType === "input") body.input_key = newMetricInputKey;
-    else body.formula_expression = newMetricFormula.trim();
+    if (newMetricType === "input") {
+      body.input_key = inputKeySlug;
+      body.value_type = newMetricValueType;
+    } else {
+      body.formula_expression = newMetricFormula.trim();
+    }
     if (newMetricDescription.trim()) body.description = newMetricDescription.trim();
 
     setSavingMetric(true);
@@ -395,33 +240,24 @@ export default function Metrics() {
     }
   };
 
-  // ---- Active dataset, switched by category ----
-  const activeMetrics = isFinancialCat ? financial.metrics : legacyMetrics;
-  const activeEntries = isFinancialCat ? financial.entries : legacyEntries;
-  const activeSources = isFinancialCat ? undefined : legacySources;
-  const activePrivacy = isFinancialCat ? financial.privacy : legacyPrivacy;
-  const activeTogglePrivacy = isFinancialCat ? financial.togglePrivacy : legacyTogglePrivacy;
-  const activeSaveInput = isFinancialCat ? financialSaveInput : legacySaveInput;
-  const activeSaveAnnualBatch = isFinancialCat ? financialSaveAnnualBatch : legacySaveAnnualBatch;
-
   const inputDefs = useMemo(
-    () => activeMetrics.filter((m) => m.metric_type === "input" && m.category === activeCat),
-    [activeMetrics, activeCat]
+    () => financial.metrics.filter((m) => m.metric_type === "input" && m.category === activeCat),
+    [financial.metrics, activeCat]
   );
   const calcDefs = useMemo(
-    () => activeMetrics.filter((m) => m.metric_type === "calculated" && m.category === activeCat),
-    [activeMetrics, activeCat]
+    () => financial.metrics.filter((m) => m.metric_type === "calculated" && m.category === activeCat),
+    [financial.metrics, activeCat]
   );
   const allInputDefs = useMemo(
-    () => activeMetrics.filter((m) => m.metric_type === "input"),
-    [activeMetrics]
+    () => financial.metrics.filter((m) => m.metric_type === "input"),
+    [financial.metrics]
   );
   const inputsForPeriod = (m: number, y: number): InputsMap => {
     const result: InputsMap = {};
     const pk = periodKey(m, y);
     for (const def of allInputDefs) {
       if (!def.input_key) continue;
-      const v = activeEntries[def.id]?.[pk];
+      const v = financial.entries[def.id]?.[pk];
       if (v !== undefined) result[def.input_key] = v;
     }
     return result;
@@ -442,11 +278,11 @@ export default function Metrics() {
     }
     return arr;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeEntries, period, allInputDefs]);
+  }, [financial.entries, period, allInputDefs]);
 
   // Ventana más ancha (24 meses) para SUMLAST/AVGLAST/YTD en fórmulas
-  // custom — no pega a la API de nuevo, activeEntries ya trae todo el
-  // histórico (list-financial-records no manda from/to).
+  // custom — no pega a la API de nuevo, financial.entries ya trae todo el
+  // histórico (list-records no manda from/to).
   const formulaHistory = useMemo(() => {
     const arr: PeriodInputs[] = [];
     let m = period.month, y = period.year;
@@ -458,7 +294,7 @@ export default function Metrics() {
     }
     return arr;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeEntries, period, allInputDefs]);
+  }, [financial.entries, period, allInputDefs]);
 
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
     if (!openInfo) return [];
@@ -468,7 +304,7 @@ export default function Metrics() {
     for (let i = 0; i < 12; i++) {
       let v: number | null = null;
       if (openInfo.metric_type === "input" && openInfo.input_key) {
-        const raw = activeEntries[openInfo.id]?.[periodKey(m, y)];
+        const raw = financial.entries[openInfo.id]?.[periodKey(m, y)];
         if (raw !== undefined) v = raw;
       } else if (openInfo.metric_type === "calculated" && openInfo.formula_expression) {
         const inp = inputsForPeriod(m, y);
@@ -481,9 +317,7 @@ export default function Metrics() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openInfo, activeEntries, allInputDefs]);
-
-  const loadingActive = isFinancialCat && financial.loading;
+  }, [openInfo, financial.entries, allInputDefs]);
 
   return (
     <AppLayout>
@@ -544,7 +378,7 @@ export default function Metrics() {
         />
 
         <div className="flex gap-1 border-b border-border mb-8">
-          {categories.map((c) => (
+          {financialCategoryTabs.map((c) => (
             <button
               key={c.id}
               onClick={() => setActiveCat(c.id)}
@@ -560,7 +394,7 @@ export default function Metrics() {
           ))}
         </div>
 
-        {isFinancialCat && financial.notEnabled && (
+        {financial.notEnabled && (
           <div className="border border-border rounded-lg p-4 mb-6 text-sm text-muted-foreground bg-surface" aria-live="polite">
             Todavía no tenés el formulario manual habilitado para reportar datos financieros. Pedile a CloudValley
             que lo active para tu startup.
@@ -568,7 +402,7 @@ export default function Metrics() {
         )}
 
         <div key={`${activeCat}-${view}`} className="animate-fade-in">
-        {loadingActive ? (
+        {financial.loading ? (
           <LoadingState variant="centered" className="py-16" />
         ) : view === "annual" ? (
           inputDefs.length === 0 && calcDefs.length === 0 ? (
@@ -584,11 +418,10 @@ export default function Metrics() {
               inputDefs={inputDefs}
               calcDefs={calcDefs}
               allInputDefs={allInputDefs}
-              entries={activeEntries}
-              sources={activeSources}
-              onSaveBatch={activeSaveAnnualBatch}
-              privacy={activePrivacy}
-              onTogglePrivacy={activeTogglePrivacy}
+              entries={financial.entries}
+              onSaveBatch={financialSaveAnnualBatch}
+              privacy={financial.privacy}
+              onTogglePrivacy={financial.togglePrivacy}
               onInfo={setOpenInfo}
             />
           )
@@ -598,10 +431,10 @@ export default function Metrics() {
               <InputsPanel
                 inputs={inputDefs}
                 values={currentInputs}
-                onSave={activeSaveInput}
+                onSave={financialSaveInput}
                 onInfo={setOpenInfo}
-                privacy={activePrivacy}
-                onTogglePrivacy={activeTogglePrivacy}
+                privacy={financial.privacy}
+                onTogglePrivacy={financial.togglePrivacy}
               />
             )}
 
@@ -614,8 +447,8 @@ export default function Metrics() {
                 formulaHistory={formulaHistory}
                 inputDefs={allInputDefs}
                 onInfo={setOpenInfo}
-                privacy={activePrivacy}
-                onTogglePrivacy={activeTogglePrivacy}
+                privacy={financial.privacy}
+                onTogglePrivacy={financial.togglePrivacy}
               />
             )}
 
@@ -630,7 +463,7 @@ export default function Metrics() {
         )}
         </div>
 
-        {isFinancialCat && !loadingActive && (
+        {!financial.loading && (
           <section className="mt-10">
             <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Historial de cargas</h3>
             {financial.loadingLogs ? (
@@ -686,21 +519,41 @@ export default function Metrics() {
           </Select>
         </div>
         {newMetricType === "input" ? (
-          <div>
-            <Label className="text-xs">Campo</Label>
-            <Select value={newMetricInputKey} onValueChange={setNewMetricInputKey}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {RAW_INPUT_KEYS.map((k) => (
-                  <SelectItem key={k} value={k}>{k}</SelectItem>
+          <>
+            <div>
+              <Label className="text-xs">Campo</Label>
+              <Input
+                value={newMetricInputKey}
+                onChange={(e) => setNewMetricInputKey(e.target.value)}
+                className="mt-1"
+                placeholder="Ej: new_customers"
+                list="metric-input-keys"
+              />
+              <datalist id="metric-input-keys">
+                {inputKeySuggestions.map((k) => (
+                  <option key={k} value={k} />
                 ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-1">
-              Solo podés elegir uno de los campos crudos que ya se reportan. Esta opción sirve para mostrar ese
-              mismo dato bajo otro nombre o en otra categoría, no para agregar un campo nuevo.
-            </p>
-          </div>
+              </datalist>
+              <p className="text-xs text-muted-foreground mt-1">
+                El nombre del dato crudo que vas a cargar cada mes. Podés reusar uno que ya se reporta (para
+                mostrarlo bajo otro nombre o categoría) o escribir uno nuevo.
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs">Tipo de valor</Label>
+              <Select value={newMetricValueType} onValueChange={(v: ValueType) => setNewMetricValueType(v)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="money">Moneda</SelectItem>
+                  <SelectItem value="count">Entero</SelectItem>
+                  <SelectItem value="percentage">Porcentaje</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Define qué formulario de carga vas a ver para este dato todos los meses.
+              </p>
+            </div>
+          </>
         ) : (
           <div>
             <Label className="text-xs">Fórmula</Label>
@@ -714,7 +567,7 @@ export default function Metrics() {
             <p className="text-xs text-muted-foreground mt-1">
               Funciona como Google Sheets: operadores (<code>+ - * /</code>) y funciones (
               <code>SUM</code>, <code>IF</code>, <code>ROUND</code>, <code>MIN</code>, <code>MAX</code>,{" "}
-              <code>AVERAGE</code>, y más) sobre {RAW_INPUT_KEYS.join(", ")}. Para promediar o sumar meses
+              <code>AVERAGE</code>, y más) sobre {allRawInputKeys.join(", ")}. Para promediar o sumar meses
               anteriores usá <code>SUMLAST("revenue", 3)</code>, <code>AVGLAST("revenue", 3)</code> o{" "}
               <code>YTD("revenue")</code>. El nombre del campo va entre comillas en esas tres.
             </p>
