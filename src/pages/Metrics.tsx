@@ -27,7 +27,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LayoutGrid, Table2, Plus, BarChart3 } from "lucide-react";
-import { evalFormula, type MetricDef, type InputsMap } from "@/lib/metrics";
+import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 import { handleMembershipError } from "@/lib/membership";
 import { UPSERT_FINANCIAL_METRIC_DEFINITION_URL, RAW_INPUT_KEYS } from "@/lib/financialReports";
@@ -443,6 +444,22 @@ export default function Metrics() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeEntries, period, allInputDefs]);
 
+  // Ventana más ancha (24 meses) para SUMLAST/AVGLAST/YTD en fórmulas
+  // custom — no pega a la API de nuevo, activeEntries ya trae todo el
+  // histórico (list-financial-records no manda from/to).
+  const formulaHistory = useMemo(() => {
+    const arr: PeriodInputs[] = [];
+    let m = period.month, y = period.year;
+    for (let i = 0; i < 24; i++) {
+      arr.unshift({ month: m, year: y, values: inputsForPeriod(m, y) });
+      const p = prevMonth(m, y);
+      m = p.m;
+      y = p.y;
+    }
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEntries, period, allInputDefs]);
+
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
     if (!openInfo) return [];
     const out: MetricHistoryPoint[] = [];
@@ -594,6 +611,7 @@ export default function Metrics() {
                 currentInputs={currentInputs}
                 prevInputs={prevInputs}
                 historyInputs={historyInputs}
+                formulaHistory={formulaHistory}
                 inputDefs={allInputDefs}
                 onInfo={setOpenInfo}
                 privacy={activePrivacy}
@@ -691,10 +709,14 @@ export default function Metrics() {
               onChange={(e) => setNewMetricFormula(e.target.value)}
               className="mt-1 font-mono text-sm"
               rows={2}
-              placeholder="Ej: revenue / headcount"
+              placeholder='Ej: SUM(revenue, headcount) o revenue / headcount'
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Expresión que combina {RAW_INPUT_KEYS.join(", ")}.
+              Funciona como Google Sheets: operadores (<code>+ - * /</code>) y funciones (
+              <code>SUM</code>, <code>IF</code>, <code>ROUND</code>, <code>MIN</code>, <code>MAX</code>,{" "}
+              <code>AVERAGE</code>, y más) sobre {RAW_INPUT_KEYS.join(", ")}. Para promediar o sumar meses
+              anteriores usá <code>SUMLAST("revenue", 3)</code>, <code>AVGLAST("revenue", 3)</code> o{" "}
+              <code>YTD("revenue")</code>. El nombre del campo va entre comillas en esas tres.
             </p>
           </div>
         )}

@@ -4,7 +4,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
 import type { MetricDef, InputsMap } from "@/lib/metrics";
-import { evalFormula, formatMetricValue } from "@/lib/metrics";
+import { formatMetricValue } from "@/lib/metrics";
+import { evalFormula } from "@/lib/formulaEngine";
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 

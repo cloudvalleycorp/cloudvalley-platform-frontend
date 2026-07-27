@@ -30,6 +30,12 @@ export default defineConfig(({ mode }) => ({
           if (id.includes("@supabase")) return "supabase-vendor";
           if (id.includes("@tanstack")) return "query-vendor";
           if (/[\\/]react(-dom)?[\\/]|[\\/]react-router/.test(id)) return "react-vendor";
+          // hot-formula-parser bundles formulajs (100+ Sheets/Excel
+          // functions) — without its own chunk, Rollup's automatic
+          // splitting was merging it into MetricInfoSheet's chunk, pushing
+          // it past the 500kB warning even though most routes never touch
+          // the formula engine.
+          if (id.includes("hot-formula-parser") || id.includes("formulajs")) return "formula-vendor";
           return undefined;
         },
       },

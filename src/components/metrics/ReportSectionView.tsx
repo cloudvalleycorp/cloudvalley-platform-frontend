@@ -1,6 +1,7 @@
 import { Info, ArrowUp, ArrowDown } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
-import { evalFormula, requiredInputs, formatMetricValue, type MetricDef, type InputsMap } from "@/lib/metrics";
+import { formatMetricValue, type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { evalFormula, requiredInputs } from "@/lib/formulaEngine";
 import type { ReportSection } from "@/lib/financialReports";
 
 type Props = {
@@ -9,6 +10,7 @@ type Props = {
   currentInputs: InputsMap;
   prevInputs: InputsMap;
   historyInputs: InputsMap[];
+  formulaHistory?: PeriodInputs[];
   onInfo: (m: MetricDef) => void;
 };
 
@@ -16,7 +18,7 @@ type Props = {
 // Tracker (which splits them into a list + a grid), a report renders blocks
 // as one grid in the exact order the owner arranged them, so both types
 // share this one card shape.
-export function ReportSectionView({ section, metricById, currentInputs, prevInputs, historyInputs, onInfo }: Props) {
+export function ReportSectionView({ section, metricById, currentInputs, prevInputs, historyInputs, formulaHistory, onInfo }: Props) {
   const resolvedBlocks = section.blocks.map((b) => metricById[b.metric_id]).filter((d): d is MetricDef => !!d);
 
   return (
@@ -36,6 +38,7 @@ export function ReportSectionView({ section, metricById, currentInputs, prevInpu
               currentInputs={currentInputs}
               prevInputs={prevInputs}
               historyInputs={historyInputs}
+              formulaHistory={formulaHistory}
               onInfo={onInfo}
             />
           ))}
@@ -50,22 +53,24 @@ function MetricBlockCard({
   currentInputs,
   prevInputs,
   historyInputs,
+  formulaHistory,
   onInfo,
 }: {
   def: MetricDef;
   currentInputs: InputsMap;
   prevInputs: InputsMap;
   historyInputs: InputsMap[];
+  formulaHistory?: PeriodInputs[];
   onInfo: (m: MetricDef) => void;
 }) {
   const expr = def.metric_type === "calculated" ? def.formula_expression : null;
 
-  const valueFor = (inputs: InputsMap): number | null => {
-    if (expr) return evalFormula(expr, inputs);
+  const valueFor = (inputs: InputsMap, history?: PeriodInputs[]): number | null => {
+    if (expr) return evalFormula(expr, inputs, history);
     return def.input_key ? inputs[def.input_key] ?? null : null;
   };
 
-  const current = valueFor(currentInputs);
+  const current = valueFor(currentInputs, formulaHistory);
   const prev = valueFor(prevInputs);
   const change = current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
   const sparkData = historyInputs.map((inp) => ({ v: valueFor(inp) ?? 0 }));
