@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { formatMetricValue, formatValueByType, type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
-import { evalFormula, evalFormulaDetailed, ALL_FORMULA_FUNCTIONS } from "@/lib/formulaEngine";
+import {
+  evalFormula,
+  evalFormulaDetailed,
+  findEnclosingCall,
+  RECOMMENDED_FUNCTIONS,
+  FUNCTION_SIGNATURES,
+} from "@/lib/formulaEngine";
 
 type Suggestion =
   | { kind: "function"; name: string }
@@ -35,9 +41,13 @@ function matchesToken(s: Suggestion, token: string): boolean {
 // through this so they never drift apart visually.
 function SuggestionRow({ s }: { s: Suggestion }) {
   if (s.kind === "function") {
+    const sig = FUNCTION_SIGNATURES[s.name];
     return (
       <div className="flex items-center justify-between gap-3 min-w-0 w-full">
-        <span className="truncate">{s.name}</span>
+        <span className="min-w-0">
+          <span className="block truncate">{s.name}</span>
+          {sig && <span className="block text-[10px] text-tertiary truncate">{sig.description}</span>}
+        </span>
         <span className="text-[10px] uppercase tracking-wide text-tertiary shrink-0">función</span>
       </div>
     );
@@ -75,7 +85,8 @@ type Props = {
  * Sheets/AppSheet-style formula editor: a searchable "Insertar variable"
  * picker, live-as-you-type autocomplete (functions + fields + reusable
  * metrics, filtered by the identifier being typed), auto-closing ()/""
- * pairs, and a live preview against the real current-period data.
+ * pairs, a parameter-hint bar while inside a function call, and a live
+ * preview against the real current-period data.
  */
 export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, currentInputs, formulaHistory }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -112,7 +123,7 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
   );
 
   const functionSuggestions: Suggestion[] = useMemo(
-    () => ALL_FORMULA_FUNCTIONS.map((name) => ({ kind: "function" as const, name })),
+    () => RECOMMENDED_FUNCTIONS.map((name) => ({ kind: "function" as const, name })),
     []
   );
 
@@ -126,14 +137,17 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
     [value, currentInputs, formulaHistory, calcDefs]
   );
 
+  const enclosingCall = useMemo(() => findEnclosingCall(value, cursorPos), [value, cursorPos]);
+  const signature = enclosingCall ? FUNCTION_SIGNATURES[enclosingCall.name] : undefined;
+
   const currentToken = tokenStart !== null ? value.slice(tokenStart, cursorPos) : "";
   const filtered = autoOpen ? allSuggestions.filter((s) => matchesToken(s, currentToken)).slice(0, 8) : [];
 
-  const syncToken = (text: string, cursor: number) => {
+  const syncCursor = (text: string, cursor: number) => {
+    setCursorPos(cursor);
     const { token, start } = getCurrentToken(text, cursor);
     if (token.length >= 1) {
       setTokenStart(start);
-      setCursorPos(cursor);
       setAutoIndex(0);
       setAutoOpen(true);
     } else {
@@ -150,9 +164,10 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
     onChange(next);
     setAutoOpen(false);
     setTokenStart(null);
+    const pos = start + caretOffset;
+    setCursorPos(pos);
     requestAnimationFrame(() => {
       el?.focus();
-      const pos = start + caretOffset;
       el?.setSelectionRange(pos, pos);
     });
   };
@@ -178,12 +193,19 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
-    syncToken(e.target.value, e.target.selectionStart);
+    syncCursor(e.target.value, e.target.selectionStart);
   };
 
   const handleClick = () => {
     const el = textareaRef.current;
-    if (el) syncToken(value, el.selectionStart);
+    if (el) syncCursor(value, el.selectionStart);
+  };
+
+  const handleKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+      const el = textareaRef.current;
+      if (el) syncCursor(value, el.selectionStart);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -220,12 +242,14 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
     if (e.key === ")" && value[start] === ")") {
       e.preventDefault();
       setAutoOpen(false);
+      setCursorPos(start + 1);
       requestAnimationFrame(() => el.setSelectionRange(start + 1, start + 1));
       return;
     }
     if (e.key === '"' && value[start] === '"') {
       e.preventDefault();
       setAutoOpen(false);
+      setCursorPos(start + 1);
       requestAnimationFrame(() => el.setSelectionRange(start + 1, start + 1));
       return;
     }
@@ -234,6 +258,7 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
       e.preventDefault();
       onChange(value.slice(0, start) + "()" + value.slice(end));
       setAutoOpen(false);
+      setCursorPos(start + 1);
       requestAnimationFrame(() => el.setSelectionRange(start + 1, start + 1));
       return;
     }
@@ -241,6 +266,7 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
       e.preventDefault();
       onChange(value.slice(0, start) + '""' + value.slice(end));
       setAutoOpen(false);
+      setCursorPos(start + 1);
       requestAnimationFrame(() => el.setSelectionRange(start + 1, start + 1));
       return;
     }
@@ -314,6 +340,7 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
           onChange={handleChange}
           onClick={handleClick}
           onKeyDown={handleKeyDown}
+          onKeyUp={handleKeyUp}
           onBlur={() => setAutoOpen(false)}
           className="font-mono text-sm"
           rows={6}
@@ -338,6 +365,37 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
           </div>
         )}
       </div>
+
+      {/* Parameter hint: only when the cursor is inside a function call and
+          there's nothing to autocomplete (the two never really overlap —
+          typing a word closes once "(" appears — but guard anyway). */}
+      {!autoOpen && enclosingCall && (
+        <div className="mt-1.5 rounded-md border border-border bg-surface px-3 py-2 text-xs">
+          <div className="font-mono">
+            <span className="font-medium text-foreground">{enclosingCall.name}</span>
+            <span className="text-muted-foreground">(</span>
+            {signature ? (
+              signature.params.map((p, i) => {
+                const isCurrent = i === Math.min(enclosingCall.argIndex, signature.params.length - 1);
+                return (
+                  <span key={i}>
+                    {i > 0 && <span className="text-muted-foreground">, </span>}
+                    <span className={isCurrent ? "text-primary font-medium" : "text-muted-foreground"}>{p}</span>
+                  </span>
+                );
+              })
+            ) : (
+              <span className="text-muted-foreground">…</span>
+            )}
+            <span className="text-muted-foreground">)</span>
+          </div>
+          <p className="text-muted-foreground mt-1 font-sans">
+            {signature
+              ? signature.description
+              : "Esta función no tiene ayuda acá todavía. Puede que necesite un rango de celdas, algo que este editor no soporta (solo variables sueltas). Si no calcula, probá con otra función."}
+          </p>
+        </div>
+      )}
 
       {value.trim() && (
         <div

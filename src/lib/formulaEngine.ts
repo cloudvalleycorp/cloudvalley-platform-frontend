@@ -18,6 +18,103 @@ export const ALL_FORMULA_FUNCTIONS: string[] = Array.from(
 // real input_key even though it matches the identifier regex below.
 const RESERVED_NAMES = new Set([...ALL_FORMULA_FUNCTIONS, "TRUE", "FALSE", "NULL"]);
 
+export type FunctionSignature = { params: string[]; description: string };
+
+// Curated subset of ALL_FORMULA_FUNCTIONS with real param names + a
+// one-line description, shown as parameter help while authoring a formula.
+// Deliberately excludes range/array functions (COUNTIF, SUMIF, MATCH,
+// VLOOKUP-style, etc.): this app only has scalar named variables, no
+// cell ranges, and there's no array-literal syntax in the parser to build
+// one — verified COUNTIF(revenue, ">100") parses but is meaningless over a
+// single scalar, and {a,b} array literals error out (#ERROR!). Anything
+// outside this list can still be typed by hand (the engine itself isn't
+// restricted), it just won't get suggested or documented here.
+export const FUNCTION_SIGNATURES: Record<string, FunctionSignature> = {
+  SUM: { params: ["número1", "[número2, …]"], description: "Suma todos los números." },
+  AVERAGE: { params: ["número1", "[número2, …]"], description: "Promedio de los números." },
+  MIN: { params: ["número1", "[número2, …]"], description: "El valor más chico." },
+  MAX: { params: ["número1", "[número2, …]"], description: "El valor más grande." },
+  MEDIAN: { params: ["número1", "[número2, …]"], description: "La mediana de los números." },
+  COUNT: { params: ["valor1", "[valor2, …]"], description: "Cuenta cuántos son valores numéricos." },
+  COUNTA: { params: ["valor1", "[valor2, …]"], description: "Cuenta cuántos valores no están vacíos." },
+  PRODUCT: { params: ["número1", "[número2, …]"], description: "Multiplica todos los números." },
+  ABS: { params: ["número"], description: "Valor absoluto (sin signo)." },
+  ROUND: { params: ["número", "decimales"], description: "Redondea al número de decimales indicado." },
+  ROUNDUP: { params: ["número", "decimales"], description: "Redondea siempre hacia arriba." },
+  ROUNDDOWN: { params: ["número", "decimales"], description: "Redondea siempre hacia abajo." },
+  MOD: { params: ["número", "divisor"], description: "Resto de la división." },
+  POWER: { params: ["base", "exponente"], description: "Eleva la base al exponente." },
+  SQRT: { params: ["número"], description: "Raíz cuadrada." },
+  INT: { params: ["número"], description: "Redondea hacia abajo, al entero más cercano." },
+  TRUNC: { params: ["número", "[decimales]"], description: "Corta los decimales sin redondear." },
+  CEILING: { params: ["número", "[cifra_significativa]"], description: "Redondea hacia arriba al múltiplo más cercano." },
+  FLOOR: { params: ["número", "[cifra_significativa]"], description: "Redondea hacia abajo al múltiplo más cercano." },
+  SIGN: { params: ["número"], description: "Da -1, 0 o 1 según el signo del número." },
+  EVEN: { params: ["número"], description: "Redondea hacia arriba al entero par más cercano." },
+  ODD: { params: ["número"], description: "Redondea hacia arriba al entero impar más cercano." },
+  IF: { params: ["condición", "valor_si_verdadero", "[valor_si_falso]"], description: "Devuelve un valor u otro según se cumpla la condición." },
+  AND: { params: ["lógico1", "[lógico2, …]"], description: "Verdadero solo si todas las condiciones son verdaderas." },
+  OR: { params: ["lógico1", "[lógico2, …]"], description: "Verdadero si alguna condición es verdadera." },
+  NOT: { params: ["lógico"], description: "Invierte verdadero por falso y viceversa." },
+  XOR: { params: ["lógico1", "[lógico2, …]"], description: "Verdadero si un número impar de condiciones es verdadero." },
+  CONCATENATE: { params: ["texto1", "[texto2, …]"], description: "Une varios textos en uno solo." },
+  TRIM: { params: ["texto"], description: "Saca los espacios de más." },
+  LEN: { params: ["texto"], description: "Cantidad de caracteres del texto." },
+  LEFT: { params: ["texto", "[cantidad]"], description: "Los primeros caracteres del texto." },
+  RIGHT: { params: ["texto", "[cantidad]"], description: "Los últimos caracteres del texto." },
+  MID: { params: ["texto", "inicio", "cantidad"], description: "Extrae caracteres del texto desde una posición." },
+  UPPER: { params: ["texto"], description: "Pasa el texto a mayúsculas." },
+  LOWER: { params: ["texto"], description: "Pasa el texto a minúsculas." },
+  SUBSTITUTE: { params: ["texto", "texto_buscado", "texto_nuevo", "[instancia]"], description: "Reemplaza una parte del texto por otra." },
+  SUMLAST: { params: ['"campo" (entre comillas)', "n_meses"], description: "Suma el campo en los últimos N meses, incluido el actual." },
+  AVGLAST: { params: ['"campo" (entre comillas)', "n_meses"], description: "Promedia el campo en los últimos N meses, incluido el actual." },
+  YTD: { params: ['"campo" (entre comillas)'], description: "Acumulado del campo desde enero del año en curso." },
+};
+
+export const RECOMMENDED_FUNCTIONS: string[] = Object.keys(FUNCTION_SIGNATURES).sort();
+
+/**
+ * Walks `text` up to `cursor` tracking a stack of open "(" and, for each,
+ * which identifier preceded it (the function name) and how many top-level
+ * commas have been seen since (the current argument index). Returns the
+ * innermost function call the cursor is currently inside, or null if the
+ * cursor isn't inside any call (or inside a plain grouping "(", which has
+ * no preceding identifier). Used for the formula editor's parameter hint.
+ */
+export function findEnclosingCall(text: string, cursor: number): { name: string; argIndex: number } | null {
+  const stack: { name: string; argIndex: number }[] = [];
+  let inString = false;
+  let identifierStart = -1;
+  for (let i = 0; i < cursor; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      identifierStart = -1;
+      continue;
+    }
+    if (/[a-zA-Z_]/.test(ch)) {
+      if (identifierStart === -1) identifierStart = i;
+    } else if (ch !== "." && !/[0-9]/.test(ch)) {
+      if (ch === "(") {
+        const name = identifierStart >= 0 ? text.slice(identifierStart, i).toUpperCase() : "";
+        stack.push({ name, argIndex: 0 });
+      } else if (ch === ")") {
+        stack.pop();
+      } else if (ch === "," && stack.length > 0) {
+        stack[stack.length - 1].argIndex++;
+      }
+      identifierStart = -1;
+    }
+  }
+  if (stack.length === 0) return null;
+  const top = stack[stack.length - 1];
+  return top.name ? top : null;
+}
+
 function stripQuotedStrings(expression: string): string {
   return expression.replace(/"[^"]*"/g, "");
 }
