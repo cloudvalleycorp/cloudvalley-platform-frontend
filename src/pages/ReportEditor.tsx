@@ -132,6 +132,7 @@ export default function ReportEditor() {
   // ---- Preview data (mismo cálculo que InvestorCompany.tsx) ----
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const allInputDefs = useMemo(() => metrics.filter((m) => m.metric_type === "input"), [metrics]);
+  const allCalcDefs = useMemo(() => metrics.filter((m) => m.metric_type === "calculated"), [metrics]);
   const inputsForPeriod = (m: number, y: number): InputsMap => {
     const result: InputsMap = {};
     const pk = periodKey(m, y);
@@ -180,7 +181,7 @@ export default function ReportEditor() {
         const raw = entries[openInfo.id]?.[periodKey(m, y)];
         if (raw !== undefined) v = raw;
       } else if (openInfo.metric_type === "calculated" && openInfo.formula_expression) {
-        v = evalFormula(openInfo.formula_expression, inputsForPeriod(m, y));
+        v = evalFormula(openInfo.formula_expression, inputsForPeriod(m, y), [], allCalcDefs);
       }
       if (v !== null && v !== undefined) out.unshift({ year: y, month: m, value: v });
       const p = prevMonth(m, y);
@@ -369,6 +370,7 @@ export default function ReportEditor() {
                       prevInputs={prevInputs}
                       historyInputs={historyInputs}
                       formulaHistory={formulaHistory}
+                      calcDefs={allCalcDefs}
                       onInfo={setOpenInfo}
                     />
                   ))}

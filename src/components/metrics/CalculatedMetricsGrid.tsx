@@ -2,7 +2,7 @@ import { Info, ArrowUp, ArrowDown } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
 import { formatMetricValue, type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
-import { evalFormula, requiredInputs } from "@/lib/formulaEngine";
+import { evalFormula, evalFormulaDetailed, type CalcDefLike } from "@/lib/formulaEngine";
 
 type Props = {
   metrics: MetricDef[];
@@ -13,6 +13,8 @@ type Props = {
   // in the headline value — a longer series than the sparkline needs.
   formulaHistory?: PeriodInputs[];
   inputDefs: MetricDef[]; // to render friendly missing-input names
+  // Other calculated metrics a formula can reference by id (metric reuse).
+  calcDefs?: CalcDefLike[];
   onInfo: (m: MetricDef) => void;
   privacy?: Record<string, boolean>;
   onTogglePrivacy?: (metricId: string, next: boolean) => Promise<void>;
@@ -30,6 +32,7 @@ export function CalculatedMetricsGrid({
   historyInputs,
   formulaHistory,
   inputDefs,
+  calcDefs = [],
   onInfo,
   privacy,
   onTogglePrivacy,
@@ -47,19 +50,17 @@ export function CalculatedMetricsGrid({
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {metrics.map((m) => {
           const expr = m.formula_expression!;
-          const current = evalFormula(expr, currentInputs, formulaHistory);
-          const prev = evalFormula(expr, prevInputs);
+          const detailed = evalFormulaDetailed(expr, currentInputs, formulaHistory, calcDefs);
+          const current = detailed.value;
+          const missing = detailed.missing;
+          const prev = evalFormula(expr, prevInputs, [], calcDefs);
           const change =
             current != null && prev != null && prev !== 0
               ? ((current - prev) / Math.abs(prev)) * 100
               : null;
           const sparkData = historyInputs.map((inp) => ({
-            v: evalFormula(expr, inp) ?? 0,
+            v: evalFormula(expr, inp, [], calcDefs) ?? 0,
           }));
-          const required = requiredInputs(expr);
-          const missing = required.filter(
-            (k) => currentInputs[k] === undefined
-          );
 
           return (
             <div key={m.id} className="border border-border rounded-lg bg-card p-5">
@@ -88,7 +89,11 @@ export function CalculatedMetricsGrid({
               </div>
 
               <div className="mt-4">
-                {missing.length > 0 ? (
+                {detailed.error ? (
+                  <div className="border border-dashed border-destructive/40 rounded-md p-3 mt-1">
+                    <p className="text-xs text-destructive">{detailed.error}</p>
+                  </div>
+                ) : missing.length > 0 ? (
                   <div className="border border-dashed border-border rounded-md p-3 mt-1">
                     <p className="text-xs text-muted-foreground">
                       {readOnly ? (
@@ -123,7 +128,7 @@ export function CalculatedMetricsGrid({
                 )}
               </div>
 
-              {missing.length === 0 && (
+              {!detailed.error && missing.length === 0 && (
                 <div className="mt-4 h-10">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={sparkData}>

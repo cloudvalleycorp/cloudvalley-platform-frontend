@@ -35,6 +35,97 @@ function numberOrNull(values: (number | undefined)[]): number[] {
   return values.filter((v): v is number => v !== undefined);
 }
 
+// Lets a formula reference another calculated metric by its metric_id, not
+// just raw input_key fields — e.g. a "LTV/CAC" metric can just write
+// ltv / cac if both are themselves calculated metrics, no need to inline
+// their formulas. Optional and backward compatible: call sites that don't
+// pass calcDefs get the exact old behavior (bare identifiers only resolve
+// against `inputs`).
+export type CalcDefLike = { id: string; formula_expression: string | null };
+
+const ERROR_MESSAGES: Record<string, string> = {
+  "#ERROR!": "Hay un error de sintaxis en la fórmula.",
+  "#DIV/0!": "La fórmula divide por cero.",
+  "#NAME?": "Usa una función o variable que no reconoce.",
+  "#N/A": "Falta un valor para poder calcular la fórmula.",
+  "#NUM!": "La fórmula da un número inválido.",
+  "#VALUE!": "Uno de los valores de la fórmula tiene el tipo equivocado.",
+};
+
+export type FormulaEvalResult = {
+  value: number | null;
+  /** Human-readable (Spanish) message when the formula itself is malformed. Null if there's no syntax/eval error. */
+  error: string | null;
+  /** Identifiers referenced that don't have a value yet (own period not loaded, or an unresolved/circular metric reference) — not a syntax error. */
+  missing: string[];
+};
+
+function resolveIdentifier(
+  id: string,
+  inputs: InputsMap,
+  history: PeriodInputs[],
+  calcDefs: CalcDefLike[],
+  visiting: Set<string>,
+  cache: InputsMap
+): number | null {
+  if (cache[id] !== undefined) return cache[id];
+  if (inputs[id] !== undefined && inputs[id] !== null && !Number.isNaN(inputs[id])) return inputs[id];
+  if (visiting.has(id)) return null;
+  const def = calcDefs.find((d) => d.id === id);
+  if (!def?.formula_expression) return null;
+  visiting.add(id);
+  const result = evaluateInternal(def.formula_expression, inputs, history, calcDefs, visiting, cache);
+  visiting.delete(id);
+  if (result.value !== null) cache[id] = result.value;
+  return result.value;
+}
+
+function evaluateInternal(
+  expression: string,
+  inputs: InputsMap,
+  history: PeriodInputs[],
+  calcDefs: CalcDefLike[],
+  visiting: Set<string>,
+  cache: InputsMap
+): FormulaEvalResult {
+  const identifiers = requiredInputs(expression);
+  const missing = identifiers.filter((id) => resolveIdentifier(id, inputs, history, calcDefs, visiting, cache) === null);
+  if (missing.length > 0) return { value: null, error: null, missing };
+
+  try {
+    const parser = new Parser();
+    for (const [key, value] of Object.entries(inputs)) parser.setVariable(key, value);
+    for (const [key, value] of Object.entries(cache)) parser.setVariable(key, value);
+    registerHistoryFunctions(parser, history);
+    const cleaned = expression.trim().replace(/^=/, "");
+    const { result, error } = parser.parse(cleaned);
+    if (error) return { value: null, error: ERROR_MESSAGES[error] ?? "La fórmula tiene un error.", missing: [] };
+    if (typeof result !== "number" || !isFinite(result)) {
+      return { value: null, error: "La fórmula no da como resultado un número.", missing: [] };
+    }
+    return { value: result, error: null, missing: [] };
+  } catch {
+    return { value: null, error: "Hay un error de sintaxis en la fórmula.", missing: [] };
+  }
+}
+
+/**
+ * Same evaluation as evalFormula, but returns the value AND why it's null
+ * (missing data vs. a real formula error) — for the live preview while
+ * authoring a formula. `calcDefs` (optional) lets the formula reference
+ * other calculated metrics by id, resolved recursively with cycle
+ * protection (a circular reference just resolves as "missing", never hangs).
+ */
+export function evalFormulaDetailed(
+  expression: string,
+  inputs: InputsMap,
+  history: PeriodInputs[] = [],
+  calcDefs: CalcDefLike[] = []
+): FormulaEvalResult {
+  if (!expression.trim()) return { value: null, error: null, missing: [] };
+  return evaluateInternal(expression, inputs, history, calcDefs, new Set(), {});
+}
+
 function registerHistoryFunctions(parser: Parser, history: PeriodInputs[]) {
   parser.setFunction("SUMLAST", (params) => {
     const [key, n] = params as unknown[];
@@ -65,27 +156,16 @@ function registerHistoryFunctions(parser: Parser, history: PeriodInputs[]) {
  * etc.) instead of a raw JS expression. `history` (chronological, ending at
  * the current period) is optional and only needed for SUMLAST/AVGLAST/YTD —
  * without it those three simply return null, everything else works the same.
- * Returns null if any bare identifier referenced is missing from `inputs`,
- * or the formula itself errors.
+ * `calcDefs` (optional) lets the formula also reference other calculated
+ * metrics by id, resolved recursively — omit it for the old behavior (bare
+ * identifiers only resolve against `inputs`). Returns null if any identifier
+ * can't be resolved, or the formula itself errors.
  */
-export function evalFormula(expression: string, inputs: InputsMap, history: PeriodInputs[] = []): number | null {
-  const identifiers = requiredInputs(expression);
-  for (const id of identifiers) {
-    if (inputs[id] === undefined || inputs[id] === null || Number.isNaN(inputs[id])) {
-      return null;
-    }
-  }
-  try {
-    const parser = new Parser();
-    for (const [key, value] of Object.entries(inputs)) {
-      parser.setVariable(key, value);
-    }
-    registerHistoryFunctions(parser, history);
-    const cleaned = expression.trim().replace(/^=/, "");
-    const { result, error } = parser.parse(cleaned);
-    if (error || typeof result !== "number" || !isFinite(result)) return null;
-    return result;
-  } catch {
-    return null;
-  }
+export function evalFormula(
+  expression: string,
+  inputs: InputsMap,
+  history: PeriodInputs[] = [],
+  calcDefs: CalcDefLike[] = []
+): number | null {
+  return evaluateInternal(expression, inputs, history, calcDefs, new Set(), {}).value;
 }

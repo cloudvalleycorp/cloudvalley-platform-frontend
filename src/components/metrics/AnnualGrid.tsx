@@ -15,6 +15,7 @@ type Props = {
   inputDefs: MetricDef[]; // input defs in current category
   calcDefs: MetricDef[]; // calculated defs in current category
   allInputDefs: MetricDef[]; // all input defs across categories (for formulas)
+  allCalcDefs?: MetricDef[]; // all calculated defs across categories (metric reuse inside formulas)
   // entries[metric_id]["YYYY-M"] = value
   entries: Record<string, Record<string, number>>;
   // entries[metric_id]["YYYY-M"] = provider name when synced from an integration
@@ -41,6 +42,7 @@ export function AnnualGrid({
   inputDefs,
   calcDefs,
   allInputDefs,
+  allCalcDefs = [],
   entries,
   sources,
   onSaveBatch,
@@ -329,7 +331,7 @@ export function AnnualGrid({
                     {months.map((_, i) => {
                       const month = i + 1;
                       const inputs = inputsForMonth(month);
-                      const v = evalFormula(def.formula_expression!, inputs);
+                      const v = evalFormula(def.formula_expression!, inputs, [], allCalcDefs);
                       return (
                         <td key={month} className="px-2 py-2 text-right tabular-nums w-20 text-muted-foreground">
                           {v === null ? "—" : formatMetricValue(v, def.unit)}
