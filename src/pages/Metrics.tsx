@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,18 +33,10 @@ import {
   SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-} from "@/components/ui/command";
+import { FormulaField } from "@/components/metrics/FormulaField";
 import { LayoutGrid, Table2, Plus, BarChart3 } from "lucide-react";
-import { type MetricDef, type InputsMap, type PeriodInputs, type ValueType, formatMetricValue } from "@/lib/metrics";
-import { evalFormula, evalFormulaDetailed } from "@/lib/formulaEngine";
+import { type MetricDef, type InputsMap, type PeriodInputs, type ValueType } from "@/lib/metrics";
+import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 import { handleMembershipError } from "@/lib/membership";
 import {
@@ -134,8 +126,6 @@ export default function Metrics() {
   const [newMetricDescription, setNewMetricDescription] = useState("");
   const [savingMetric, setSavingMetric] = useState(false);
   const [editingMetricId, setEditingMetricId] = useState<string | null>(null);
-  const [varPickerOpen, setVarPickerOpen] = useState(false);
-  const formulaTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Métricas calculadas que se pueden referenciar desde la fórmula que se
   // está editando — todas menos ella misma (autoreferenciarse no tiene
@@ -144,18 +134,6 @@ export default function Metrics() {
     () => allCalcDefs.filter((m) => m.id !== editingMetricId),
     [allCalcDefs, editingMetricId]
   );
-
-  const insertAtFormulaCursor = (text: string) => {
-    const el = formulaTextareaRef.current;
-    const start = el?.selectionStart ?? newMetricFormula.length;
-    const end = el?.selectionEnd ?? newMetricFormula.length;
-    const next = newMetricFormula.slice(0, start) + text + newMetricFormula.slice(end);
-    setNewMetricFormula(next);
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(start + text.length, start + text.length);
-    });
-  };
 
   const openAddMetric = () => {
     setEditingMetricId(null);
@@ -423,14 +401,6 @@ export default function Metrics() {
     return arr;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [financial.entries, period, allInputDefs]);
-
-  // Vista previa en vivo del formulario "Agregar/Editar métrica" — misma
-  // fuente de datos que usa CalculatedMetricsGrid, así lo que se ve acá es
-  // lo que se va a ver después en la grilla.
-  const formulaPreview = useMemo(
-    () => evalFormulaDetailed(newMetricFormula, currentInputs, formulaHistory, reusableCalcMetrics),
-    [newMetricFormula, currentInputs, formulaHistory, reusableCalcMetrics]
-  );
 
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
     if (!openInfo) return [];
@@ -765,109 +735,15 @@ export default function Metrics() {
             )}
 
             {newMetricType === "calculated" && (
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <Label className="text-xs">Fórmula</Label>
-                  <Popover open={varPickerOpen} onOpenChange={setVarPickerOpen}>
-                    <PopoverTrigger asChild>
-                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1">
-                        <Plus size={12} /> Insertar variable
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 p-0" align="end">
-                      <Command>
-                        <CommandInput placeholder="Buscar campo o métrica…" />
-                        <CommandList>
-                          <CommandEmpty>Sin resultados.</CommandEmpty>
-                          {allRawInputKeys.length > 0 && (
-                            <CommandGroup heading="Campos">
-                              {allRawInputKeys.map((k) => (
-                                <CommandItem
-                                  key={k}
-                                  value={k}
-                                  onSelect={() => {
-                                    insertAtFormulaCursor(k);
-                                    setVarPickerOpen(false);
-                                  }}
-                                >
-                                  <span className="font-mono text-xs">{k}</span>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          )}
-                          {reusableCalcMetrics.length > 0 && (
-                            <CommandGroup heading="Métricas">
-                              {reusableCalcMetrics.map((m) => (
-                                <CommandItem
-                                  key={m.id}
-                                  value={m.name}
-                                  onSelect={() => {
-                                    insertAtFormulaCursor(m.id);
-                                    setVarPickerOpen(false);
-                                  }}
-                                >
-                                  {m.name}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          )}
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <Textarea
-                  ref={formulaTextareaRef}
-                  value={newMetricFormula}
-                  onChange={(e) => setNewMetricFormula(e.target.value)}
-                  className="mt-1.5 font-mono text-sm"
-                  rows={6}
-                  placeholder='Ej: SUM(revenue, headcount) o revenue / headcount'
-                />
-
-                {newMetricFormula.trim() && (
-                  <div
-                    aria-live="polite"
-                    className={cn(
-                      "mt-1.5 rounded-md border px-3 py-2 text-xs",
-                      formulaPreview.error
-                        ? "border-destructive/40 bg-destructive/5 text-destructive"
-                        : formulaPreview.value !== null
-                          ? "border-success/40 bg-success/5 text-foreground"
-                          : "border-border bg-surface text-muted-foreground"
-                    )}
-                  >
-                    {formulaPreview.error ? (
-                      <>No se puede calcular: {formulaPreview.error}</>
-                    ) : formulaPreview.value !== null ? (
-                      <>
-                        Con los datos del período actual da{" "}
-                        <span className="font-medium">
-                          {formatMetricValue(formulaPreview.value, newMetricUnit.trim() || null)}
-                        </span>
-                        .
-                      </>
-                    ) : (
-                      <>
-                        Todavía no se puede calcular: falta cargar{" "}
-                        {formulaPreview.missing
-                          .map((k) => reusableCalcMetrics.find((m) => m.id === k)?.name ?? k)
-                          .join(", ")}
-                        .
-                      </>
-                    )}
-                  </div>
-                )}
-
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  Funciona como Google Sheets: operadores (<code>+ - * /</code>) y funciones (
-                  <code>SUM</code>, <code>IF</code>, <code>ROUND</code>, <code>MIN</code>, <code>MAX</code>,{" "}
-                  <code>AVERAGE</code>, y más). Para promediar o sumar meses anteriores usá{" "}
-                  <code>SUMLAST("revenue", 3)</code>, <code>AVGLAST("revenue", 3)</code> o{" "}
-                  <code>YTD("revenue")</code>. El nombre del campo va entre comillas solo en esas tres.
-                </p>
-              </div>
+              <FormulaField
+                value={newMetricFormula}
+                onChange={setNewMetricFormula}
+                unit={newMetricUnit.trim() || null}
+                inputDefs={allInputDefs}
+                calcDefs={reusableCalcMetrics}
+                currentInputs={currentInputs}
+                formulaHistory={formulaHistory}
+              />
             )}
 
             <div>

@@ -25,6 +25,16 @@ export type InputsMap = Record<string, number>; // input_key -> value
 // entry should be the "current" period being evaluated.
 export type PeriodInputs = { month: number; year: number; values: InputsMap };
 
+// Shared formatter for a raw input value given its value_type (money/count/
+// percentage) — used everywhere a "campo" is entered or listed as a formula
+// suggestion, so $ / % / plain-number formatting stays consistent.
+export function formatValueByType(value: number | undefined | null, valueType: ValueType | null | undefined): string {
+  if (value === undefined || value === null) return "—";
+  if (valueType === "money") return `$${value.toLocaleString()}`;
+  if (valueType === "percentage") return `${value.toLocaleString()}%`;
+  return value.toLocaleString();
+}
+
 export function formatMetricValue(value: number | null, unit: string | null): string {
   if (value === null || value === undefined) return "—";
   const abs = Math.abs(value);
