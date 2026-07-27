@@ -1,4 +1,5 @@
 export const UPSERT_FINANCIAL_METRIC_DEFINITION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/upsert-metric-definition";
+export const DELETE_FINANCIAL_METRIC_DEFINITION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/delete-metric-definition";
 export const CREATE_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/create-financial-report";
 export const LIST_FINANCIAL_REPORTS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-financial-reports";
 export const GET_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-financial-report";
@@ -22,6 +23,12 @@ export type ReportDetail = {
   company_id: string;
   name: string;
   sections: ReportSection[];
+};
+
+export type DeleteMetricDefinitionResponse = {
+  success: boolean;
+  records_deleted: number;
+  affected_reports: { report_id: string; name: string }[];
 };
 
 export type ReportShare = {

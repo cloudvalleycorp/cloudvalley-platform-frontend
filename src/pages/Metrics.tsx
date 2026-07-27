@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FormDialog } from "@/components/FormDialog";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -29,7 +31,12 @@ import { type MetricDef, type InputsMap, type PeriodInputs, type ValueType } fro
 import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 import { handleMembershipError } from "@/lib/membership";
-import { UPSERT_FINANCIAL_METRIC_DEFINITION_URL, RAW_INPUT_KEYS } from "@/lib/financialReports";
+import {
+  UPSERT_FINANCIAL_METRIC_DEFINITION_URL,
+  DELETE_FINANCIAL_METRIC_DEFINITION_URL,
+  RAW_INPUT_KEYS,
+  type DeleteMetricDefinitionResponse,
+} from "@/lib/financialReports";
 
 // Los tabs son 100% dinámicos: cualquier category que devuelva list-metrics
 // se vuelve un tab (así una métrica custom con category nueva, o el catálogo
@@ -102,8 +109,10 @@ export default function Metrics() {
   const [newMetricUnit, setNewMetricUnit] = useState("");
   const [newMetricDescription, setNewMetricDescription] = useState("");
   const [savingMetric, setSavingMetric] = useState(false);
+  const [editingMetricId, setEditingMetricId] = useState<string | null>(null);
 
   const openAddMetric = () => {
+    setEditingMetricId(null);
     setNewMetricName("");
     setNewMetricCategory(activeCat);
     setNewMetricType("calculated");
@@ -112,6 +121,19 @@ export default function Metrics() {
     setNewMetricFormula("");
     setNewMetricUnit("");
     setNewMetricDescription("");
+    setAddMetricOpen(true);
+  };
+
+  const openEditMetric = (m: MetricDef) => {
+    setEditingMetricId(m.id);
+    setNewMetricName(m.name);
+    setNewMetricCategory(m.category);
+    setNewMetricType(m.metric_type);
+    setNewMetricInputKey(m.input_key ?? "");
+    setNewMetricValueType(m.value_type ?? "count");
+    setNewMetricFormula(m.formula_expression ?? "");
+    setNewMetricUnit(m.unit ?? "");
+    setNewMetricDescription(m.description ?? "");
     setAddMetricOpen(true);
   };
 
@@ -142,15 +164,23 @@ export default function Metrics() {
       return;
     }
 
-    const existingIds = new Set(financial.metrics.map((m) => m.id));
-    const base = slugify(newMetricName);
-    let slug = base;
-    let suffix = 2;
-    while (existingIds.has(slug)) {
-      slug = `${base}_${suffix}`;
-      suffix++;
+    let slug: string;
+    let displayOrder: number;
+    if (editingMetricId) {
+      slug = editingMetricId;
+      displayOrder = financial.metrics.find((m) => m.id === editingMetricId)?.order_index ?? 0;
+    } else {
+      const existingIds = new Set(financial.metrics.map((m) => m.id));
+      const base = slugify(newMetricName);
+      slug = base;
+      let suffix = 2;
+      while (existingIds.has(slug)) {
+        slug = `${base}_${suffix}`;
+        suffix++;
+      }
+      displayOrder =
+        Math.max(0, ...financial.metrics.filter((m) => m.category === category).map((m) => m.order_index)) + 1;
     }
-    const maxOrder = Math.max(0, ...financial.metrics.filter((m) => m.category === category).map((m) => m.order_index));
 
     const body: Record<string, unknown> = {
       company_id,
@@ -159,7 +189,7 @@ export default function Metrics() {
       category,
       metric_type: newMetricType,
       unit: newMetricUnit.trim() || null,
-      display_order: maxOrder + 1,
+      display_order: displayOrder,
     };
     if (newMetricType === "input") {
       body.input_key = inputKeySlug;
@@ -178,14 +208,66 @@ export default function Metrics() {
         body: JSON.stringify(body),
       });
       if (await handleMembershipError(res)) return;
-      toast.success("Métrica agregada");
+      toast.success(editingMetricId ? "Métrica actualizada" : "Métrica agregada");
       setAddMetricOpen(false);
+      setEditingMetricId(null);
       await financial.reload();
       setActiveCat(category);
     } catch {
-      toast.error("No se pudo agregar la métrica");
+      toast.error(editingMetricId ? "No se pudo actualizar la métrica" : "No se pudo agregar la métrica");
     } finally {
       setSavingMetric(false);
+    }
+  };
+
+  // ---- Eliminar métrica (owner-only) ----
+  const [deletingMetric, setDeletingMetric] = useState<MetricDef | null>(null);
+  const [deleteRecordsToo, setDeleteRecordsToo] = useState(false);
+  const [deletingBusy, setDeletingBusy] = useState(false);
+
+  const openDeleteMetric = (m: MetricDef) => {
+    setDeleteRecordsToo(false);
+    setDeletingMetric(m);
+  };
+
+  const confirmDeleteMetric = async () => {
+    if (!company_id || !deletingMetric) return;
+    setDeletingBusy(true);
+    try {
+      const res = await fetch(DELETE_FINANCIAL_METRIC_DEFINITION_URL, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_id,
+          metric_id: deletingMetric.id,
+          delete_records: deletingMetric.metric_type === "input" ? deleteRecordsToo : false,
+        }),
+      });
+      if (res.status === 404) {
+        toast.error("Esta métrica es parte del catálogo default y todavía no tiene una versión propia de tu startup, no se puede eliminar. Podés editarla si querés cambiarla.");
+        return;
+      }
+      if (await handleMembershipError(res)) return;
+      if (!res.ok) {
+        toast.error("No se pudo eliminar la métrica");
+        return;
+      }
+      const data = (await res.json().catch(() => null)) as DeleteMetricDefinitionResponse | null;
+      toast.success("Métrica eliminada");
+      if (data?.affected_reports && data.affected_reports.length > 0) {
+        const names = data.affected_reports.map((r) => r.name).join(", ");
+        toast.error(
+          `Esta métrica sigue en ${data.affected_reports.length} reporte${data.affected_reports.length === 1 ? "" : "s"} (${names}). Esa sección va a quedar sin poder resolver valor hasta que la saques del reporte.`,
+          { duration: 8000 }
+        );
+      }
+      setDeletingMetric(null);
+      await financial.reload();
+    } catch {
+      toast.error("No se pudo eliminar la métrica");
+    } finally {
+      setDeletingBusy(false);
     }
   };
 
@@ -475,51 +557,121 @@ export default function Metrics() {
         )}
       </div>
 
-      <MetricInfoSheet metric={openInfo} onClose={() => setOpenInfo(null)} history={infoHistory} />
+      <MetricInfoSheet
+        metric={openInfo}
+        onClose={() => setOpenInfo(null)}
+        history={infoHistory}
+        onEdit={
+          is_owner
+            ? (m) => {
+                setOpenInfo(null);
+                openEditMetric(m);
+              }
+            : undefined
+        }
+        onDelete={
+          is_owner
+            ? (m) => {
+                setOpenInfo(null);
+                openDeleteMetric(m);
+              }
+            : undefined
+        }
+      />
+
+      <ConfirmationDialog
+        open={!!deletingMetric}
+        onOpenChange={(o) => !o && setDeletingMetric(null)}
+        title={`Eliminar ${deletingMetric?.name ?? "métrica"}`}
+        description={
+          <div className="space-y-3">
+            <p>
+              Se elimina esta métrica para tu startup.{" "}
+              {deletingMetric?.metric_type === "input"
+                ? "Los valores que ya cargaste quedan guardados pero dejan de mostrarse, salvo que elijas borrarlos también abajo."
+                : "Como es una métrica calculada, no tiene valores propios que borrar."}
+            </p>
+            {deletingMetric?.metric_type === "input" && (
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <Checkbox
+                  checked={deleteRecordsToo}
+                  onCheckedChange={(c) => setDeleteRecordsToo(c === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Eliminar también los valores ya cargados para este campo. Esta acción no se puede deshacer.
+                </span>
+              </label>
+            )}
+          </div>
+        }
+        confirmLabel="Eliminar"
+        variant="destructive"
+        busy={deletingBusy}
+        onConfirm={confirmDeleteMetric}
+      />
 
       <FormDialog
         open={addMetricOpen}
-        onOpenChange={setAddMetricOpen}
-        title="Agregar métrica"
-        description="Se agrega solo para tu startup, no afecta a las demás."
+        onOpenChange={(o) => {
+          setAddMetricOpen(o);
+          if (!o) setEditingMetricId(null);
+        }}
+        title={editingMetricId ? "Editar métrica" : "Agregar métrica"}
+        description={
+          editingMetricId
+            ? "Los cambios aplican solo para tu startup."
+            : "Se agrega solo para tu startup, no afecta a las demás."
+        }
         onSubmit={submitNewMetric}
-        submitLabel={savingMetric ? "Guardando…" : "Agregar"}
+        submitLabel={savingMetric ? "Guardando…" : editingMetricId ? "Guardar" : "Agregar"}
         busy={savingMetric}
+        contentClassName="sm:max-w-2xl"
       >
-        <div>
-          <Label className="text-xs">Nombre</Label>
-          <Input value={newMetricName} onChange={(e) => setNewMetricName(e.target.value)} className="mt-1" placeholder="Ej: Revenue por empleado" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs">Nombre</Label>
+            <Input value={newMetricName} onChange={(e) => setNewMetricName(e.target.value)} className="mt-1" placeholder="Ej: Revenue por empleado" />
+          </div>
+          <div>
+            <Label className="text-xs">Categoría (tab donde aparece)</Label>
+            <Input
+              value={newMetricCategory}
+              onChange={(e) => setNewMetricCategory(e.target.value)}
+              className="mt-1"
+              placeholder="Ej: revenue, cash_efficiency, o una nueva como ops"
+              list="metric-categories"
+            />
+            <datalist id="metric-categories">
+              {financialCategoryTabs.map((c) => (
+                <option key={c.id} value={c.id} />
+              ))}
+            </datalist>
+            <p className="text-xs text-muted-foreground mt-1">
+              Si escribís una que no existe todavía, se crea un tab nuevo.
+            </p>
+          </div>
         </div>
-        <div>
-          <Label className="text-xs">Categoría (tab donde aparece)</Label>
-          <Input
-            value={newMetricCategory}
-            onChange={(e) => setNewMetricCategory(e.target.value)}
-            className="mt-1"
-            placeholder="Ej: revenue, cash_efficiency, o una nueva como ops"
-            list="metric-categories"
-          />
-          <datalist id="metric-categories">
-            {financialCategoryTabs.map((c) => (
-              <option key={c.id} value={c.id} />
-            ))}
-          </datalist>
-          <p className="text-xs text-muted-foreground mt-1">
-            Si escribís una categoría que no existe todavía, se crea un tab nuevo para ella.
-          </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs">Tipo</Label>
+            <Select value={newMetricType} onValueChange={(v: "input" | "calculated") => setNewMetricType(v)}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="calculated">Calculada (fórmula)</SelectItem>
+                <SelectItem value="input">Dato crudo existente</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Unidad (opcional)</Label>
+            <Input value={newMetricUnit} onChange={(e) => setNewMetricUnit(e.target.value)} className="mt-1" placeholder="USD, %, x, meses…" />
+          </div>
         </div>
-        <div>
-          <Label className="text-xs">Tipo</Label>
-          <Select value={newMetricType} onValueChange={(v: "input" | "calculated") => setNewMetricType(v)}>
-            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="calculated">Calculada (fórmula)</SelectItem>
-              <SelectItem value="input">Dato crudo existente</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {newMetricType === "input" ? (
-          <>
+
+        {newMetricType === "input" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Campo</Label>
               <Input
@@ -535,8 +687,7 @@ export default function Metrics() {
                 ))}
               </datalist>
               <p className="text-xs text-muted-foreground mt-1">
-                El nombre del dato crudo que vas a cargar cada mes. Podés reusar uno que ya se reporta (para
-                mostrarlo bajo otro nombre o categoría) o escribir uno nuevo.
+                El dato crudo que vas a cargar cada mes. Podés reusar uno que ya se reporta o escribir uno nuevo.
               </p>
             </div>
             <div>
@@ -550,18 +701,20 @@ export default function Metrics() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">
-                Define qué formulario de carga vas a ver para este dato todos los meses.
+                Define el formulario de carga que vas a ver todos los meses.
               </p>
             </div>
-          </>
-        ) : (
+          </div>
+        )}
+
+        {newMetricType === "calculated" && (
           <div>
             <Label className="text-xs">Fórmula</Label>
             <Textarea
               value={newMetricFormula}
               onChange={(e) => setNewMetricFormula(e.target.value)}
               className="mt-1 font-mono text-sm"
-              rows={2}
+              rows={3}
               placeholder='Ej: SUM(revenue, headcount) o revenue / headcount'
             />
             <p className="text-xs text-muted-foreground mt-1">
@@ -573,10 +726,7 @@ export default function Metrics() {
             </p>
           </div>
         )}
-        <div>
-          <Label className="text-xs">Unidad (opcional)</Label>
-          <Input value={newMetricUnit} onChange={(e) => setNewMetricUnit(e.target.value)} className="mt-1" placeholder="USD, %, x, meses…" />
-        </div>
+
         <div>
           <Label className="text-xs">Descripción (opcional)</Label>
           <Textarea
