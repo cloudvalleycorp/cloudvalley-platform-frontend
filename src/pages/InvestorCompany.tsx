@@ -86,6 +86,7 @@ export default function InvestorCompany() {
 
   const metricById = useMemo(() => Object.fromEntries(metrics.metrics.map((m) => [m.id, m])), [metrics.metrics]);
   const allInputDefs = useMemo(() => metrics.metrics.filter((m) => m.metric_type === "input"), [metrics.metrics]);
+  const allCalcDefs = useMemo(() => metrics.metrics.filter((m) => m.metric_type === "calculated"), [metrics.metrics]);
 
   const inputsForPeriod = (m: number, y: number): InputsMap => {
     const result: InputsMap = {};
@@ -139,7 +140,7 @@ export default function InvestorCompany() {
         const raw = metrics.entries[openInfo.id]?.[periodKey(m, y)];
         if (raw !== undefined) v = raw;
       } else if (openInfo.metric_type === "calculated" && openInfo.formula_expression) {
-        v = evalFormula(openInfo.formula_expression, inputsForPeriod(m, y));
+        v = evalFormula(openInfo.formula_expression, inputsForPeriod(m, y), [], allCalcDefs);
       }
       if (v !== null && v !== undefined) out.unshift({ year: y, month: m, value: v });
       const p = prevMonth(m, y);
@@ -264,6 +265,7 @@ export default function InvestorCompany() {
                         prevInputs={prevInputs}
                         historyInputs={historyInputs}
                         formulaHistory={formulaHistory}
+                        calcDefs={allCalcDefs}
                         onInfo={setOpenInfo}
                       />
                     ))}
