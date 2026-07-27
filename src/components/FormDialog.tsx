@@ -47,7 +47,7 @@ export function FormDialog({
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
-        <div className="space-y-3 py-2">{children}</div>
+        <div className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-1">{children}</div>
         <DialogFooter className={footerClassName}>
           {footer ?? (
             <>

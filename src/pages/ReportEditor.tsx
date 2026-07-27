@@ -25,7 +25,8 @@ import { handleMembershipError } from "@/lib/membership";
 import { LIST_FINANCIAL_METRICS_URL, LIST_FINANCIAL_RECORDS_URL, type FinancialMetricDef } from "@/lib/financialData";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
 import { buildEntriesFromRecords, periodKey, prevMonth } from "@/lib/metricPeriod";
-import { evalFormula, type MetricDef, type InputsMap } from "@/lib/metrics";
+import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { evalFormula } from "@/lib/formulaEngine";
 import {
   GET_FINANCIAL_REPORT_URL,
   UPDATE_FINANCIAL_REPORT_URL,
@@ -149,6 +150,18 @@ export default function ReportEditor() {
     let m = period.month, y = period.year;
     for (let i = 0; i < 6; i++) {
       arr.unshift(inputsForPeriod(m, y));
+      const p = prevMonth(m, y);
+      m = p.m;
+      y = p.y;
+    }
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, period, allInputDefs]);
+  const formulaHistory = useMemo(() => {
+    const arr: PeriodInputs[] = [];
+    let m = period.month, y = period.year;
+    for (let i = 0; i < 24; i++) {
+      arr.unshift({ month: m, year: y, values: inputsForPeriod(m, y) });
       const p = prevMonth(m, y);
       m = p.m;
       y = p.y;
@@ -355,6 +368,7 @@ export default function ReportEditor() {
                       currentInputs={currentInputs}
                       prevInputs={prevInputs}
                       historyInputs={historyInputs}
+                      formulaHistory={formulaHistory}
                       onInfo={setOpenInfo}
                     />
                   ))}

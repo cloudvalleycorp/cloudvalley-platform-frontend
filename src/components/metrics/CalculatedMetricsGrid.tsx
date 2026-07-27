@@ -1,13 +1,17 @@
 import { Info, ArrowUp, ArrowDown } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
-import { evalFormula, requiredInputs, formatMetricValue, type MetricDef, type InputsMap } from "@/lib/metrics";
+import { formatMetricValue, type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { evalFormula, requiredInputs } from "@/lib/formulaEngine";
 
 type Props = {
   metrics: MetricDef[];
   currentInputs: InputsMap;
   prevInputs: InputsMap;
-  historyInputs: InputsMap[]; // last 6 months including current, oldest first
+  historyInputs: InputsMap[]; // last 6 months including current, oldest first — sparkline only
+  // Wider window (chronological, ending at current) for SUMLAST/AVGLAST/YTD
+  // in the headline value — a longer series than the sparkline needs.
+  formulaHistory?: PeriodInputs[];
   inputDefs: MetricDef[]; // to render friendly missing-input names
   onInfo: (m: MetricDef) => void;
   privacy?: Record<string, boolean>;
@@ -24,6 +28,7 @@ export function CalculatedMetricsGrid({
   currentInputs,
   prevInputs,
   historyInputs,
+  formulaHistory,
   inputDefs,
   onInfo,
   privacy,
@@ -42,7 +47,7 @@ export function CalculatedMetricsGrid({
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {metrics.map((m) => {
           const expr = m.formula_expression!;
-          const current = evalFormula(expr, currentInputs);
+          const current = evalFormula(expr, currentInputs, formulaHistory);
           const prev = evalFormula(expr, prevInputs);
           const change =
             current != null && prev != null && prev !== 0

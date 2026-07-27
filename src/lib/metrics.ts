@@ -17,37 +17,11 @@ export type MetricDef = {
 
 export type InputsMap = Record<string, number>; // input_key -> value
 
-/**
- * Safely evaluate a metric formula given a map of input values.
- * Returns null if any required input is missing or result is invalid.
- */
-export function evalFormula(expression: string, inputs: InputsMap): number | null {
-  // Extract identifiers (input_keys referenced in the formula)
-  const identifiers = Array.from(new Set(expression.match(/[a-z_][a-z0-9_]*/gi) ?? []));
-  // Check all referenced inputs exist (treat 0 as valid)
-  for (const id of identifiers) {
-    if (inputs[id] === undefined || inputs[id] === null || Number.isNaN(inputs[id])) {
-      return null;
-    }
-  }
-  try {
-    // Build sandboxed function: only allows the identifiers we extracted
-    const args = identifiers.join(",");
-    const values = identifiers.map((k) => inputs[k]);
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(args, `return (${expression});`);
-    const result = fn(...values);
-    if (typeof result !== "number" || !isFinite(result)) return null;
-    return result;
-  } catch {
-    return null;
-  }
-}
-
-/** Identifies which inputs a calculated metric needs. */
-export function requiredInputs(expression: string): string[] {
-  return Array.from(new Set(expression.match(/[a-z_][a-z0-9_]*/gi) ?? []));
-}
+// One period's worth of raw inputs, tagged with when it is — needed by
+// SUMLAST/AVGLAST/YTD (src/lib/formulaEngine.ts) to know how far back "last
+// N months" or "this year" reaches. Chronological, oldest first; the last
+// entry should be the "current" period being evaluated.
+export type PeriodInputs = { month: number; year: number; values: InputsMap };
 
 export function formatMetricValue(value: number | null, unit: string | null): string {
   if (value === null || value === undefined) return "—";

@@ -19,7 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { evalFormula, type MetricDef, type InputsMap } from "@/lib/metrics";
+import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth } from "@/lib/metricPeriod";
 
 const GET_COMPANY_PROFILE_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-company-profile";
@@ -106,6 +107,19 @@ export default function InvestorCompany() {
     let m = period.month, y = period.year;
     for (let i = 0; i < 6; i++) {
       arr.unshift(inputsForPeriod(m, y));
+      const p = prevMonth(m, y);
+      m = p.m;
+      y = p.y;
+    }
+    return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metrics.entries, period, allInputDefs]);
+
+  const formulaHistory = useMemo(() => {
+    const arr: PeriodInputs[] = [];
+    let m = period.month, y = period.year;
+    for (let i = 0; i < 24; i++) {
+      arr.unshift({ month: m, year: y, values: inputsForPeriod(m, y) });
       const p = prevMonth(m, y);
       m = p.m;
       y = p.y;
@@ -249,6 +263,7 @@ export default function InvestorCompany() {
                         currentInputs={currentInputs}
                         prevInputs={prevInputs}
                         historyInputs={historyInputs}
+                        formulaHistory={formulaHistory}
                         onInfo={setOpenInfo}
                       />
                     ))}
