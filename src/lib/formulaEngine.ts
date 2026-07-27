@@ -6,18 +6,17 @@
 import { Parser, SUPPORTED_FORMULAS } from "hot-formula-parser";
 import type { InputsMap, PeriodInputs } from "@/lib/metrics";
 
+// Every function name available in a formula — hot-formula-parser's ~280
+// Excel/Sheets functions plus our 3 custom ones. Exported for the formula
+// editor's autocomplete (src/components/metrics/FormulaField.tsx).
+export const ALL_FORMULA_FUNCTIONS: string[] = Array.from(
+  new Set([...SUPPORTED_FORMULAS.map((f) => f.toUpperCase()), "SUMLAST", "AVGLAST", "YTD"])
+).sort();
+
 // Function names hot-formula-parser resolves as formulas, plus our own
 // custom ones and the built-in literals — anything in this set is NOT a
 // real input_key even though it matches the identifier regex below.
-const RESERVED_NAMES = new Set([
-  ...SUPPORTED_FORMULAS.map((f) => f.toUpperCase()),
-  "TRUE",
-  "FALSE",
-  "NULL",
-  "SUMLAST",
-  "AVGLAST",
-  "YTD",
-]);
+const RESERVED_NAMES = new Set([...ALL_FORMULA_FUNCTIONS, "TRUE", "FALSE", "NULL"]);
 
 function stripQuotedStrings(expression: string): string {
   return expression.replace(/"[^"]*"/g, "");

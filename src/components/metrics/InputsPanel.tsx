@@ -3,13 +3,7 @@ import { Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
-import type { MetricDef, InputsMap } from "@/lib/metrics";
-
-function formatInputValue(value: number, valueType: MetricDef["value_type"]): string {
-  if (valueType === "money") return `$${value.toLocaleString()}`;
-  if (valueType === "percentage") return `${value.toLocaleString()}%`;
-  return value.toLocaleString();
-}
+import { formatValueByType, type MetricDef, type InputsMap } from "@/lib/metrics";
 
 type Props = {
   inputs: MetricDef[];
@@ -121,7 +115,7 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
                       current === undefined && "text-muted-foreground"
                     )}
                   >
-                    {current !== undefined ? formatInputValue(current, m.value_type) : "—"}
+                    {current !== undefined ? formatValueByType(current, m.value_type) : "—"}
                   </button>
                 )}
               </div>

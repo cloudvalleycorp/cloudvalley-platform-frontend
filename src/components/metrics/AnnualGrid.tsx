@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
 import type { MetricDef, InputsMap } from "@/lib/metrics";
-import { formatMetricValue } from "@/lib/metrics";
+import { formatMetricValue, formatValueByType } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -29,12 +29,6 @@ type Props = {
 };
 
 const k = (y: number, m: number) => `${y}-${m}`;
-
-function formatCellValue(value: number, valueType: MetricDef["value_type"]): string {
-  if (valueType === "money") return `$${value.toLocaleString()}`;
-  if (valueType === "percentage") return `${value.toLocaleString()}%`;
-  return value.toLocaleString();
-}
 
 export function AnnualGrid({
   year,
@@ -154,11 +148,11 @@ export function AnnualGrid({
     const pendKey = `${metricId}|${month}`;
     const pendVal = pending[pendKey];
     if (pendVal !== undefined) {
-      return { display: pendVal === "" ? "—" : formatCellValue(Number(pendVal), valueType), pending: true };
+      return { display: pendVal === "" ? "—" : formatValueByType(Number(pendVal), valueType), pending: true };
     }
     const v = entries[metricId]?.[k(year, month)];
     return {
-      display: v === undefined ? "—" : formatCellValue(v, valueType),
+      display: v === undefined ? "—" : formatValueByType(v, valueType),
       pending: false,
     };
   };
