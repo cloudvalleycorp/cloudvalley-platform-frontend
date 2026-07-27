@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip as RTooltip, CartesianGrid, ReferenceLine } from "recharts";
 import { formatMetricValue, type MetricDef } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
@@ -16,11 +18,13 @@ type Props = {
   metric: MetricDef | null;
   onClose: () => void;
   history?: MetricHistoryPoint[];
+  onEdit?: (m: MetricDef) => void;
+  onDelete?: (m: MetricDef) => void;
 };
 
 type Mode = "change" | "absolute";
 
-export function MetricInfoSheet({ metric, onClose, history }: Props) {
+export function MetricInfoSheet({ metric, onClose, history, onEdit, onDelete }: Props) {
   const [mode, setMode] = useState<Mode>("change");
 
   // Reset to default when opening a different metric
@@ -84,11 +88,30 @@ export function MetricInfoSheet({ metric, onClose, history }: Props) {
         </SheetHeader>
         {metric && (
           <div className="mt-6 space-y-6">
-            <div className="inline-flex items-center gap-2 text-xs">
-              <span className="px-2 py-0.5 rounded-full bg-surface border border-border text-muted-foreground">
-                {metric.metric_type === "input" ? "Input" : "Calculada"}
-              </span>
-              {metric.unit && <span className="text-muted-foreground">{metric.unit}</span>}
+            <div className="flex items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-2 text-xs">
+                <span className="px-2 py-0.5 rounded-full bg-surface border border-border text-muted-foreground">
+                  {metric.metric_type === "input" ? "Input" : "Calculada"}
+                </span>
+                {metric.unit && <span className="text-muted-foreground">{metric.unit}</span>}
+              </div>
+              <div className="flex items-center gap-1">
+                {onEdit && (
+                  <Button size="sm" variant="ghost" onClick={() => onEdit(metric)}>
+                    <Pencil size={12} className="mr-1" /> Editar
+                  </Button>
+                )}
+                {onDelete && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => onDelete(metric)}
+                  >
+                    <Trash2 size={12} className="mr-1" /> Eliminar
+                  </Button>
+                )}
+              </div>
             </div>
 
             {sorted.length >= 2 && (
