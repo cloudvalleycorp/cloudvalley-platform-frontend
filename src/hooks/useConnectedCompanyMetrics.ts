@@ -13,6 +13,7 @@ const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
   category: d.category,
   metric_type: d.metric_type,
   input_key: d.input_key,
+  value_type: d.value_type ?? null,
   formula_expression: d.formula_expression,
   unit: d.unit,
   formula: d.formula_expression,
@@ -25,9 +26,9 @@ const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
 /**
  * Read-only counterpart of useFinancialMetrics, for a fund member viewing a
  * CONNECTED company's public metrics — not the company's own owner/member.
- * list-financial-metrics/list-financial-records already come pre-filtered
- * to only public metrics for this caller type (backend-enforced), so there's
- * no privacy toggle, no submit, no import log here — nothing to write.
+ * list-metrics/list-records already come pre-filtered to only public
+ * metrics for this caller type (backend-enforced), so there's no privacy
+ * toggle, no submit, no import log here — nothing to write.
  */
 export function useConnectedCompanyMetrics(companyId: string | null) {
   const [metrics, setMetrics] = useState<MetricDef[]>([]);

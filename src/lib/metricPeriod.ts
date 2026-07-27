@@ -16,9 +16,9 @@ export function parsePeriodString(period: string): { y: number; m: number } {
 
 /**
  * Shared by useFinancialMetrics, useConnectedCompanyMetrics, and the report
- * preview: turns list-financial-records' flat { period, ...fields } rows
- * into the { metric_id: { "y-m": value } } shape every metrics view indexes
- * against. Fields absent or null are skipped identically (no invented 0s).
+ * preview: turns list-records' flat { period, ...fields } rows into the
+ * { metric_id: { "y-m": value } } shape every metrics view indexes against.
+ * Fields absent or null are skipped identically (no invented 0s).
  */
 export function buildEntriesFromRecords(
   inputDefs: { id: string; input_key: string | null }[],

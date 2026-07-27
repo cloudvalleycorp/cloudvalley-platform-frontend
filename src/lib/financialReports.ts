@@ -1,4 +1,4 @@
-export const UPSERT_FINANCIAL_METRIC_DEFINITION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/upsert-financial-metric-definition";
+export const UPSERT_FINANCIAL_METRIC_DEFINITION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/upsert-metric-definition";
 export const CREATE_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/create-financial-report";
 export const LIST_FINANCIAL_REPORTS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-financial-reports";
 export const GET_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-financial-report";
@@ -31,11 +31,11 @@ export type ReportShare = {
   counterpart_name: string;
 };
 
-// Input metrics can only reference one of these 8 fixed financial_record
-// fields — submit-financial-record doesn't accept arbitrary keys, so a
-// "custom input metric" is really just a relabel/recategorization of an
-// existing raw field. Custom "calculated" metrics are the flexible ones:
-// any formula over these same 8 identifiers.
+// Los 8 campos originales de Revenue/Cash & Efficiency. submit-record ya
+// acepta cualquier input_key que la company tenga definido (custom, o el
+// catálogo default de Acquisition/Retention) — esta lista queda solo como
+// sugerencia inicial en el datalist del campo "Campo" al crear una métrica
+// de tipo input, no como restricción.
 export const RAW_INPUT_KEYS = [
   "revenue",
   "new_mrr",

@@ -5,6 +5,12 @@ import { cn } from "@/lib/utils";
 import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
 import type { MetricDef, InputsMap } from "@/lib/metrics";
 
+function formatInputValue(value: number, valueType: MetricDef["value_type"]): string {
+  if (valueType === "money") return `$${value.toLocaleString()}`;
+  if (valueType === "percentage") return `${value.toLocaleString()}%`;
+  return value.toLocaleString();
+}
+
 type Props = {
   inputs: MetricDef[];
   values: InputsMap;
@@ -23,13 +29,16 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
     setDraft(current?.toString() ?? "");
   };
 
-  const commit = async (key: string) => {
+  const commit = async (key: string, valueType: MetricDef["value_type"]) => {
     const trimmed = draft.trim();
     if (trimmed === "") {
       await onSave(key, null);
     } else {
-      const num = Number(trimmed);
-      if (!isNaN(num)) await onSave(key, num);
+      let num = Number(trimmed);
+      if (!isNaN(num)) {
+        if (valueType === "count") num = Math.round(num);
+        await onSave(key, num);
+      }
     }
     setEditing(null);
   };
@@ -73,19 +82,37 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
               </div>
               <div className="w-40">
                 {isEditing ? (
-                  <Input
-                    autoFocus
-                    type="number"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onBlur={() => commit(key)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commit(key);
-                      if (e.key === "Escape") setEditing(null);
-                    }}
-                    className="h-8 text-sm text-right"
-                    placeholder="0"
-                  />
+                  <div className="relative">
+                    {m.value_type === "money" && (
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">
+                        $
+                      </span>
+                    )}
+                    <Input
+                      autoFocus
+                      type="number"
+                      step={m.value_type === "count" ? 1 : "any"}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onBlur={() => commit(key, m.value_type)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commit(key, m.value_type);
+                        if (e.key === "Escape") setEditing(null);
+                      }}
+                      className={cn(
+                        "h-8 text-sm text-right",
+                        m.value_type === "money" && "pl-6",
+                        m.value_type === "percentage" && "pr-6"
+                      )}
+                      placeholder="0"
+                      aria-label={m.name}
+                    />
+                    {m.value_type === "percentage" && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">
+                        %
+                      </span>
+                    )}
+                  </div>
                 ) : (
                   <button
                     onClick={() => startEdit(key, current)}
@@ -94,7 +121,7 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
                       current === undefined && "text-muted-foreground"
                     )}
                   >
-                    {current !== undefined ? current.toLocaleString() : "—"}
+                    {current !== undefined ? formatInputValue(current, m.value_type) : "—"}
                   </button>
                 )}
               </div>

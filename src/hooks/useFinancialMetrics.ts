@@ -9,7 +9,6 @@ import {
   LIST_FINANCIAL_IMPORT_LOG_URL,
   SUBMIT_FINANCIAL_RECORD_URL,
   type FinancialMetricDef,
-  type FinancialMetricKey,
   type ImportLogEntry,
 } from "@/lib/financialData";
 import type { MetricDef } from "@/lib/metrics";
@@ -21,6 +20,7 @@ const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
   category: d.category,
   metric_type: d.metric_type,
   input_key: d.input_key,
+  value_type: d.value_type ?? null,
   formula_expression: d.formula_expression,
   unit: d.unit,
   formula: d.formula_expression,
@@ -31,11 +31,10 @@ const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
 });
 
 /**
- * Data layer for the two Growth Tracker categories backed by the GCP
- * financial-data module (Revenue, Cash & Efficiency) — mirrors the shape of
- * the legacy Supabase metric_configs/metric_entries/metric_privacy layer so
- * both datasets can drive the same presentational components
- * (InputsPanel/CalculatedMetricsGrid/AnnualGrid/MetricInfoSheet).
+ * Data layer for all Growth Tracker categories (Revenue, Cash & Efficiency,
+ * Acquisition, Retention, and any custom ones), backed by the GCP financial
+ * data module. Drives InputsPanel/CalculatedMetricsGrid/AnnualGrid/
+ * MetricInfoSheet.
  */
 export function useFinancialMetrics(companyId: string | null) {
   const [metrics, setMetrics] = useState<MetricDef[]>([]);
@@ -48,9 +47,9 @@ export function useFinancialMetrics(companyId: string | null) {
   const [loadingLogs, setLoadingLogs] = useState(true);
 
   const inputKeyByMetricId = useMemo(() => {
-    const map: Record<string, FinancialMetricKey> = {};
+    const map: Record<string, string> = {};
     for (const m of metrics) {
-      if (m.metric_type === "input" && m.input_key) map[m.id] = m.input_key as FinancialMetricKey;
+      if (m.metric_type === "input" && m.input_key) map[m.id] = m.input_key;
     }
     return map;
   }, [metrics]);

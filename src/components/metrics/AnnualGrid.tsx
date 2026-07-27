@@ -29,6 +29,12 @@ type Props = {
 
 const k = (y: number, m: number) => `${y}-${m}`;
 
+function formatCellValue(value: number, valueType: MetricDef["value_type"]): string {
+  if (valueType === "money") return `$${value.toLocaleString()}`;
+  if (valueType === "percentage") return `${value.toLocaleString()}%`;
+  return value.toLocaleString();
+}
+
 export function AnnualGrid({
   year,
   onYearChange,
@@ -62,6 +68,12 @@ export function AnnualGrid({
   const inputDefByKey = useMemo(() => {
     const map: Record<string, MetricDef> = {};
     for (const d of allInputDefs) if (d.input_key) map[d.input_key] = d;
+    return map;
+  }, [allInputDefs]);
+
+  const inputDefById = useMemo(() => {
+    const map: Record<string, MetricDef> = {};
+    for (const d of allInputDefs) map[d.id] = d;
     return map;
   }, [allInputDefs]);
 
@@ -136,14 +148,15 @@ export function AnnualGrid({
   };
 
   const cellValue = (metricId: string, month: number): { display: string; pending: boolean } => {
+    const valueType = inputDefById[metricId]?.value_type ?? null;
     const pendKey = `${metricId}|${month}`;
     const pendVal = pending[pendKey];
     if (pendVal !== undefined) {
-      return { display: pendVal === "" ? "—" : Number(pendVal).toLocaleString(), pending: true };
+      return { display: pendVal === "" ? "—" : formatCellValue(Number(pendVal), valueType), pending: true };
     }
     const v = entries[metricId]?.[k(year, month)];
     return {
-      display: v === undefined ? "—" : v.toLocaleString(),
+      display: v === undefined ? "—" : formatCellValue(v, valueType),
       pending: false,
     };
   };
@@ -158,8 +171,11 @@ export function AnnualGrid({
       if (raw.trim() === "") {
         changes.push({ metricId, year, month, value: null });
       } else {
-        const n = Number(raw);
-        if (!isNaN(n)) changes.push({ metricId, year, month, value: n });
+        let n = Number(raw);
+        if (!isNaN(n)) {
+          if (inputDefById[metricId]?.value_type === "count") n = Math.round(n);
+          changes.push({ metricId, year, month, value: n });
+        }
       }
     }
     await onSaveBatch(changes);
@@ -250,11 +266,13 @@ export function AnnualGrid({
                             <input
                               ref={inputRef}
                               type="number"
+                              step={def.value_type === "count" ? 1 : "any"}
                               value={draft}
                               onChange={(e) => setDraft(e.target.value)}
                               onBlur={() => commit()}
                               onKeyDown={(e) => handleKey(e, def.id, month)}
                               className="w-full bg-background border border-foreground rounded-sm px-1.5 py-1 text-right text-sm outline-none"
+                              aria-label={def.name}
                             />
                           ) : (
                             <button
