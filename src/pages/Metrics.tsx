@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
@@ -35,7 +34,7 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { FormulaField } from "@/components/metrics/FormulaField";
-import { LayoutGrid, Table2, Plus, BarChart3, FileSpreadsheet } from "lucide-react";
+import { LayoutGrid, Table2, Plus, BarChart3 } from "lucide-react";
 import { type MetricDef, type InputsMap, type PeriodInputs, type ValueType, sourceLabel } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
@@ -489,13 +488,6 @@ export default function Metrics() {
                   <LayoutGrid size={12} strokeWidth={1.5} /> Mensual
                 </button>
               </div>
-              {is_owner && (
-                <Button variant="outline" asChild>
-                  <Link to="/growth-tracker/sheets">
-                    <FileSpreadsheet size={14} className="mr-1" /> Google Sheets
-                  </Link>
-                </Button>
-              )}
               {is_owner && (
                 <Button variant="outline" onClick={openAddMetric}>
                   <Plus size={14} className="mr-1" /> Agregar métrica
