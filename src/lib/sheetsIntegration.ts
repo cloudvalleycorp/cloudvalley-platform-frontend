@@ -16,6 +16,12 @@ export type SheetsStatus = {
   has_mapping: boolean;
   last_synced_at: string | null;
   last_sync_status: string | null;
+  // false = un admin de CloudValley desactivó la fuente "sheet" para esta
+  // company (assign-source) — independiente de connected/has_mapping, que
+  // siguen reflejando el estado de la conexión con Google en sí. No es lo
+  // mismo que reconnect_required: acá no hay nada que el founder pueda
+  // hacer, hace falta que un admin la reactive.
+  source_enabled: boolean;
 };
 
 export type SheetSummary = { spreadsheet_id: string; name: string };
@@ -35,6 +41,8 @@ export type SyncRowError = { field: string; reason: string; row?: number; period
 
 export type SyncResult = {
   status: string;
+  // Presente cuando status: "error" por la fuente pausada — ver source_disabled.
+  reason?: string;
   import_log_id: string | null;
   rows_processed: number;
   rows_rejected: number;
@@ -42,12 +50,14 @@ export type SyncResult = {
 };
 
 // A 400 from list-sheets/get-sheet-tabs/get-sheet-headers/save-sheet-mapping/
-// sync-sheets can mean "Google revoked access" (reconnect_required: true),
-// a validation error ({error}), an invalid input_key list, or a "the sheet's
-// columns changed" list — never assume it's just {error} like the generic
-// lib/membership.ts 400 handling does.
+// sync-sheets can mean "Google revoked access" (reconnect_required: true), a
+// company-level pause ("source_disabled": true — an admin turned off the
+// "sheet" source), a validation error ({error}), an invalid input_key list,
+// or a "the sheet's columns changed" list — never assume it's just {error}
+// like the generic lib/membership.ts 400 handling does.
 export type SheetsApiError = {
   reconnectRequired: boolean;
+  sourceDisabled: boolean;
   message: string | null;
   invalidInputKeys?: string[];
   missingHeaders?: string[];
@@ -58,11 +68,12 @@ export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
     const data = await res.json();
     return {
       reconnectRequired: data?.reconnect_required === true,
+      sourceDisabled: data?.source_disabled === true,
       message: typeof data?.error === "string" ? data.error : null,
       invalidInputKeys: Array.isArray(data?.invalid_input_keys) ? data.invalid_input_keys : undefined,
       missingHeaders: Array.isArray(data?.missing_headers) ? data.missing_headers : undefined,
     };
   } catch {
-    return { reconnectRequired: false, message: null };
+    return { reconnectRequired: false, sourceDisabled: false, message: null };
   }
 }

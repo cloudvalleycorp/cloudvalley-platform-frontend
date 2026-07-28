@@ -41,6 +41,16 @@ const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-co
 
 type Company = { company_id: string; name: string; is_active: boolean };
 
+// Fuentes que un admin puede habilitar por company. "stripe" no está acá
+// todavía a propósito: la integración de Stripe en Settings > Integraciones
+// todavía no escribe en el módulo financiero de GCP (ver memoria de
+// "stale integrations"), así que exponer el toggle sería prometer algo que
+// no hace nada. Agregarlo en cuanto esté realmente wireado.
+const AVAILABLE_SOURCES: { id: string; label: string }[] = [
+  { id: "manual_form", label: "Formulario manual" },
+  { id: "sheet", label: "Google Sheets" },
+];
+
 const STATUS_CONFIG: Record<ReportStatus, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
   reportado: { label: "Reportado", cls: "text-foreground", Icon: CheckCircle2 },
   pendiente: { label: "Pendiente", cls: "text-muted-foreground", Icon: Clock },
@@ -118,18 +128,25 @@ export default function AdminFinancialData() {
     loadSources();
   }, [isAdmin]);
 
-  const assign = async (company_id: string, enable: boolean) => {
+  // assign-source reemplaza el set completo de fuentes de la company, así
+  // que cada toggle tiene que mandar manual_form + sheet (+ lo que siga)
+  // juntos, no solo la que se tocó — si no, prender Sheets apagaría
+  // Formulario manual sin querer.
+  const assignSource = async (company_id: string, source: string, enable: boolean) => {
+    const current = sources[company_id] ?? [];
+    const next = enable ? Array.from(new Set([...current, source])) : current.filter((s) => s !== source);
+    const label = AVAILABLE_SOURCES.find((s) => s.id === source)?.label ?? source;
     setAssigningId(company_id);
     try {
       const res = await fetch(ASSIGN_FINANCIAL_SOURCE_URL, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_id, sources: enable ? ["manual_form"] : [] }),
+        body: JSON.stringify({ company_id, sources: next }),
       });
       if (await handleGatewayError(res)) return;
-      setSources((s) => ({ ...s, [company_id]: enable ? ["manual_form"] : [] }));
-      toast.success(enable ? "Formulario manual habilitado" : "Formulario manual deshabilitado");
+      setSources((s) => ({ ...s, [company_id]: next }));
+      toast.success(`${label} ${enable ? "habilitado" : "deshabilitado"}`);
     } catch {
       toast.error("No se pudo actualizar");
     } finally {
@@ -236,14 +253,19 @@ export default function AdminFinancialData() {
                 },
               },
               {
-                header: "Formulario manual",
+                header: "Fuentes habilitadas",
                 cell: (c: Company) => (
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={(sources[c.company_id] ?? []).includes("manual_form")}
-                      disabled={loadingSources || assigningId === c.company_id}
-                      onCheckedChange={(checked) => assign(c.company_id, checked)}
-                    />
+                  <div className="flex flex-col gap-1.5">
+                    {AVAILABLE_SOURCES.map((src) => (
+                      <label key={src.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                        <Switch
+                          checked={(sources[c.company_id] ?? []).includes(src.id)}
+                          disabled={loadingSources || assigningId === c.company_id}
+                          onCheckedChange={(checked) => assignSource(c.company_id, src.id, checked)}
+                        />
+                        {src.label}
+                      </label>
+                    ))}
                     {loadingSources && <LoadingState variant="inline" className="text-xs" />}
                   </div>
                 ),
