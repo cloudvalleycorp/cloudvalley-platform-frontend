@@ -100,6 +100,9 @@ export default function GrowthTrackerSheets() {
   const [status, setStatus] = useState<SheetsStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [reconnectRequired, setReconnectRequired] = useState(false);
+  // Un admin desactivó la fuente "sheet" para esta company — nada que el
+  // founder pueda arreglar acá, distinto de reconnectRequired.
+  const [sourcePaused, setSourcePaused] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -179,6 +182,7 @@ export default function GrowthTrackerSheets() {
       const data = (await res.json()) as SheetsStatus;
       setStatus(data);
       setReconnectRequired(data.reconnect_required);
+      setSourcePaused(data.source_enabled === false);
     } catch {
       toast.error("No se pudo cargar el estado de la conexión con Google Sheets");
     } finally {
@@ -200,6 +204,10 @@ export default function GrowthTrackerSheets() {
       });
       if (res.status === 400) {
         const err = await parseSheetsError(res);
+        if (err.sourceDisabled) {
+          setSourcePaused(true);
+          return;
+        }
         if (err.reconnectRequired) {
           setReconnectRequired(true);
           return;
@@ -225,6 +233,10 @@ export default function GrowthTrackerSheets() {
       const res = await fetch(`${GET_SHEET_TABS_URL}${qs}`, { credentials: "include" });
       if (res.status === 400) {
         const err = await parseSheetsError(res);
+        if (err.sourceDisabled) {
+          setSourcePaused(true);
+          return;
+        }
         if (err.reconnectRequired) {
           setReconnectRequired(true);
           return;
@@ -250,6 +262,10 @@ export default function GrowthTrackerSheets() {
       const res = await fetch(`${GET_SHEET_HEADERS_URL}${qs}`, { credentials: "include" });
       if (res.status === 400) {
         const err = await parseSheetsError(res);
+        if (err.sourceDisabled) {
+          setSourcePaused(true);
+          return;
+        }
         if (err.reconnectRequired) {
           setReconnectRequired(true);
           return;
@@ -421,6 +437,10 @@ export default function GrowthTrackerSheets() {
       });
       if (res.status === 400) {
         const err = await parseSheetsError(res);
+        if (err.sourceDisabled) {
+          setSourcePaused(true);
+          return;
+        }
         if (err.reconnectRequired) {
           setReconnectRequired(true);
           return;
@@ -462,6 +482,10 @@ export default function GrowthTrackerSheets() {
       });
       if (res.status === 400) {
         const err = await parseSheetsError(res);
+        if (err.sourceDisabled) {
+          setSourcePaused(true);
+          return;
+        }
         if (err.reconnectRequired) {
           setReconnectRequired(true);
           return;
@@ -475,6 +499,10 @@ export default function GrowthTrackerSheets() {
       }
       if (await handleMembershipError(res)) return;
       const data = (await res.json()) as SyncResult;
+      if (data.status === "error" && data.reason === "source_disabled") {
+        setSourcePaused(true);
+        return;
+      }
       setSyncResult(data);
       setSyncWasDryRun(dryRun);
       if (!dryRun) {
@@ -503,7 +531,21 @@ export default function GrowthTrackerSheets() {
           subtitle="Sincronizá tus métricas automáticamente desde una planilla, en vez de cargarlas a mano."
         />
 
-        {reconnectRequired && (
+        {sourcePaused && status?.connected && (
+          <div className="border border-border bg-surface rounded-lg p-4 mb-6 flex items-start gap-2.5" aria-live="polite">
+            <AlertTriangle size={16} strokeWidth={1.5} className="text-muted-foreground shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium">Fuente pausada por un administrador</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                CloudValley desactivó temporalmente la sincronización con Google Sheets para tu startup. Tu
+                conexión y tu mapeo se conservan tal cual quedaron; pedile a un administrador que la reactive
+                para poder sincronizar de nuevo.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {!sourcePaused && reconnectRequired && (
           <div className="border border-warning/40 bg-warning/10 rounded-lg p-4 mb-6 flex items-start justify-between gap-4" aria-live="polite">
             <div className="flex items-start gap-2.5">
               <AlertTriangle size={16} strokeWidth={1.5} className="text-warning-foreground shrink-0 mt-0.5" />
@@ -522,7 +564,15 @@ export default function GrowthTrackerSheets() {
 
         {view === "loading" && <LoadingState variant="centered" className="py-16" />}
 
-        {view === "not_connected" && (
+        {view === "not_connected" && sourcePaused && (
+          <EmptyState
+            icon={FileSpreadsheet}
+            title="Google Sheets está pausado para tu startup"
+            description="Un administrador de CloudValley tiene que habilitar esta fuente antes de que puedas conectarte. Pedile que la active."
+          />
+        )}
+
+        {view === "not_connected" && !sourcePaused && (
           <EmptyState
             icon={FileSpreadsheet}
             title="Todavía no conectaste Google Sheets"
@@ -533,7 +583,15 @@ export default function GrowthTrackerSheets() {
 
         {view === "wizard" && loadingEditMapping && <LoadingState variant="centered" className="py-16" />}
 
-        {view === "wizard" && !loadingEditMapping && (
+        {view === "wizard" && !loadingEditMapping && sourcePaused && (
+          <EmptyState
+            icon={FileSpreadsheet}
+            title="Google Sheets está pausado para tu startup"
+            description="Un administrador de CloudValley tiene que reactivar esta fuente antes de que puedas seguir configurando el mapeo."
+          />
+        )}
+
+        {view === "wizard" && !loadingEditMapping && !sourcePaused && (
           <div className="space-y-6">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className={cn(step === 1 && "text-foreground font-medium")}>1. Planilla</span>
@@ -775,7 +833,7 @@ export default function GrowthTrackerSheets() {
                     </span>
                   }
                   action={
-                    <Button variant="ghost" size="sm" onClick={openEditMapping}>
+                    <Button variant="ghost" size="sm" onClick={openEditMapping} disabled={sourcePaused}>
                       Editar mapeo
                     </Button>
                   }
@@ -799,11 +857,11 @@ export default function GrowthTrackerSheets() {
               </div>
 
               <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border">
-                <Button onClick={() => runSync(false)} disabled={syncBusy}>
+                <Button onClick={() => runSync(false)} disabled={syncBusy || sourcePaused}>
                   <RefreshCw size={14} className={cn("mr-1.5", syncBusy && "animate-spin")} />
                   {syncBusy && !syncWasDryRun ? "Sincronizando…" : "Sincronizar ahora"}
                 </Button>
-                <Button variant="outline" onClick={() => runSync(true)} disabled={syncBusy}>
+                <Button variant="outline" onClick={() => runSync(true)} disabled={syncBusy || sourcePaused}>
                   {syncBusy && syncWasDryRun ? "Probando…" : "Probar mapeo"}
                 </Button>
               </div>

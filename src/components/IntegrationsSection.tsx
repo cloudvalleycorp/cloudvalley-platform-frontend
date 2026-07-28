@@ -244,6 +244,9 @@ export function IntegrationsSection() {
             const connected = !!sheetsStatus?.connected;
             const needsReconnect = !!sheetsStatus?.reconnect_required;
             const needsMapping = connected && !sheetsStatus?.has_mapping;
+            // Un admin puede pausar la fuente independientemente del estado
+            // de la conexión con Google — no es lo mismo que "desconectado".
+            const paused = sheetsStatus?.source_enabled === false;
             return (
               <div key={p.id} className="border border-border rounded-lg p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -251,7 +254,11 @@ export function IntegrationsSection() {
                     <div className="flex items-center gap-2">
                       <FileSpreadsheet size={14} strokeWidth={1.5} className="text-muted-foreground" />
                       <span className="text-sm font-medium">{p.name}</span>
-                      {needsReconnect ? (
+                      {paused ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground bg-surface px-1.5 py-0.5 rounded">
+                          <AlertTriangle size={10} /> Pausado
+                        </span>
+                      ) : needsReconnect ? (
                         <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-destructive">
                           <AlertTriangle size={10} /> Reconectar
                         </span>
@@ -263,18 +270,26 @@ export function IntegrationsSection() {
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">{p.description}</p>
                     <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wide">{p.metrics}</p>
-                    {connected && (
+                    {paused ? (
                       <p className="text-[11px] text-muted-foreground mt-2">
-                        {sheetsStatus?.google_account_email && <span>{sheetsStatus.google_account_email} · </span>}
-                        {needsMapping
-                          ? "Falta terminar de mapear las columnas"
-                          : `Última sync: ${timeAgo(sheetsStatus?.last_synced_at ?? null)}`}
+                        Un administrador de CloudValley la desactivó temporalmente.
                       </p>
+                    ) : (
+                      connected && (
+                        <p className="text-[11px] text-muted-foreground mt-2">
+                          {sheetsStatus?.google_account_email && <span>{sheetsStatus.google_account_email} · </span>}
+                          {needsMapping
+                            ? "Falta terminar de mapear las columnas"
+                            : `Última sync: ${timeAgo(sheetsStatus?.last_synced_at ?? null)}`}
+                        </p>
+                      )
                     )}
                   </div>
                   <div className="shrink-0">
-                    <Button size="sm" onClick={() => navigate(p.href)}>
-                      {needsReconnect ? (
+                    <Button size="sm" onClick={() => navigate(p.href)} disabled={paused && !connected}>
+                      {paused ? (
+                        connected ? "Ver conexión" : "Pausado"
+                      ) : needsReconnect ? (
                         <><AlertTriangle size={12} className="mr-1" /> Reconectar</>
                       ) : !connected ? (
                         <><Plug size={12} className="mr-1" /> Conectar</>
