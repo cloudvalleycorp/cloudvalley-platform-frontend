@@ -20,6 +20,7 @@ import NotFound from "./pages/NotFound";
 // founder/investor chunks (recharts included) and vice versa.
 const Roadmap = lazy(() => import("./pages/Roadmap"));
 const Metrics = lazy(() => import("./pages/Metrics"));
+const GrowthTrackerSheets = lazy(() => import("./pages/GrowthTrackerSheets"));
 const Reporting = lazy(() => import("./pages/Reporting"));
 const ReportEditor = lazy(() => import("./pages/ReportEditor"));
 const DataRoom = lazy(() => import("./pages/DataRoom"));
@@ -54,6 +55,7 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/roadmap" element={<Roadmap />} />
             <Route path="/metrics" element={<Metrics />} />
+            <Route path="/growth-tracker/sheets" element={<GrowthTrackerSheets />} />
             <Route path="/reporting" element={<Reporting />} />
             <Route path="/reporting/:reportId" element={<ReportEditor />} />
             <Route path="/data-room" element={<DataRoom />} />

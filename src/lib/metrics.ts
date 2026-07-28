@@ -8,6 +8,11 @@ export type MetricDef = {
   metric_type: MetricType;
   input_key: string | null;
   value_type: ValueType | null;
+  // Which source currently feeds this input metric — null/"manual_form" means
+  // it's typed in by hand; anything else ("sheet", "stripe", ...) means an
+  // integration owns it now and InputsPanel/AnnualGrid show it read-only.
+  // Always null for metric_type "calculated" (not applicable).
+  source: string | null;
   formula_expression: string | null;
   unit: string | null;
   formula: string | null;
@@ -16,6 +21,27 @@ export type MetricDef = {
   benchmark: string | null;
   order_index: number;
 };
+
+const SOURCE_LABELS: Record<string, string> = {
+  sheet: "Google Sheets",
+  stripe: "Stripe",
+};
+
+/** Human label for an automated source, or null when the field is manual (nothing to show). */
+export function sourceLabel(source: string | null): string | null {
+  if (!source || source === "manual_form") return null;
+  return SOURCE_LABELS[source] ?? source;
+}
+
+const SOURCE_SETTINGS_PATHS: Record<string, string> = {
+  sheet: "/growth-tracker/sheets",
+};
+
+/** Where to send the user to fix a value that comes from an automated source — null if that integration has no settings screen yet. */
+export function sourceSettingsPath(source: string | null): string | null {
+  if (!source) return null;
+  return SOURCE_SETTINGS_PATHS[source] ?? null;
+}
 
 export type InputsMap = Record<string, number>; // input_key -> value
 

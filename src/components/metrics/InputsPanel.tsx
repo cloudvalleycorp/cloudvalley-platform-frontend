@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Info } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Info, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
-import { formatValueByType, type MetricDef, type InputsMap } from "@/lib/metrics";
+import { formatValueByType, sourceLabel, sourceSettingsPath, type MetricDef, type InputsMap } from "@/lib/metrics";
 
 type Props = {
   inputs: MetricDef[];
@@ -50,6 +51,8 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
           const key = m.input_key!;
           const current = values[key];
           const isEditing = editing === key;
+          const syncedFrom = sourceLabel(m.source);
+          const settingsPath = sourceSettingsPath(m.source);
           return (
             <div
               key={m.id}
@@ -66,6 +69,25 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
                 {m.unit && (
                   <span className="text-xs text-muted-foreground">({m.unit})</span>
                 )}
+                {syncedFrom &&
+                  (settingsPath ? (
+                    <Link
+                      to={settingsPath}
+                      className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5 hover:text-foreground hover:border-foreground/30 transition-colors"
+                      title={`Se sincroniza desde ${syncedFrom}. Click para ir a la conexión.`}
+                    >
+                      <Zap size={10} strokeWidth={2} />
+                      {syncedFrom}
+                    </Link>
+                  ) : (
+                    <span
+                      className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5"
+                      title={`Se sincroniza desde ${syncedFrom}.`}
+                    >
+                      <Zap size={10} strokeWidth={2} />
+                      {syncedFrom}
+                    </span>
+                  ))}
                 <button
                   onClick={() => onInfo(m)}
                   className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"
@@ -75,7 +97,11 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
                 </button>
               </div>
               <div className="w-40">
-                {isEditing ? (
+                {syncedFrom ? (
+                  <div className="w-full text-right text-sm font-medium px-3 py-1.5">
+                    {current !== undefined ? formatValueByType(current, m.value_type) : "—"}
+                  </div>
+                ) : isEditing ? (
                   <div className="relative">
                     {m.value_type === "money" && (
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">

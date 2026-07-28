@@ -13,7 +13,10 @@ export type ReportStatus = "reportado" | "pendiente" | "con_errores";
 
 export type ValueType = "money" | "count" | "percentage";
 
-export type RowError = { field: string; reason: string };
+// row/period are present on sync-sheets' row_errors (pinpoint which sheet
+// row and which period a rejected value came from) — absent on
+// submit-record's, which is always a single period the caller already knows.
+export type RowError = { field: string; reason: string; row?: number; period?: string };
 
 export type SubmitFinancialRecordResponse = {
   import_log_id: string;
@@ -65,6 +68,11 @@ export type FinancialMetricDef = {
   metric_type: "input" | "calculated";
   input_key: string | null;
   value_type: ValueType | null;
+  // Automated source currently feeding this field ("sheet", "stripe", ...),
+  // or null/"manual_form" when it's typed in by hand. Always null for
+  // metric_type "calculated". Live — reflects whatever save-sheet-mapping
+  // (or the equivalent for other integrations) has active right now.
+  source: string | null;
   formula_expression: string | null;
   unit: string | null;
   display_order: number;

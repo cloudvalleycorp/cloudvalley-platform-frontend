@@ -33,6 +33,14 @@ export function ImportLogTable({ logs, emptyLabel }: { logs: ImportLogEntry[]; e
               <ul className="mt-3 pt-3 border-t border-border/50 space-y-1">
                 {log.row_errors.map((e, i) => (
                   <li key={i} className="text-xs text-destructive">
+                    {(e.row !== undefined || e.period) && (
+                      <span className="text-muted-foreground">
+                        {e.row !== undefined ? `Fila ${e.row}` : ""}
+                        {e.row !== undefined && e.period ? " · " : ""}
+                        {e.period ?? ""}
+                        {": "}
+                      </span>
+                    )}
                     <span className="font-medium">{e.field}</span>: {e.reason}
                   </li>
                 ))}

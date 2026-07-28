@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,8 +35,8 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { FormulaField } from "@/components/metrics/FormulaField";
-import { LayoutGrid, Table2, Plus, BarChart3 } from "lucide-react";
-import { type MetricDef, type InputsMap, type PeriodInputs, type ValueType } from "@/lib/metrics";
+import { LayoutGrid, Table2, Plus, BarChart3, FileSpreadsheet } from "lucide-react";
+import { type MetricDef, type InputsMap, type PeriodInputs, type ValueType, sourceLabel } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 import { handleMembershipError } from "@/lib/membership";
@@ -302,6 +303,11 @@ export default function Metrics() {
     }
     const def = financial.metrics.find((m) => m.metric_type === "input" && m.input_key === inputKey);
     if (!def) return;
+    const syncedFrom = sourceLabel(def.source);
+    if (syncedFrom) {
+      toast.error(`Este campo se sincroniza desde ${syncedFrom}, no se puede cargar a mano.`);
+      return;
+    }
     const ok = await financial.submitValues(toPeriodString(period.month, period.year), { [inputKey]: value });
     if (!ok) return;
     financial.applyLocalEntry(def.id, period.month, period.year, value);
@@ -312,8 +318,17 @@ export default function Metrics() {
     changes: { metricId: string; year: number; month: number; value: number | null }[]
   ) => {
     if (changes.length === 0) return;
-    const cleared = changes.filter((c) => c.value === null);
-    const toSave = changes.filter((c) => c.value !== null);
+    const synced = changes.filter((c) => sourceLabel(financial.metrics.find((m) => m.id === c.metricId)?.source ?? null));
+    const editable = changes.filter((c) => !sourceLabel(financial.metrics.find((m) => m.id === c.metricId)?.source ?? null));
+    if (synced.length > 0) {
+      toast.error(
+        synced.length === 1
+          ? "1 campo se sincroniza automáticamente, no se puede cargar a mano."
+          : `${synced.length} campos se sincronizan automáticamente, no se pueden cargar a mano.`
+      );
+    }
+    const cleared = editable.filter((c) => c.value === null);
+    const toSave = editable.filter((c) => c.value !== null);
     if (cleared.length > 0) {
       toast.error(
         cleared.length === 1
@@ -474,6 +489,13 @@ export default function Metrics() {
                   <LayoutGrid size={12} strokeWidth={1.5} /> Mensual
                 </button>
               </div>
+              {is_owner && (
+                <Button variant="outline" asChild>
+                  <Link to="/growth-tracker/sheets">
+                    <FileSpreadsheet size={14} className="mr-1" /> Google Sheets
+                  </Link>
+                </Button>
+              )}
               {is_owner && (
                 <Button variant="outline" onClick={openAddMetric}>
                   <Plus size={14} className="mr-1" /> Agregar métrica
