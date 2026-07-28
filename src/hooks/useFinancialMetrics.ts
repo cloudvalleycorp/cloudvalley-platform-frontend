@@ -21,6 +21,7 @@ const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
   metric_type: d.metric_type,
   input_key: d.input_key,
   value_type: d.value_type ?? null,
+  source: d.source ?? null,
   formula_expression: d.formula_expression,
   unit: d.unit,
   formula: d.formula_expression,
@@ -204,5 +205,6 @@ export function useFinancialMetrics(companyId: string | null) {
     togglePrivacy,
     inputKeyByMetricId,
     reload: load,
+    reloadLogs: loadLogs,
   };
 }

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Info, ChevronLeft, ChevronRight, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
 import type { MetricDef, InputsMap } from "@/lib/metrics";
-import { formatMetricValue, formatValueByType } from "@/lib/metrics";
+import { formatMetricValue, formatValueByType, sourceLabel, sourceSettingsPath } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -18,8 +19,6 @@ type Props = {
   allCalcDefs?: MetricDef[]; // all calculated defs across categories (metric reuse inside formulas)
   // entries[metric_id]["YYYY-M"] = value
   entries: Record<string, Record<string, number>>;
-  // entries[metric_id]["YYYY-M"] = provider name when synced from an integration
-  sources?: Record<string, Record<string, string>>;
   onSaveBatch: (
     changes: { metricId: string; year: number; month: number; value: number | null }[]
   ) => Promise<void>;
@@ -38,7 +37,6 @@ export function AnnualGrid({
   allInputDefs,
   allCalcDefs = [],
   entries,
-  sources,
   onSaveBatch,
   privacy,
   onTogglePrivacy,
@@ -72,6 +70,9 @@ export function AnnualGrid({
     for (const d of allInputDefs) map[d.id] = d;
     return map;
   }, [allInputDefs]);
+
+  // Rows whose source is an automated integration have no cells to tab into.
+  const editableInputDefs = useMemo(() => inputDefs.filter((d) => !sourceLabel(d.source)), [inputDefs]);
 
   const inputsForMonth = (m: number): InputsMap => {
     const result: InputsMap = {};
@@ -118,14 +119,14 @@ export function AnnualGrid({
       setEditing(null);
     } else if (e.key === "Tab") {
       e.preventDefault();
-      // move to next cell: next month, or first month of next input
-      const idx = inputDefs.findIndex((d) => d.id === metricId);
+      // move to next cell: next month, or first month of next (editable) input
+      const idx = editableInputDefs.findIndex((d) => d.id === metricId);
       let nextMetric = metricId;
       let nextMonth = month + (e.shiftKey ? -1 : 1);
       if (nextMonth > 12) {
         nextMonth = 1;
         const ni = idx + 1;
-        if (ni < inputDefs.length) nextMetric = inputDefs[ni].id;
+        if (ni < editableInputDefs.length) nextMetric = editableInputDefs[ni].id;
         else {
           commit();
           return;
@@ -133,7 +134,7 @@ export function AnnualGrid({
       } else if (nextMonth < 1) {
         nextMonth = 12;
         const ni = idx - 1;
-        if (ni >= 0) nextMetric = inputDefs[ni].id;
+        if (ni >= 0) nextMetric = editableInputDefs[ni].id;
         else {
           commit();
           return;
@@ -222,7 +223,10 @@ export function AnnualGrid({
                     Inputs
                   </td>
                 </tr>
-                {inputDefs.map((def) => (
+                {inputDefs.map((def) => {
+                  const syncedFrom = sourceLabel(def.source);
+                  const settingsPath = sourceSettingsPath(def.source);
+                  return (
                   <tr key={def.id} className="border-t border-border/40">
                     <td className="px-4 py-2 sticky left-0 bg-card">
                       <div className="flex items-center gap-2">
@@ -234,6 +238,25 @@ export function AnnualGrid({
                         {def.unit && (
                           <span className="text-xs text-muted-foreground">({def.unit})</span>
                         )}
+                        {syncedFrom &&
+                          (settingsPath ? (
+                            <Link
+                              to={settingsPath}
+                              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5 hover:text-foreground hover:border-foreground/30 transition-colors"
+                              title={`Se sincroniza desde ${syncedFrom}. Click para ir a la conexión.`}
+                            >
+                              <Zap size={10} strokeWidth={2} />
+                              {syncedFrom}
+                            </Link>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5"
+                              title={`Se sincroniza desde ${syncedFrom}.`}
+                            >
+                              <Zap size={10} strokeWidth={2} />
+                              {syncedFrom}
+                            </span>
+                          ))}
                         <button
                           onClick={() => onInfo(def)}
                           className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"
@@ -245,11 +268,10 @@ export function AnnualGrid({
                     </td>
                     {months.map((_, i) => {
                       const month = i + 1;
-                      const isEditing = editing?.metricId === def.id && editing?.month === month;
+                      const isEditing = !syncedFrom && editing?.metricId === def.id && editing?.month === month;
                       const pendKey = `${def.id}|${month}`;
-                      const isPending = pending[pendKey] !== undefined;
+                      const isPending = !syncedFrom && pending[pendKey] !== undefined;
                       const { display } = cellValue(def.id, month);
-                      const src = sources?.[def.id]?.[k(year, month)];
                       return (
                         <td
                           key={month}
@@ -258,7 +280,11 @@ export function AnnualGrid({
                             isPending && "border border-foreground"
                           )}
                         >
-                          {isEditing ? (
+                          {syncedFrom ? (
+                            <span className={cn("block px-1.5 py-1 text-muted-foreground", display === "—" && "text-tertiary")}>
+                              {display}
+                            </span>
+                          ) : isEditing ? (
                             <input
                               ref={inputRef}
                               type="number"
@@ -277,12 +303,8 @@ export function AnnualGrid({
                                 "w-full text-right px-1.5 py-1 rounded-sm hover:bg-surface transition-all inline-flex items-center justify-end gap-1",
                                 display === "—" && "text-tertiary"
                               )}
-                              title={src ? `Sincronizado desde ${src}` : undefined}
                               aria-label={isPending ? `${display}, cambio sin guardar` : undefined}
                             >
-                              {src && (
-                                <Zap size={9} strokeWidth={2} className="text-foreground/70 fill-foreground/70" />
-                              )}
                               {display}
                               {isPending && (
                                 <span className="h-1 w-1 rounded-full bg-foreground" aria-hidden="true" />
@@ -293,7 +315,8 @@ export function AnnualGrid({
                       );
                     })}
                   </tr>
-                ))}
+                  );
+                })}
               </>
             )}
 
