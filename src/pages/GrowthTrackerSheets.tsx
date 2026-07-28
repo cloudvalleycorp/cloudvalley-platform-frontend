@@ -304,15 +304,14 @@ export default function GrowthTrackerSheets() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  useEffect(() => {
-    if (view === "wizard" && selectedSpreadsheetId) loadTabs(selectedSpreadsheetId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, selectedSpreadsheetId]);
-
-  useEffect(() => {
-    if (view === "wizard" && selectedSpreadsheetId && selectedSheetName) loadHeaders(selectedSpreadsheetId, selectedSheetName);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, selectedSpreadsheetId, selectedSheetName]);
+  // loadTabs/loadHeaders are deliberately NOT wired to a useEffect keyed off
+  // selectedSpreadsheetId/selectedSheetName: picking the same spreadsheet or
+  // sheet twice in a row (e.g. go back, then re-select it) sets the exact
+  // same value, React bails out of the state update, and an effect watching
+  // that value would never re-fire — the old list would just sit there
+  // looking "selected" but stale. Calling loadTabs/loadHeaders directly from
+  // the click (and from openEditMapping, the other place selection happens)
+  // guarantees a fresh fetch every time a selection is made, same value or not.
 
   const resetWizardData = () => {
     setStep(1);
@@ -352,6 +351,10 @@ export default function GrowthTrackerSheets() {
       setSelectedSpreadsheetName(data.spreadsheet_name ?? "");
       setSelectedSheetName(data.sheet_name ?? null);
       setStep(3);
+      if (data.spreadsheet_id) {
+        loadTabs(data.spreadsheet_id);
+        if (data.sheet_name) loadHeaders(data.spreadsheet_id, data.sheet_name);
+      }
     } catch {
       toast.error("No se pudo cargar el mapeo actual");
     } finally {
@@ -640,7 +643,11 @@ export default function GrowthTrackerSheets() {
                                 setSelectedSpreadsheetId(s.spreadsheet_id);
                                 setSelectedSpreadsheetName(s.name);
                                 setSelectedSheetName(null);
+                                setHeaders([]);
+                                setColumnMapping({});
+                                setStaleHeaders([]);
                                 setStep(2);
+                                loadTabs(s.spreadsheet_id);
                               }}
                               className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-md border border-border hover:border-foreground/30 hover:bg-surface transition-colors text-left"
                             >
@@ -695,6 +702,7 @@ export default function GrowthTrackerSheets() {
                               onClick={() => {
                                 setSelectedSheetName(t);
                                 setStep(3);
+                                if (selectedSpreadsheetId) loadHeaders(selectedSpreadsheetId, t);
                               }}
                               className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-md border border-border hover:border-foreground/30 hover:bg-surface transition-colors text-left"
                             >
