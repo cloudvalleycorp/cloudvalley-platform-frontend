@@ -13,6 +13,11 @@ export type MetricDef = {
   // integration owns it now and InputsPanel/AnnualGrid show it read-only.
   // Always null for metric_type "calculated" (not applicable).
   source: string | null;
+  // Which sheet connection (of possibly several) is mapping this field right
+  // now — only set when source === "sheet". Needed to deep-link the "se
+  // sincroniza desde X" badge to the specific connection instead of a
+  // generic list the user has to search through.
+  source_connection_id: string | null;
   formula_expression: string | null;
   unit: string | null;
   formula: string | null;
@@ -37,10 +42,18 @@ const SOURCE_SETTINGS_PATHS: Record<string, string> = {
   sheet: "/growth-tracker/sheets",
 };
 
-/** Where to send the user to fix a value that comes from an automated source — null if that integration has no settings screen yet. */
-export function sourceSettingsPath(source: string | null): string | null {
+/**
+ * Where to send the user to fix a value that comes from an automated source
+ * — null if that integration has no settings screen yet. For "sheet", a
+ * company can have several connections at once, so connectionId (when
+ * known) links straight to the one responsible instead of a generic list
+ * the user has to search through.
+ */
+export function sourceSettingsPath(source: string | null, connectionId?: string | null): string | null {
   if (!source) return null;
-  return SOURCE_SETTINGS_PATHS[source] ?? null;
+  const base = SOURCE_SETTINGS_PATHS[source];
+  if (!base) return null;
+  return connectionId ? `${base}?connection_id=${encodeURIComponent(connectionId)}` : base;
 }
 
 export type InputsMap = Record<string, number>; // input_key -> value

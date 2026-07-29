@@ -52,7 +52,7 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
           const current = values[key];
           const isEditing = editing === key;
           const syncedFrom = sourceLabel(m.source);
-          const settingsPath = sourceSettingsPath(m.source);
+          const settingsPath = sourceSettingsPath(m.source, m.source_connection_id);
           return (
             <div
               key={m.id}
