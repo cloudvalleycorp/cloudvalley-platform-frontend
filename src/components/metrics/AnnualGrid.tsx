@@ -225,7 +225,7 @@ export function AnnualGrid({
                 </tr>
                 {inputDefs.map((def) => {
                   const syncedFrom = sourceLabel(def.source);
-                  const settingsPath = sourceSettingsPath(def.source);
+                  const settingsPath = sourceSettingsPath(def.source, def.source_connection_id);
                   return (
                   <tr key={def.id} className="border-t border-border/40">
                     <td className="px-4 py-2 sticky left-0 bg-card">

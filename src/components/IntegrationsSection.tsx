@@ -9,7 +9,12 @@ import { FormDialog } from "@/components/FormDialog";
 import { SkeletonSection } from "@/components/SkeletonSection";
 import { toast } from "sonner";
 import { CheckCircle2, AlertCircle, AlertTriangle, RefreshCw, Plug, FileSpreadsheet } from "lucide-react";
-import { GET_SHEETS_STATUS_URL, type SheetsStatus } from "@/lib/sheetsIntegration";
+import {
+  LIST_GOOGLE_ACCOUNTS_URL,
+  LIST_SHEET_CONNECTIONS_URL,
+  type GoogleAccount,
+  type GoogleAccountsResponse,
+} from "@/lib/sheetsIntegration";
 
 type ApiKeyProvider = "stripe" | "mercury" | "amplitude";
 type Item = {
@@ -129,7 +134,9 @@ export function IntegrationsSection() {
   const [apiSecret, setApiSecret] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const [sheetsStatus, setSheetsStatus] = useState<SheetsStatus | null>(null);
+  const [sheetsAccounts, setSheetsAccounts] = useState<GoogleAccount[]>([]);
+  const [sheetsSourcePaused, setSheetsSourcePaused] = useState(false);
+  const [sheetsConnectionCount, setSheetsConnectionCount] = useState(0);
   const [loadingSheets, setLoadingSheets] = useState(true);
 
   const load = async () => {
@@ -149,10 +156,20 @@ export function IntegrationsSection() {
     }
     setLoadingSheets(true);
     try {
-      const res = await fetch(`${GET_SHEETS_STATUS_URL}?company_id=${encodeURIComponent(company_id)}`, {
-        credentials: "include",
-      });
-      if (res.ok) setSheetsStatus(await res.json());
+      const qs = `?company_id=${encodeURIComponent(company_id)}`;
+      const [accountsRes, connectionsRes] = await Promise.all([
+        fetch(`${LIST_GOOGLE_ACCOUNTS_URL}${qs}`, { credentials: "include" }),
+        fetch(`${LIST_SHEET_CONNECTIONS_URL}${qs}`, { credentials: "include" }),
+      ]);
+      if (accountsRes.ok) {
+        const data = (await accountsRes.json()) as GoogleAccountsResponse;
+        setSheetsAccounts(Array.isArray(data?.accounts) ? data.accounts : []);
+        setSheetsSourcePaused(data?.source_enabled === false);
+      }
+      if (connectionsRes.ok) {
+        const data = await connectionsRes.json();
+        setSheetsConnectionCount(Array.isArray(data?.connections) ? data.connections.length : 0);
+      }
     } catch {
       // silencioso: la tarjeta cae a "Conectar" y el usuario puede reintentar entrando a la pantalla
     } finally {
@@ -241,12 +258,17 @@ export function IntegrationsSection() {
       <div className="space-y-3">
         {PROVIDERS.map((p) => {
           if (p.kind === "external_flow") {
-            const connected = !!sheetsStatus?.connected;
-            const needsReconnect = !!sheetsStatus?.reconnect_required;
-            const needsMapping = connected && !sheetsStatus?.has_mapping;
+            // Una company puede tener varias cuentas de Google conectadas a
+            // la vez — "conectado" acá es "al menos una cuenta activa", no
+            // un estado singular.
+            const connected = sheetsAccounts.length > 0;
+            const needsReconnect = sheetsAccounts.some((a) => a.reconnect_required);
+            const needsMapping = connected && sheetsConnectionCount === 0;
             // Un admin puede pausar la fuente independientemente del estado
             // de la conexión con Google — no es lo mismo que "desconectado".
-            const paused = sheetsStatus?.source_enabled === false;
+            // Es un toggle a nivel company (viene en la raíz de
+            // list-google-accounts, no por cuenta).
+            const paused = sheetsSourcePaused;
             return (
               <div key={p.id} className="border border-border rounded-lg p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -277,10 +299,10 @@ export function IntegrationsSection() {
                     ) : (
                       connected && (
                         <p className="text-[11px] text-muted-foreground mt-2">
-                          {sheetsStatus?.google_account_email && <span>{sheetsStatus.google_account_email} · </span>}
+                          {sheetsAccounts.length} cuenta{sheetsAccounts.length === 1 ? "" : "s"} ·{" "}
                           {needsMapping
-                            ? "Falta terminar de mapear las columnas"
-                            : `Última sync: ${timeAgo(sheetsStatus?.last_synced_at ?? null)}`}
+                            ? "falta mapear alguna hoja"
+                            : `${sheetsConnectionCount} hoja${sheetsConnectionCount === 1 ? "" : "s"} mapeada${sheetsConnectionCount === 1 ? "" : "s"}`}
                         </p>
                       )
                     )}

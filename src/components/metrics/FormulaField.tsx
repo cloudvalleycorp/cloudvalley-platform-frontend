@@ -110,7 +110,7 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
     [inputDefs, currentInputs]
   );
 
-  const metricSuggestions: Suggestion[] = useMemo(
+  const metricSuggestions: Extract<Suggestion, { kind: "metric" }>[] = useMemo(
     () =>
       calcDefs.map((m) => ({
         kind: "metric" as const,

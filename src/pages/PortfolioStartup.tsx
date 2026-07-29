@@ -89,7 +89,10 @@ export default function PortfolioStartup() {
       ]);
       setStartup(s as StartupSummary | null);
       setLink(l as any);
-      setAllMetrics((defs ?? []) as MetricDef[]);
+      // Legacy Supabase metric_definitions table (ver TODOs de esta pantalla) —
+      // no tiene source/source_connection_id, esos son del módulo financiero
+      // nuevo de GCP. Cast vía unknown a propósito, no aplica acá.
+      setAllMetrics((defs ?? []) as unknown as MetricDef[]);
       setActiveMetricIds(new Set((cfgs ?? []).map((c: any) => c.metric_id)));
       const map: Record<string, Record<string, number>> = {};
       let latest = { y: new Date().getFullYear(), m: 1, key: -1 };
