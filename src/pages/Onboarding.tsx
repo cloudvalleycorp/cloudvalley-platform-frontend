@@ -19,8 +19,9 @@ import { GET_SESSION_URL } from "@/contexts/AuthContext";
 import { BrandMark } from "@/components/BrandMark";
 import { EmptyState } from "@/components/EmptyState";
 import { Link2Off } from "lucide-react";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
+const MANAGE_USERS_URL = `${API_BASE_URL}/manage-users`;
 
 const stages = [
   { id: "pre_seed", label: "Pre-Seed", desc: "Idea o producto temprano, ronda < $1M." },

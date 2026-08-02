@@ -22,8 +22,9 @@ import {
 import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth } from "@/lib/metricPeriod";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-const GET_COMPANY_PROFILE_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-company-profile";
+const GET_COMPANY_PROFILE_URL = `${API_BASE_URL}/get-company-profile`;
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const now = new Date();

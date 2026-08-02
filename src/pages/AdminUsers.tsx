@@ -25,12 +25,13 @@ import {
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Link2, Copy, Check, Users as UsersIcon } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
-const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
-const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
-const LIST_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-funds";
-const CREATE_INVITE_LINK_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/create-invite-link";
+const LIST_USERS_URL = `${API_BASE_URL}/list-users`;
+const MANAGE_USERS_URL = `${API_BASE_URL}/manage-users`;
+const LIST_COMPANIES_URL = `${API_BASE_URL}/list-companies`;
+const LIST_FUNDS_URL = `${API_BASE_URL}/list-funds`;
+const CREATE_INVITE_LINK_URL = `${API_BASE_URL}/create-invite-link`;
 
 type Role = "admin" | "user" | "investor";
 

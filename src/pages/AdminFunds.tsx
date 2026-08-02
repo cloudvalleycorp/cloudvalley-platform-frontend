@@ -29,11 +29,12 @@ import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Link2, Unlink, Landmark } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
 import { REQUEST_CONNECTION_URL, DECIDE_CONNECTION_URL } from "@/lib/connections";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-const LIST_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-funds";
-const MANAGE_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-funds";
-const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
-const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
+const LIST_FUNDS_URL = `${API_BASE_URL}/list-funds`;
+const MANAGE_FUNDS_URL = `${API_BASE_URL}/manage-funds`;
+const LIST_COMPANIES_URL = `${API_BASE_URL}/list-companies`;
+const LIST_USERS_URL = `${API_BASE_URL}/list-users`;
 
 type PortfolioEntry = { connection_id: string; company_id: string; company_name: string };
 type Fund = {

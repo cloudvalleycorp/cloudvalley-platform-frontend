@@ -1,8 +1,10 @@
-export const REQUEST_CONNECTION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/request-connection";
-export const LIST_CONNECTIONS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-connections";
-export const DECIDE_CONNECTION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/decide-connection";
-export const UPDATE_CONNECTION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/update-connection";
-export const LIST_CONNECTION_TARGETS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-connection-targets";
+import { API_BASE_URL } from "@/lib/apiConfig";
+
+export const REQUEST_CONNECTION_URL = `${API_BASE_URL}/request-connection`;
+export const LIST_CONNECTIONS_URL = `${API_BASE_URL}/list-connections`;
+export const DECIDE_CONNECTION_URL = `${API_BASE_URL}/decide-connection`;
+export const UPDATE_CONNECTION_URL = `${API_BASE_URL}/update-connection`;
+export const LIST_CONNECTION_TARGETS_URL = `${API_BASE_URL}/list-connection-targets`;
 
 export type ConnectionStatus = "pending" | "connected" | "rejected" | "cancelled";
 export type ConnectionDirection = "sent" | "received";

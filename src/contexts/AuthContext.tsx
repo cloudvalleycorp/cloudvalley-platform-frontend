@@ -1,10 +1,11 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-export const GET_SESSION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-session";
-export const REFRESH_SESSION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/refresh-session";
-export const LOGOUT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/logout";
-export const REQUEST_MAGIC_LINK_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/request-magic-link";
-const GET_MY_ORGANIZATION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-my-organization";
+export const GET_SESSION_URL = `${API_BASE_URL}/get-session`;
+export const REFRESH_SESSION_URL = `${API_BASE_URL}/refresh-session`;
+export const LOGOUT_URL = `${API_BASE_URL}/logout`;
+export const REQUEST_MAGIC_LINK_URL = `${API_BASE_URL}/request-magic-link`;
+const GET_MY_ORGANIZATION_URL = `${API_BASE_URL}/get-my-organization`;
 
 export type Role = "admin" | "user" | "investor";
 

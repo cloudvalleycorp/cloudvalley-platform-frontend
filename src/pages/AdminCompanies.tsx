@@ -27,10 +27,11 @@ import {
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Building2 } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
-const MANAGE_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-companies";
-const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
+const LIST_COMPANIES_URL = `${API_BASE_URL}/list-companies`;
+const MANAGE_COMPANIES_URL = `${API_BASE_URL}/manage-companies`;
+const LIST_USERS_URL = `${API_BASE_URL}/list-users`;
 
 type Company = {
   company_id: string;

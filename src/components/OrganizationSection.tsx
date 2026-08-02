@@ -15,8 +15,9 @@ import {
   type MembershipRequest,
 } from "@/lib/membership";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
+const MANAGE_USERS_URL = `${API_BASE_URL}/manage-users`;
 
 type OrgMember = {
   user_id: string;

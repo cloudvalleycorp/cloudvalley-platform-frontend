@@ -4,8 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/BrandMark";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
+const MANAGE_USERS_URL = `${API_BASE_URL}/manage-users`;
 
 // A minimal, single-step version of Onboarding's "quién sos" step — for people who
 // already belong to an org (joined via invite, where accept-invite intentionally
