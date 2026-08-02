@@ -14,10 +14,11 @@ import {
   entityWords,
 } from "@/lib/membership";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-const GET_MY_ORGANIZATION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-my-organization";
-const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
-const INVITE_MEMBER_BY_EMAIL_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/invite-member-by-email";
+const GET_MY_ORGANIZATION_URL = `${API_BASE_URL}/get-my-organization`;
+const MANAGE_USERS_URL = `${API_BASE_URL}/manage-users`;
+const INVITE_MEMBER_BY_EMAIL_URL = `${API_BASE_URL}/invite-member-by-email`;
 
 type OrgInfo = {
   type: "company" | "fund";

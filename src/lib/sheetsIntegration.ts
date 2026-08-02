@@ -1,13 +1,15 @@
-export const LIST_GOOGLE_ACCOUNTS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-google-accounts";
-export const CONNECT_SHEETS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/connect-sheets";
-export const LIST_SHEETS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-sheets";
-export const GET_SHEET_TABS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-sheet-tabs";
-export const GET_SHEET_HEADERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-sheet-headers";
-export const SAVE_SHEET_MAPPING_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/save-sheet-mapping";
-export const LIST_SHEET_CONNECTIONS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-sheet-connections";
-export const REMOVE_SHEET_CONNECTION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/remove-sheet-connection";
-export const SYNC_SHEETS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/sync-sheets";
-export const DISCONNECT_SHEETS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/disconnect-sheets";
+import { API_BASE_URL } from "@/lib/apiConfig";
+
+export const LIST_GOOGLE_ACCOUNTS_URL = `${API_BASE_URL}/list-google-accounts`;
+export const CONNECT_SHEETS_URL = `${API_BASE_URL}/connect-sheets`;
+export const LIST_SHEETS_URL = `${API_BASE_URL}/list-sheets`;
+export const GET_SHEET_TABS_URL = `${API_BASE_URL}/get-sheet-tabs`;
+export const GET_SHEET_HEADERS_URL = `${API_BASE_URL}/get-sheet-headers`;
+export const SAVE_SHEET_MAPPING_URL = `${API_BASE_URL}/save-sheet-mapping`;
+export const LIST_SHEET_CONNECTIONS_URL = `${API_BASE_URL}/list-sheet-connections`;
+export const REMOVE_SHEET_CONNECTION_URL = `${API_BASE_URL}/remove-sheet-connection`;
+export const SYNC_SHEETS_URL = `${API_BASE_URL}/sync-sheets`;
+export const DISCONNECT_SHEETS_URL = `${API_BASE_URL}/disconnect-sheets`;
 
 // A company can have several Google accounts connected (each its own OAuth
 // grant) — replaces the old singular get-sheets-status.

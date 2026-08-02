@@ -10,10 +10,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { handleMembershipError } from "@/lib/membership";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-const MANAGE_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-users";
-const REQUEST_EMAIL_CHANGE_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/request-email-change";
-const GET_MY_ORGANIZATION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-my-organization";
+const MANAGE_USERS_URL = `${API_BASE_URL}/manage-users`;
+const REQUEST_EMAIL_CHANGE_URL = `${API_BASE_URL}/request-email-change`;
+const GET_MY_ORGANIZATION_URL = `${API_BASE_URL}/get-my-organization`;
 
 export default function Account() {
   const { user, loading, email, user_id, full_name, role, company_id, fund_id, refreshSession } =

@@ -36,8 +36,9 @@ import {
 } from "@/lib/financialData";
 import { toast } from "sonner";
 import { CheckCircle2, Clock, AlertCircle, History, Building2 } from "lucide-react";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-const LIST_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-companies";
+const LIST_COMPANIES_URL = `${API_BASE_URL}/list-companies`;
 
 type Company = { company_id: string; name: string; is_active: boolean };
 

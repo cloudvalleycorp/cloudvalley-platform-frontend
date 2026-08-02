@@ -1,14 +1,16 @@
-export const UPSERT_FINANCIAL_METRIC_DEFINITION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/upsert-metric-definition";
-export const DELETE_FINANCIAL_METRIC_DEFINITION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/delete-metric-definition";
-export const CREATE_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/create-financial-report";
-export const LIST_FINANCIAL_REPORTS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-financial-reports";
-export const GET_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/get-financial-report";
-export const UPDATE_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/update-financial-report";
-export const DELETE_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/delete-financial-report";
-export const SHARE_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/share-financial-report";
-export const UNSHARE_FINANCIAL_REPORT_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/unshare-financial-report";
-export const LIST_FINANCIAL_REPORT_SHARES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-financial-report-shares";
-export const LIST_SHARED_FINANCIAL_REPORTS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-shared-financial-reports";
+import { API_BASE_URL } from "@/lib/apiConfig";
+
+export const UPSERT_FINANCIAL_METRIC_DEFINITION_URL = `${API_BASE_URL}/upsert-metric-definition`;
+export const DELETE_FINANCIAL_METRIC_DEFINITION_URL = `${API_BASE_URL}/delete-metric-definition`;
+export const CREATE_FINANCIAL_REPORT_URL = `${API_BASE_URL}/create-financial-report`;
+export const LIST_FINANCIAL_REPORTS_URL = `${API_BASE_URL}/list-financial-reports`;
+export const GET_FINANCIAL_REPORT_URL = `${API_BASE_URL}/get-financial-report`;
+export const UPDATE_FINANCIAL_REPORT_URL = `${API_BASE_URL}/update-financial-report`;
+export const DELETE_FINANCIAL_REPORT_URL = `${API_BASE_URL}/delete-financial-report`;
+export const SHARE_FINANCIAL_REPORT_URL = `${API_BASE_URL}/share-financial-report`;
+export const UNSHARE_FINANCIAL_REPORT_URL = `${API_BASE_URL}/unshare-financial-report`;
+export const LIST_FINANCIAL_REPORT_SHARES_URL = `${API_BASE_URL}/list-financial-report-shares`;
+export const LIST_SHARED_FINANCIAL_REPORTS_URL = `${API_BASE_URL}/list-shared-financial-reports`;
 
 export type SharedReportSummary = { report_id: string; name: string };
 

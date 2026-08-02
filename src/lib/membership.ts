@@ -1,15 +1,16 @@
 import { toast } from "sonner";
+import { API_BASE_URL } from "@/lib/apiConfig";
 
-export const ACCEPT_INVITE_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/accept-invite";
-export const REQUEST_MEMBERSHIP_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/request-membership";
-export const LIST_MEMBERSHIP_REQUESTS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-membership-requests";
-export const DECIDE_MEMBERSHIP_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/decide-membership";
-export const MANAGE_COMPANIES_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-companies";
-export const MANAGE_FUNDS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/manage-funds";
-export const LIST_USERS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-users";
-export const REMOVE_MEMBER_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/remove-member";
-export const DECIDE_INVITATION_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/decide-invitation";
-export const LIST_MY_INVITATIONS_URL = "https://auth-gateway-2rte326z.uc.gateway.dev/list-my-invitations";
+export const ACCEPT_INVITE_URL = `${API_BASE_URL}/accept-invite`;
+export const REQUEST_MEMBERSHIP_URL = `${API_BASE_URL}/request-membership`;
+export const LIST_MEMBERSHIP_REQUESTS_URL = `${API_BASE_URL}/list-membership-requests`;
+export const DECIDE_MEMBERSHIP_URL = `${API_BASE_URL}/decide-membership`;
+export const MANAGE_COMPANIES_URL = `${API_BASE_URL}/manage-companies`;
+export const MANAGE_FUNDS_URL = `${API_BASE_URL}/manage-funds`;
+export const LIST_USERS_URL = `${API_BASE_URL}/list-users`;
+export const REMOVE_MEMBER_URL = `${API_BASE_URL}/remove-member`;
+export const DECIDE_INVITATION_URL = `${API_BASE_URL}/decide-invitation`;
+export const LIST_MY_INVITATIONS_URL = `${API_BASE_URL}/list-my-invitations`;
 
 export type PendingInvitation = {
   invitation_id: string;
