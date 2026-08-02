@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,42 +10,17 @@ import { InputsPanel } from "@/components/metrics/InputsPanel";
 import { CalculatedMetricsGrid } from "@/components/metrics/CalculatedMetricsGrid";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
 import { AnnualGrid } from "@/components/metrics/AnnualGrid";
+import { MetricsManager } from "@/components/metrics/MetricsManager";
+import { MetricPropertyPanel } from "@/components/metrics/MetricPropertyPanel";
 import { ImportLogTable } from "@/components/financial/ImportLogTable";
 import { LoadingState } from "@/components/LoadingState";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { ConfirmationDialog } from "@/components/ConfirmationDialog";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-} from "@/components/ui/sheet";
-import { FormulaField } from "@/components/metrics/FormulaField";
-import { LayoutGrid, Table2, Plus, BarChart3 } from "lucide-react";
-import { type MetricDef, type InputsMap, type PeriodInputs, type ValueType, sourceLabel } from "@/lib/metrics";
+import { LayoutGrid, Table2, Settings2, BarChart3 } from "lucide-react";
+import { type MetricDef, type InputsMap, type PeriodInputs, sourceLabel } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
-import { handleMembershipError } from "@/lib/membership";
-import {
-  UPSERT_FINANCIAL_METRIC_DEFINITION_URL,
-  DELETE_FINANCIAL_METRIC_DEFINITION_URL,
-  RAW_INPUT_KEYS,
-  type DeleteMetricDefinitionResponse,
-} from "@/lib/financialReports";
+import { RAW_INPUT_KEYS } from "@/lib/financialReports";
 
 // Los tabs son 100% dinámicos: cualquier category que devuelva list-metrics
 // se vuelve un tab (así una métrica custom con category nueva, o el catálogo
@@ -63,13 +39,27 @@ const now = new Date();
 type ViewMode = "annual" | "monthly";
 const VIEW_KEY = "cv:metrics:view";
 
+// "data" = cargar/ver valores (tabs, anual/mensual — sin cambios de siempre).
+// "manage" = editor de esquema de métricas estilo AppSheet (lista + panel).
+// Persistido igual que `view`, así refrescar la página durante una sesión de
+// limpieza del catálogo no devuelve de golpe al modo de carga de datos.
+type PageMode = "data" | "manage";
+const PAGE_MODE_KEY = "cv:metrics:pageMode";
+
 export default function Metrics() {
   const { company_id, is_owner } = useAuth();
+  const { metricId } = useParams<{ metricId?: string }>();
+  const navigate = useNavigate();
   const [activeCat, setActiveCat] = useState("revenue");
   const [view, setView] = useState<ViewMode>(() => {
     const stored = (typeof window !== "undefined" && localStorage.getItem(VIEW_KEY)) as ViewMode | null;
     return stored === "monthly" ? "monthly" : "annual";
   });
+  const [pageMode, setPageMode] = useState<PageMode>(() => {
+    const stored = (typeof window !== "undefined" && localStorage.getItem(PAGE_MODE_KEY)) as PageMode | null;
+    return stored === "manage" ? "manage" : "data";
+  });
+  const [creatingNew, setCreatingNew] = useState(false);
   const [year, setYear] = useState(now.getFullYear());
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
@@ -78,9 +68,33 @@ export default function Metrics() {
     localStorage.setItem(VIEW_KEY, view);
   }, [view]);
 
+  useEffect(() => {
+    localStorage.setItem(PAGE_MODE_KEY, pageMode);
+  }, [pageMode]);
+
+  // Entrar con un metricId en la URL (link compartido) fuerza modo "manage",
+  // pero nada vuelve a forzarlo a "data" automáticamente — si no, cerrar el
+  // panel te patearía fuera del modo administrar sin que lo pidas.
+  useEffect(() => {
+    if (metricId) setPageMode("manage");
+  }, [metricId]);
+
   // ---- Todas las categorías (Revenue, Cash & Efficiency, Acquisition,
   // Retention, y cualquier custom) salen de acá, GCP-backed. ----
   const financial = useFinancialMetrics(company_id);
+
+  const selectedMetric = metricId ? (financial.metrics.find((m) => m.id === metricId) ?? null) : null;
+
+  // Link a una métrica que ya no existe (borrada, o typo) — avisar y volver
+  // a la lista en vez de dejar el panel colgado sin nada que mostrar.
+  useEffect(() => {
+    if (!metricId || financial.loading) return;
+    if (!financial.metrics.some((m) => m.id === metricId)) {
+      toast.error("No encontramos esa métrica. Puede que se haya eliminado.");
+      navigate("/metrics", { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricId, financial.loading, financial.metrics]);
 
   const financialCategoryTabs = useMemo(() => {
     const minOrder = new Map<string, number>();
@@ -96,7 +110,7 @@ export default function Metrics() {
   // input_key ya no está restringido a RAW_INPUT_KEYS (los 8 campos
   // originales) — se suman los que ya existan como sugerencia, tanto para
   // el datalist del campo "Campo" como para el hint de la fórmula.
-  const allRawInputKeys = useMemo(() => {
+  const inputKeySuggestions = useMemo(() => {
     const keys = new Set<string>(RAW_INPUT_KEYS);
     for (const m of financial.metrics) {
       if (m.metric_type === "input" && m.input_key) keys.add(m.input_key);
@@ -104,196 +118,12 @@ export default function Metrics() {
     return Array.from(keys);
   }, [financial.metrics]);
 
-  const inputKeySuggestions = allRawInputKeys;
-
   // Todas las métricas calculadas (cualquier categoría) — se usan como
-  // variables reutilizables adentro de OTRAS fórmulas (ver formulaEngine's
-  // calcDefs), no solo los campos crudos.
+  // variables reutilizables adentro de OTRAS fórmulas.
   const allCalcDefs = useMemo(
     () => financial.metrics.filter((m) => m.metric_type === "calculated"),
     [financial.metrics]
   );
-
-  // ---- Métrica custom (owner-only) ----
-  const [addMetricOpen, setAddMetricOpen] = useState(false);
-  const [newMetricName, setNewMetricName] = useState("");
-  const [newMetricCategory, setNewMetricCategory] = useState("");
-  const [newMetricType, setNewMetricType] = useState<"input" | "calculated">("calculated");
-  const [newMetricInputKey, setNewMetricInputKey] = useState("");
-  const [newMetricValueType, setNewMetricValueType] = useState<ValueType>("count");
-  const [newMetricFormula, setNewMetricFormula] = useState("");
-  const [newMetricUnit, setNewMetricUnit] = useState("");
-  const [newMetricDescription, setNewMetricDescription] = useState("");
-  const [savingMetric, setSavingMetric] = useState(false);
-  const [editingMetricId, setEditingMetricId] = useState<string | null>(null);
-
-  // Métricas calculadas que se pueden referenciar desde la fórmula que se
-  // está editando — todas menos ella misma (autoreferenciarse no tiene
-  // sentido; el motor igual lo cortaría como ciclo, pero mejor no ofrecerlo).
-  const reusableCalcMetrics = useMemo(
-    () => allCalcDefs.filter((m) => m.id !== editingMetricId),
-    [allCalcDefs, editingMetricId]
-  );
-
-  const openAddMetric = () => {
-    setEditingMetricId(null);
-    setNewMetricName("");
-    setNewMetricCategory(activeCat);
-    setNewMetricType("calculated");
-    setNewMetricInputKey("");
-    setNewMetricValueType("count");
-    setNewMetricFormula("");
-    setNewMetricUnit("");
-    setNewMetricDescription("");
-    setAddMetricOpen(true);
-  };
-
-  const openEditMetric = (m: MetricDef) => {
-    setEditingMetricId(m.id);
-    setNewMetricName(m.name);
-    setNewMetricCategory(m.category);
-    setNewMetricType(m.metric_type);
-    setNewMetricInputKey(m.input_key ?? "");
-    setNewMetricValueType(m.value_type ?? "count");
-    setNewMetricFormula(m.formula_expression ?? "");
-    setNewMetricUnit(m.unit ?? "");
-    setNewMetricDescription(m.description ?? "");
-    setAddMetricOpen(true);
-  };
-
-  const DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
-  const slugify = (s: string) =>
-    s
-      .trim()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(DIACRITICS_RE, "")
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "");
-
-  const submitNewMetric = async () => {
-    if (!company_id) return;
-    const category = newMetricCategory.trim();
-    if (!newMetricName.trim() || !category) {
-      toast.error("Nombre y categoría son obligatorios");
-      return;
-    }
-    if (newMetricType === "calculated" && !newMetricFormula.trim()) {
-      toast.error("La fórmula es obligatoria para una métrica calculada");
-      return;
-    }
-    const inputKeySlug = slugify(newMetricInputKey);
-    if (newMetricType === "input" && !inputKeySlug) {
-      toast.error("El campo es obligatorio para un dato crudo");
-      return;
-    }
-
-    let slug: string;
-    let displayOrder: number;
-    if (editingMetricId) {
-      slug = editingMetricId;
-      displayOrder = financial.metrics.find((m) => m.id === editingMetricId)?.order_index ?? 0;
-    } else {
-      const existingIds = new Set(financial.metrics.map((m) => m.id));
-      const base = slugify(newMetricName);
-      slug = base;
-      let suffix = 2;
-      while (existingIds.has(slug)) {
-        slug = `${base}_${suffix}`;
-        suffix++;
-      }
-      displayOrder =
-        Math.max(0, ...financial.metrics.filter((m) => m.category === category).map((m) => m.order_index)) + 1;
-    }
-
-    const body: Record<string, unknown> = {
-      company_id,
-      metric_id: slug,
-      name: newMetricName.trim(),
-      category,
-      metric_type: newMetricType,
-      unit: newMetricUnit.trim() || null,
-      display_order: displayOrder,
-    };
-    if (newMetricType === "input") {
-      body.input_key = inputKeySlug;
-      body.value_type = newMetricValueType;
-    } else {
-      body.formula_expression = newMetricFormula.trim();
-    }
-    if (newMetricDescription.trim()) body.description = newMetricDescription.trim();
-
-    setSavingMetric(true);
-    try {
-      const res = await fetch(UPSERT_FINANCIAL_METRIC_DEFINITION_URL, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (await handleMembershipError(res)) return;
-      toast.success(editingMetricId ? "Métrica actualizada" : "Métrica agregada");
-      setAddMetricOpen(false);
-      setEditingMetricId(null);
-      await financial.reload();
-      setActiveCat(category);
-    } catch {
-      toast.error(editingMetricId ? "No se pudo actualizar la métrica" : "No se pudo agregar la métrica");
-    } finally {
-      setSavingMetric(false);
-    }
-  };
-
-  // ---- Eliminar métrica (owner-only) ----
-  const [deletingMetric, setDeletingMetric] = useState<MetricDef | null>(null);
-  const [deleteRecordsToo, setDeleteRecordsToo] = useState(false);
-  const [deletingBusy, setDeletingBusy] = useState(false);
-
-  const openDeleteMetric = (m: MetricDef) => {
-    setDeleteRecordsToo(false);
-    setDeletingMetric(m);
-  };
-
-  const confirmDeleteMetric = async () => {
-    if (!company_id || !deletingMetric) return;
-    setDeletingBusy(true);
-    try {
-      const res = await fetch(DELETE_FINANCIAL_METRIC_DEFINITION_URL, {
-        method: "DELETE",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company_id,
-          metric_id: deletingMetric.id,
-          delete_records: deletingMetric.metric_type === "input" ? deleteRecordsToo : false,
-        }),
-      });
-      if (res.status === 404) {
-        toast.error("Esta métrica es parte del catálogo default y todavía no tiene una versión propia de tu startup, no se puede eliminar. Podés editarla si querés cambiarla.");
-        return;
-      }
-      if (await handleMembershipError(res)) return;
-      if (!res.ok) {
-        toast.error("No se pudo eliminar la métrica");
-        return;
-      }
-      const data = (await res.json().catch(() => null)) as DeleteMetricDefinitionResponse | null;
-      toast.success("Métrica eliminada");
-      if (data?.affected_reports && data.affected_reports.length > 0) {
-        const names = data.affected_reports.map((r) => r.name).join(", ");
-        toast.error(
-          `Esta métrica sigue en ${data.affected_reports.length} reporte${data.affected_reports.length === 1 ? "" : "s"} (${names}). Esa sección va a quedar sin poder resolver valor hasta que la saques del reporte.`,
-          { duration: 8000 }
-        );
-      }
-      setDeletingMetric(null);
-      await financial.reload();
-    } catch {
-      toast.error("No se pudo eliminar la métrica");
-    } finally {
-      setDeletingBusy(false);
-    }
-  };
 
   const financialSaveInput = async (inputKey: string, value: number | null) => {
     if (value === null) {
@@ -446,342 +276,235 @@ export default function Metrics() {
           title="Growth Tracker"
           subtitle="Cargá los datos del mes y mirá cómo evolucionan tus métricas clave."
           action={
-            <>
-              {view === "monthly" && (
-                <select
-                  value={`${period.year}-${period.month}`}
-                  onChange={(e) => {
-                    const [y, m] = e.target.value.split("-").map(Number);
-                    setPeriod({ month: m, year: y });
+            pageMode === "data" ? (
+              <>
+                {view === "monthly" && (
+                  <select
+                    value={`${period.year}-${period.month}`}
+                    onChange={(e) => {
+                      const [y, m] = e.target.value.split("-").map(Number);
+                      setPeriod({ month: m, year: y });
+                    }}
+                    className="border border-border rounded-md px-3 py-1.5 text-sm bg-background h-9"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => {
+                      const d = new Date(now.getFullYear(), now.getMonth() - i);
+                      return (
+                        <option key={i} value={`${d.getFullYear()}-${d.getMonth() + 1}`}>
+                          {months[d.getMonth()]} {d.getFullYear()}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+                <div className="inline-flex border border-border rounded-md overflow-hidden h-9">
+                  <button
+                    onClick={() => setView("annual")}
+                    className={cn(
+                      "px-3 text-xs flex items-center gap-1.5 transition-all",
+                      view === "annual" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title="Vista anual"
+                  >
+                    <Table2 size={12} strokeWidth={1.5} /> Anual
+                  </button>
+                  <button
+                    onClick={() => setView("monthly")}
+                    className={cn(
+                      "px-3 text-xs flex items-center gap-1.5 transition-all border-l border-border",
+                      view === "monthly" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title="Vista mensual"
+                  >
+                    <LayoutGrid size={12} strokeWidth={1.5} /> Mensual
+                  </button>
+                </div>
+                {is_owner && (
+                  <Button variant="outline" onClick={() => setPageMode("manage")}>
+                    <Settings2 size={14} className="mr-1" /> Administrar métricas
+                  </Button>
+                )}
+              </>
+            ) : (
+              is_owner && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setPageMode("data");
+                    if (metricId) navigate("/metrics");
                   }}
-                  className="border border-border rounded-md px-3 py-1.5 text-sm bg-background h-9"
                 >
-                  {Array.from({ length: 12 }, (_, i) => {
-                    const d = new Date(now.getFullYear(), now.getMonth() - i);
-                    return (
-                      <option key={i} value={`${d.getFullYear()}-${d.getMonth() + 1}`}>
-                        {months[d.getMonth()]} {d.getFullYear()}
-                      </option>
-                    );
-                  })}
-                </select>
-              )}
-              <div className="inline-flex border border-border rounded-md overflow-hidden h-9">
-                <button
-                  onClick={() => setView("annual")}
-                  className={cn(
-                    "px-3 text-xs flex items-center gap-1.5 transition-all",
-                    view === "annual" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                  )}
-                  title="Vista anual"
-                >
-                  <Table2 size={12} strokeWidth={1.5} /> Anual
-                </button>
-                <button
-                  onClick={() => setView("monthly")}
-                  className={cn(
-                    "px-3 text-xs flex items-center gap-1.5 transition-all border-l border-border",
-                    view === "monthly" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                  )}
-                  title="Vista mensual"
-                >
-                  <LayoutGrid size={12} strokeWidth={1.5} /> Mensual
-                </button>
-              </div>
-              {is_owner && (
-                <Button variant="outline" onClick={openAddMetric}>
-                  <Plus size={14} className="mr-1" /> Agregar métrica
+                  <LayoutGrid size={14} className="mr-1" /> Cargar datos
                 </Button>
-              )}
-            </>
+              )
+            )
           }
         />
 
-        <div className="flex gap-1 border-b border-border mb-8">
-          {financialCategoryTabs.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setActiveCat(c.id)}
-              className={cn(
-                "px-3 py-2 text-sm transition-all duration-150 border-b-2 -mb-px",
-                activeCat === c.id
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
+        {pageMode === "data" && (
+          <>
+            <div className="flex gap-1 border-b border-border mb-8">
+              {financialCategoryTabs.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setActiveCat(c.id)}
+                  className={cn(
+                    "px-3 py-2 text-sm transition-all duration-150 border-b-2 -mb-px",
+                    activeCat === c.id
+                      ? "border-foreground text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
 
-        {financial.notEnabled && (
-          <div className="border border-border rounded-lg p-4 mb-6 text-sm text-muted-foreground bg-surface" aria-live="polite">
-            Todavía no tenés el formulario manual habilitado para reportar datos financieros. Pedile a CloudValley
-            que lo active para tu startup.
-          </div>
-        )}
-
-        <div key={`${activeCat}-${view}`} className="animate-fade-in">
-        {financial.loading ? (
-          <LoadingState variant="centered" className="py-16" />
-        ) : view === "annual" ? (
-          inputDefs.length === 0 && calcDefs.length === 0 ? (
-            <EmptyState
-              icon={BarChart3}
-              title="No hay métricas activas en esta categoría."
-              description="Las métricas disponibles dependen de tu modelo de negocio."
-            />
-          ) : (
-            <AnnualGrid
-              year={year}
-              onYearChange={setYear}
-              inputDefs={inputDefs}
-              calcDefs={calcDefs}
-              allInputDefs={allInputDefs}
-              allCalcDefs={allCalcDefs}
-              entries={financial.entries}
-              onSaveBatch={financialSaveAnnualBatch}
-              privacy={financial.privacy}
-              onTogglePrivacy={financial.togglePrivacy}
-              onInfo={setOpenInfo}
-            />
-          )
-        ) : (
-          <div className="space-y-10">
-            {inputDefs.length > 0 && (
-              <InputsPanel
-                inputs={inputDefs}
-                values={currentInputs}
-                onSave={financialSaveInput}
-                onInfo={setOpenInfo}
-                privacy={financial.privacy}
-                onTogglePrivacy={financial.togglePrivacy}
-              />
+            {financial.notEnabled && (
+              <div className="border border-border rounded-lg p-4 mb-6 text-sm text-muted-foreground bg-surface" aria-live="polite">
+                Todavía no tenés el formulario manual habilitado para reportar datos financieros. Pedile a CloudValley
+                que lo active para tu startup.
+              </div>
             )}
 
-            {calcDefs.length > 0 && (
-              <CalculatedMetricsGrid
-                metrics={calcDefs}
-                currentInputs={currentInputs}
-                prevInputs={prevInputs}
-                historyInputs={historyInputs}
-                formulaHistory={formulaHistory}
-                inputDefs={allInputDefs}
-                calcDefs={allCalcDefs}
-                onInfo={setOpenInfo}
-                privacy={financial.privacy}
-                onTogglePrivacy={financial.togglePrivacy}
-              />
-            )}
-
-            {inputDefs.length === 0 && calcDefs.length === 0 && (
-              <EmptyState
-                icon={BarChart3}
-                title="No hay métricas activas en esta categoría."
-                description="Las métricas disponibles dependen de tu modelo de negocio."
-              />
-            )}
-          </div>
-        )}
-        </div>
-
-        {!financial.loading && (
-          <section className="mt-10">
-            <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Historial de cargas</h3>
-            {financial.loadingLogs ? (
-              <LoadingState />
+            <div key={`${activeCat}-${view}`} className="animate-fade-in">
+            {financial.loading ? (
+              <LoadingState variant="centered" className="py-16" />
+            ) : view === "annual" ? (
+              inputDefs.length === 0 && calcDefs.length === 0 ? (
+                <EmptyState
+                  icon={BarChart3}
+                  title="No hay métricas activas en esta categoría."
+                  description="Las métricas disponibles dependen de tu modelo de negocio."
+                />
+              ) : (
+                <AnnualGrid
+                  year={year}
+                  onYearChange={setYear}
+                  inputDefs={inputDefs}
+                  calcDefs={calcDefs}
+                  allInputDefs={allInputDefs}
+                  allCalcDefs={allCalcDefs}
+                  entries={financial.entries}
+                  onSaveBatch={financialSaveAnnualBatch}
+                  privacy={financial.privacy}
+                  onTogglePrivacy={financial.togglePrivacy}
+                  onInfo={setOpenInfo}
+                />
+              )
             ) : (
-              <ImportLogTable logs={financial.logs} emptyLabel="Todavía no reportaste ningún dato." />
+              <div className="space-y-10">
+                {inputDefs.length > 0 && (
+                  <InputsPanel
+                    inputs={inputDefs}
+                    values={currentInputs}
+                    onSave={financialSaveInput}
+                    onInfo={setOpenInfo}
+                    privacy={financial.privacy}
+                    onTogglePrivacy={financial.togglePrivacy}
+                  />
+                )}
+
+                {calcDefs.length > 0 && (
+                  <CalculatedMetricsGrid
+                    metrics={calcDefs}
+                    currentInputs={currentInputs}
+                    prevInputs={prevInputs}
+                    historyInputs={historyInputs}
+                    formulaHistory={formulaHistory}
+                    inputDefs={allInputDefs}
+                    calcDefs={allCalcDefs}
+                    onInfo={setOpenInfo}
+                    privacy={financial.privacy}
+                    onTogglePrivacy={financial.togglePrivacy}
+                  />
+                )}
+
+                {inputDefs.length === 0 && calcDefs.length === 0 && (
+                  <EmptyState
+                    icon={BarChart3}
+                    title="No hay métricas activas en esta categoría."
+                    description="Las métricas disponibles dependen de tu modelo de negocio."
+                  />
+                )}
+              </div>
             )}
-          </section>
+            </div>
+
+            {!financial.loading && (
+              <section className="mt-10">
+                <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Historial de cargas</h3>
+                {financial.loadingLogs ? (
+                  <LoadingState />
+                ) : (
+                  <ImportLogTable logs={financial.logs} emptyLabel="Todavía no reportaste ningún dato." />
+                )}
+              </section>
+            )}
+          </>
         )}
+
+        {pageMode === "manage" &&
+          (financial.loading ? (
+            <LoadingState variant="centered" className="py-16" />
+          ) : (
+            <MetricsManager
+              metrics={financial.metrics}
+              isOwner={is_owner}
+              categories={financialCategoryTabs}
+              onSelect={(m) => {
+                setCreatingNew(false);
+                navigate(`/metrics/${m.id}`);
+              }}
+              onCreateNew={() => setCreatingNew(true)}
+            />
+          ))}
       </div>
 
       <MetricInfoSheet
-        metric={openInfo}
+        metric={pageMode === "data" ? openInfo : null}
         onClose={() => setOpenInfo(null)}
         history={infoHistory}
         onEdit={
           is_owner
             ? (m) => {
                 setOpenInfo(null);
-                openEditMetric(m);
-              }
-            : undefined
-        }
-        onDelete={
-          is_owner
-            ? (m) => {
-                setOpenInfo(null);
-                openDeleteMetric(m);
+                navigate(`/metrics/${m.id}`);
               }
             : undefined
         }
       />
 
-      <ConfirmationDialog
-        open={!!deletingMetric}
-        onOpenChange={(o) => !o && setDeletingMetric(null)}
-        title={`Eliminar ${deletingMetric?.name ?? "métrica"}`}
-        description={
-          <div className="space-y-3">
-            <p>
-              Se elimina esta métrica para tu startup.{" "}
-              {deletingMetric?.metric_type === "input"
-                ? "Los valores que ya cargaste quedan guardados pero dejan de mostrarse, salvo que elijas borrarlos también abajo."
-                : "Como es una métrica calculada, no tiene valores propios que borrar."}
-            </p>
-            {deletingMetric?.metric_type === "input" && (
-              <label className="flex items-start gap-2 text-sm cursor-pointer">
-                <Checkbox
-                  checked={deleteRecordsToo}
-                  onCheckedChange={(c) => setDeleteRecordsToo(c === true)}
-                  className="mt-0.5"
-                />
-                <span>
-                  Eliminar también los valores ya cargados para este campo. Esta acción no se puede deshacer.
-                </span>
-              </label>
-            )}
-          </div>
-        }
-        confirmLabel="Eliminar"
-        variant="destructive"
-        busy={deletingBusy}
-        onConfirm={confirmDeleteMetric}
-      />
-
-      <Sheet
-        open={addMetricOpen}
-        onOpenChange={(o) => {
-          setAddMetricOpen(o);
-          if (!o) setEditingMetricId(null);
-        }}
-      >
-        <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col gap-0">
-          <SheetHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0 text-left">
-            <SheetTitle>{editingMetricId ? "Editar métrica" : "Agregar métrica"}</SheetTitle>
-            <SheetDescription>
-              {editingMetricId
-                ? "Los cambios aplican solo para tu startup."
-                : "Se agrega solo para tu startup, no afecta a las demás."}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Nombre</Label>
-                <Input value={newMetricName} onChange={(e) => setNewMetricName(e.target.value)} className="mt-1" placeholder="Ej: Revenue por empleado" />
-              </div>
-              <div>
-                <Label className="text-xs">Categoría (tab donde aparece)</Label>
-                <Input
-                  value={newMetricCategory}
-                  onChange={(e) => setNewMetricCategory(e.target.value)}
-                  className="mt-1"
-                  placeholder="Ej: revenue, cash_efficiency, o una nueva como ops"
-                  list="metric-categories"
-                />
-                <datalist id="metric-categories">
-                  {financialCategoryTabs.map((c) => (
-                    <option key={c.id} value={c.id} />
-                  ))}
-                </datalist>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Si escribís una que no existe todavía, se crea un tab nuevo.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Tipo</Label>
-                <Select value={newMetricType} onValueChange={(v: "input" | "calculated") => setNewMetricType(v)}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="calculated">Calculada (fórmula)</SelectItem>
-                    <SelectItem value="input">Dato crudo existente</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Unidad (opcional)</Label>
-                <Input value={newMetricUnit} onChange={(e) => setNewMetricUnit(e.target.value)} className="mt-1" placeholder="USD, %, x, meses…" />
-              </div>
-            </div>
-
-            {newMetricType === "input" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Campo</Label>
-                  <Input
-                    value={newMetricInputKey}
-                    onChange={(e) => setNewMetricInputKey(e.target.value)}
-                    className="mt-1"
-                    placeholder="Ej: new_customers"
-                    list="metric-input-keys"
-                  />
-                  <datalist id="metric-input-keys">
-                    {inputKeySuggestions.map((k) => (
-                      <option key={k} value={k} />
-                    ))}
-                  </datalist>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    El dato crudo que vas a cargar cada mes. Podés reusar uno que ya se reporta o escribir uno nuevo.
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs">Tipo de valor</Label>
-                  <Select value={newMetricValueType} onValueChange={(v: ValueType) => setNewMetricValueType(v)}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="money">Moneda</SelectItem>
-                      <SelectItem value="count">Entero</SelectItem>
-                      <SelectItem value="percentage">Porcentaje</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Define el formulario de carga que vas a ver todos los meses.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {newMetricType === "calculated" && (
-              <FormulaField
-                value={newMetricFormula}
-                onChange={setNewMetricFormula}
-                unit={newMetricUnit.trim() || null}
-                inputDefs={allInputDefs}
-                calcDefs={reusableCalcMetrics}
-                currentInputs={currentInputs}
-                formulaHistory={formulaHistory}
-              />
-            )}
-
-            <div>
-              <Label className="text-xs">Descripción (opcional)</Label>
-              <Textarea
-                value={newMetricDescription}
-                onChange={(e) => setNewMetricDescription(e.target.value)}
-                className="mt-1"
-                rows={2}
-                placeholder="Qué es esta métrica"
-              />
-            </div>
-          </div>
-
-          <SheetFooter className="px-6 py-4 border-t border-border shrink-0">
-            <Button variant="ghost" onClick={() => setAddMetricOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={submitNewMetric} disabled={savingMetric}>
-              {savingMetric ? "Guardando…" : editingMetricId ? "Guardar" : "Agregar"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      {pageMode === "manage" && (
+        <MetricPropertyPanel
+          metric={selectedMetric}
+          creating={creatingNew}
+          open={!!selectedMetric || creatingNew}
+          isOwner={is_owner}
+          companyId={company_id}
+          allMetrics={financial.metrics}
+          categories={financialCategoryTabs}
+          inputKeySuggestions={inputKeySuggestions}
+          defaultCategory={activeCat}
+          currentInputs={currentInputs}
+          formulaHistory={formulaHistory}
+          privacy={financial.privacy}
+          onTogglePrivacy={financial.togglePrivacy}
+          onClose={() => {
+            setCreatingNew(false);
+            navigate("/metrics");
+          }}
+          onSaved={(id) => {
+            setCreatingNew(false);
+            financial.reload();
+            navigate(`/metrics/${id}`, { replace: true });
+          }}
+          onDeleted={() => {
+            financial.reload();
+            navigate("/metrics");
+          }}
+        />
+      )}
     </AppLayout>
   );
 }
