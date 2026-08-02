@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip as RTooltip, CartesianGrid, ReferenceLine } from "recharts";
@@ -18,13 +18,15 @@ type Props = {
   metric: MetricDef | null;
   onClose: () => void;
   history?: MetricHistoryPoint[];
+  // Solo lleva a editar (navega al editor de métricas estilo AppSheet, ver
+  // Metrics.tsx) — eliminar vive exclusivamente ahí, un solo punto de
+  // entrada para una acción destructiva en vez de repetirla en dos sheets.
   onEdit?: (m: MetricDef) => void;
-  onDelete?: (m: MetricDef) => void;
 };
 
 type Mode = "change" | "absolute";
 
-export function MetricInfoSheet({ metric, onClose, history, onEdit, onDelete }: Props) {
+export function MetricInfoSheet({ metric, onClose, history, onEdit }: Props) {
   const [mode, setMode] = useState<Mode>("change");
 
   // Reset to default when opening a different metric
@@ -99,16 +101,6 @@ export function MetricInfoSheet({ metric, onClose, history, onEdit, onDelete }: 
                 {onEdit && (
                   <Button size="sm" variant="ghost" onClick={() => onEdit(metric)}>
                     <Pencil size={12} className="mr-1" /> Editar
-                  </Button>
-                )}
-                {onDelete && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => onDelete(metric)}
-                  >
-                    <Trash2 size={12} className="mr-1" /> Eliminar
                   </Button>
                 )}
               </div>

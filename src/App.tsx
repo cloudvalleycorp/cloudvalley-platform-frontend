@@ -55,6 +55,7 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/roadmap" element={<Roadmap />} />
             <Route path="/metrics" element={<Metrics />} />
+            <Route path="/metrics/:metricId" element={<Metrics />} />
             <Route path="/growth-tracker/sheets" element={<GrowthTrackerSheets />} />
             <Route path="/reporting" element={<Reporting />} />
             <Route path="/reporting/:reportId" element={<ReportEditor />} />
