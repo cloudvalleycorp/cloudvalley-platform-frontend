@@ -1,3 +1,5 @@
+import type { FinancialMetricDef } from "@/lib/financialData";
+
 export type MetricType = "input" | "calculated";
 // "text" cubre el caso borde de una métrica que muestra directamente un
 // campo crudo de texto (no el uso principal — los campos crudos viven en
@@ -93,6 +95,35 @@ export function formatValueByType(value: number | undefined | null, valueType: V
   if (valueType === "money") return `$${value.toLocaleString()}`;
   if (valueType === "percentage") return `${value.toLocaleString()}%`;
   return value.toLocaleString();
+}
+
+// Maps the GCP financial module's metric shape onto the frontend's MetricDef
+// — used by every hook/page that reads GET /list-metrics.
+export function toMetricDef(d: FinancialMetricDef): MetricDef {
+  return {
+    id: d.metric_id,
+    name: d.name,
+    category: d.category,
+    metric_type: d.metric_type,
+    input_key: d.input_key,
+    value_type: d.value_type ?? null,
+    source: d.source ?? null,
+    source_connection_id: d.source_connection_id ?? null,
+    formula_expression: d.formula_expression,
+    unit: d.unit,
+    formula: d.formula_expression,
+    description: d.description ?? null,
+    why_it_matters: d.why_it_matters ?? null,
+    benchmark: d.benchmark ?? null,
+    order_index: d.display_order,
+  };
+}
+
+// Percent change between two metric values, null when either side is
+// missing or the comparison is meaningless (division by zero).
+export function percentChange(current: number | null, prev: number | null): number | null {
+  if (current == null || prev == null || prev === 0) return null;
+  return ((current - prev) / Math.abs(prev)) * 100;
 }
 
 export function formatMetricValue(value: number | null, unit: string | null): string {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
+import { BackLink } from "@/components/BackLink";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
 import { LoadingState } from "@/components/LoadingState";
@@ -212,6 +213,7 @@ export default function AdminFinancialData() {
   return (
     <AppLayout>
       <div className="max-w-5xl mx-auto px-8 py-12">
+        <BackLink to="/admin" label="Volver a Ecosistema CloudValley" className="mb-6" />
         <PageHeader title="Datos financieros" subtitle="Seguimiento de reportes mensuales del portfolio." />
 
         <div className="flex flex-wrap items-center gap-2 mb-4">

@@ -24,7 +24,7 @@ type Props = {
     changes: { metricId: string; year: number; month: number; value: number | null }[]
   ) => Promise<void>;
   privacy: Record<string, boolean>; // metric_id -> is_public
-  onTogglePrivacy: (metricId: string, next: boolean) => Promise<void>;
+  onTogglePrivacy?: (metricId: string, next: boolean) => Promise<void>;
   onInfo: (m: MetricDef) => void;
   // Valores pre-resueltos de FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG por
   // período ("YYYY-MM", ver toPeriodString) — necesarios para que una
@@ -166,6 +166,26 @@ export function AnnualGrid({
     };
   };
 
+  // Precomputed once per relevant-state change instead of re-running
+  // calcDefs.length × 12 evalFormula calls on every render (e.g. every
+  // keystroke while editing an unrelated input cell, since `draft` is local
+  // state that re-renders the whole grid but doesn't touch `pending`/
+  // `entries` until commit).
+  const calcGrid = useMemo(() => {
+    const table: Record<string, (number | null)[]> = {};
+    for (const def of calcDefs) {
+      const row: (number | null)[] = [];
+      for (let month = 1; month <= 12; month++) {
+        const inputs = inputsForMonth(month);
+        const rawFieldValues = rawFieldValuesByPeriod[toPeriodString(month, year)] ?? {};
+        row.push(evalFormula(def.formula_expression!, inputs, [], allCalcDefs, rawFieldValues));
+      }
+      table[def.id] = row;
+    }
+    return table;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calcDefs, allCalcDefs, allInputDefs, entries, pending, year, rawFieldValuesByPeriod]);
+
   const pendingCount = Object.keys(pending).length;
 
   const save = async () => {
@@ -238,10 +258,12 @@ export function AnnualGrid({
                   <tr key={def.id} className="border-t border-border/40">
                     <td className="px-4 py-2 sticky left-0 bg-card">
                       <div className="flex items-center gap-2">
-                        <PrivacyToggle
-                          isPublic={privacy[def.id] ?? true}
-                          onChange={(next) => onTogglePrivacy(def.id, next)}
-                        />
+                        {onTogglePrivacy && (
+                          <PrivacyToggle
+                            isPublic={privacy[def.id] ?? true}
+                            onChange={(next) => onTogglePrivacy(def.id, next)}
+                          />
+                        )}
                         <span className="text-sm">{def.name}</span>
                         {def.unit && (
                           <span className="text-xs text-muted-foreground">({def.unit})</span>
@@ -253,7 +275,7 @@ export function AnnualGrid({
                               className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5 hover:text-foreground hover:border-foreground/30 transition-colors"
                               title={`Se sincroniza desde ${syncedFrom}. Click para ir a la conexión.`}
                             >
-                              <Zap size={10} strokeWidth={2} />
+                              <Zap size={10} strokeWidth={2} aria-hidden="true" />
                               {syncedFrom}
                             </Link>
                           ) : (
@@ -261,7 +283,7 @@ export function AnnualGrid({
                               className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5"
                               title={`Se sincroniza desde ${syncedFrom}.`}
                             >
-                              <Zap size={10} strokeWidth={2} />
+                              <Zap size={10} strokeWidth={2} aria-hidden="true" />
                               {syncedFrom}
                             </span>
                           ))}
@@ -270,7 +292,7 @@ export function AnnualGrid({
                           className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"
                           aria-label={`Info sobre ${def.name}`}
                         >
-                          <Info size={12} strokeWidth={1.5} />
+                          <Info size={12} strokeWidth={1.5} aria-hidden="true" />
                         </button>
                       </div>
                     </td>
@@ -339,25 +361,25 @@ export function AnnualGrid({
                   <tr key={def.id} className="border-t border-border/40">
                     <td className="px-4 py-2 sticky left-0 bg-card">
                       <div className="flex items-center gap-2">
-                        <PrivacyToggle
-                          isPublic={privacy[def.id] ?? true}
-                          onChange={(next) => onTogglePrivacy(def.id, next)}
-                        />
+                        {onTogglePrivacy && (
+                          <PrivacyToggle
+                            isPublic={privacy[def.id] ?? true}
+                            onChange={(next) => onTogglePrivacy(def.id, next)}
+                          />
+                        )}
                         <span className="text-sm">{def.name}</span>
                         <button
                           onClick={() => onInfo(def)}
                           className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"
                           aria-label={`Info sobre ${def.name}`}
                         >
-                          <Info size={12} strokeWidth={1.5} />
+                          <Info size={12} strokeWidth={1.5} aria-hidden="true" />
                         </button>
                       </div>
                     </td>
                     {months.map((_, i) => {
                       const month = i + 1;
-                      const inputs = inputsForMonth(month);
-                      const rawFieldValues = rawFieldValuesByPeriod[toPeriodString(month, year)] ?? {};
-                      const v = evalFormula(def.formula_expression!, inputs, [], allCalcDefs, rawFieldValues);
+                      const v = calcGrid[def.id][i];
                       return (
                         <td key={month} className="px-2 py-2 text-right tabular-nums w-20 text-muted-foreground">
                           {v === null ? "—" : formatMetricValue(v, def.unit)}
@@ -373,7 +395,10 @@ export function AnnualGrid({
       </div>
 
       {pendingCount > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-foreground text-background rounded-full pl-5 pr-2 py-2 shadow-lg">
+        <div
+          aria-live="polite"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-foreground text-background rounded-full pl-5 pr-2 py-2 shadow-lg"
+        >
           <span className="text-sm">
             {pendingCount} cambio{pendingCount === 1 ? "" : "s"} sin guardar
           </span>

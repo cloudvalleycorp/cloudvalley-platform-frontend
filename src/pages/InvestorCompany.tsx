@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import { BackLink } from "@/components/BackLink";
@@ -11,6 +12,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { EmptyState } from "@/components/EmptyState";
 import { FileText } from "lucide-react";
 import { ReportSectionView } from "@/components/metrics/ReportSectionView";
+import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
 import {
   Select,
@@ -19,15 +21,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { type MetricDef } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
+import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { API_BASE_URL } from "@/lib/apiConfig";
 
 const GET_COMPANY_PROFILE_URL = `${API_BASE_URL}/get-company-profile`;
 
-const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const now = new Date();
 
 type CompanyProfile = {
@@ -86,69 +88,27 @@ export default function InvestorCompany() {
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
 
+  // "No access" (403) is distinct from "connection is active but nothing was
+  // shared yet" — only toast once, on the transition into forbidden.
+  const noAccess = metrics.forbidden || shared.forbidden;
+  const wasForbidden = useRef(false);
+  useEffect(() => {
+    if (noAccess && !wasForbidden.current) {
+      toast.error("No tenés acceso a la información financiera de esta empresa.");
+    }
+    wasForbidden.current = noAccess;
+  }, [noAccess]);
+
   const metricById = useMemo(() => Object.fromEntries(metrics.metrics.map((m) => [m.id, m])), [metrics.metrics]);
-  const allInputDefs = useMemo(() => metrics.metrics.filter((m) => m.metric_type === "input"), [metrics.metrics]);
   const allCalcDefs = useMemo(() => metrics.metrics.filter((m) => m.metric_type === "calculated"), [metrics.metrics]);
 
-  const inputsForPeriod = (m: number, y: number): InputsMap => {
-    const result: InputsMap = {};
-    const pk = periodKey(m, y);
-    for (const def of allInputDefs) {
-      if (!def.input_key) continue;
-      const v = metrics.entries[def.id]?.[pk];
-      if (v !== undefined) result[def.input_key] = v;
-    }
-    return result;
-  };
-
-  const currentInputs = inputsForPeriod(period.month, period.year);
-  const prev = prevMonth(period.month, period.year);
-  const prevInputs = inputsForPeriod(prev.m, prev.y);
-
-  const historyInputs = useMemo(() => {
-    const arr: InputsMap[] = [];
-    let m = period.month, y = period.year;
-    for (let i = 0; i < 6; i++) {
-      arr.unshift(inputsForPeriod(m, y));
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metrics.entries, period, allInputDefs]);
-
-  const formulaHistory = useMemo(() => {
-    const arr: PeriodInputs[] = [];
-    let m = period.month, y = period.year;
-    for (let i = 0; i < 24; i++) {
-      arr.unshift({ month: m, year: y, values: inputsForPeriod(m, y) });
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metrics.entries, period, allInputDefs]);
+  const { inputsForPeriod, currentInputs, prevInputs, prev, historyInputs, formulaHistory, baseRawFieldPeriods } =
+    useMetricReportData({ metrics: metrics.metrics, entries: metrics.entries, period });
 
   // Ver Metrics.tsx: misma idea, una sola resolución deduplicada de
   // FIELDSUM/etc. para toda la pantalla.
   const allFormulas = useMemo(() => allCalcDefs.map((d) => d.formula_expression), [allCalcDefs]);
-  const rawFieldPeriods = useMemo(() => {
-    const set = new Set<string>();
-    set.add(toPeriodString(period.month, period.year));
-    set.add(toPeriodString(prev.m, prev.y));
-    let m = now.getMonth() + 1;
-    let y = now.getFullYear();
-    for (let i = 0; i < 12; i++) {
-      set.add(toPeriodString(m, y));
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return Array.from(set);
-  }, [period, prev.m, prev.y]);
-  const { valuesByPeriod: rawFieldValuesByPeriod } = useRawFieldValues(company_id ?? null, rawFieldPeriods, allFormulas);
+  const { valuesByPeriod: rawFieldValuesByPeriod } = useRawFieldValues(company_id ?? null, baseRawFieldPeriods, allFormulas);
 
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
     if (!openInfo) return [];
@@ -251,29 +211,18 @@ export default function InvestorCompany() {
                         </SelectContent>
                       </Select>
                     )}
-                    {shared.reports.length > 0 && (
-                      <select
-                        value={`${period.year}-${period.month}`}
-                        onChange={(e) => {
-                          const [y, m] = e.target.value.split("-").map(Number);
-                          setPeriod({ month: m, year: y });
-                        }}
-                        className="border border-border rounded-md px-3 py-1.5 text-sm bg-background h-9"
-                      >
-                        {Array.from({ length: 12 }, (_, i) => {
-                          const d = new Date(now.getFullYear(), now.getMonth() - i);
-                          return (
-                            <option key={i} value={`${d.getFullYear()}-${d.getMonth() + 1}`}>
-                              {months[d.getMonth()]} {d.getFullYear()}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    )}
+                    {shared.reports.length > 0 && <PeriodSelect period={period} onChange={setPeriod} />}
                   </div>
                 </div>
 
-                {shared.loadingReports ? (
+                {noAccess ? (
+                  <EmptyState
+                    icon={FileText}
+                    title="No tenés acceso a esta información."
+                    description="La conexión con esta empresa ya no está activa."
+                    className="p-8"
+                  />
+                ) : shared.loadingReports ? (
                   <LoadingState />
                 ) : shared.reports.length === 0 ? (
                   <EmptyState icon={FileText} title={`${profile.name} todavía no te compartió ningún reporte.`} className="p-8" />

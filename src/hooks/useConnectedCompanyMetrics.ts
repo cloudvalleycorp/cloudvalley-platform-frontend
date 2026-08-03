@@ -1,29 +1,47 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   LIST_FINANCIAL_METRICS_URL,
   LIST_FINANCIAL_RECORDS_URL,
   type FinancialMetricDef,
 } from "@/lib/financialData";
 import { buildEntriesFromRecords } from "@/lib/metricPeriod";
-import type { MetricDef } from "@/lib/metrics";
+import { toMetricDef, type MetricDef } from "@/lib/metrics";
 
-const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
-  id: d.metric_id,
-  name: d.name,
-  category: d.category,
-  metric_type: d.metric_type,
-  input_key: d.input_key,
-  value_type: d.value_type ?? null,
-  source: d.source ?? null,
-  source_connection_id: d.source_connection_id ?? null,
-  formula_expression: d.formula_expression,
-  unit: d.unit,
-  formula: d.formula_expression,
-  description: d.description ?? null,
-  why_it_matters: d.why_it_matters ?? null,
-  benchmark: d.benchmark ?? null,
-  order_index: d.display_order,
-});
+type Result = {
+  metrics: MetricDef[];
+  entries: Record<string, Record<string, number>>;
+  forbidden: boolean;
+};
+
+async function fetchConnectedCompanyMetrics(companyId: string): Promise<Result> {
+  const qs = `?company_id=${encodeURIComponent(companyId)}`;
+  const [defsRes, recordsRes] = await Promise.all([
+    fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
+    fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}`, { credentials: "include" }),
+  ]);
+
+  if (defsRes.status === 403 || recordsRes.status === 403) {
+    return { metrics: [], entries: {}, forbidden: true };
+  }
+
+  let defs: FinancialMetricDef[] = [];
+  if (defsRes.ok) {
+    const data = await defsRes.json();
+    defs = Array.isArray(data?.metrics) ? data.metrics : [];
+  }
+  const mapped = defs.map(toMetricDef);
+
+  // Métricas no compartidas vienen ausentes del objeto (undefined), no
+  // null — buildEntriesFromRecords ya filtra ambos casos por igual.
+  let entries: Record<string, Record<string, number>> = {};
+  if (recordsRes.ok) {
+    const data = await recordsRes.json();
+    const records: Record<string, unknown>[] = Array.isArray(data?.records) ? data.records : [];
+    entries = buildEntriesFromRecords(mapped, records);
+  }
+
+  return { metrics: mapped, entries, forbidden: false };
+}
 
 /**
  * Read-only counterpart of useFinancialMetrics, for a fund member viewing a
@@ -33,67 +51,16 @@ const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
  * toggle, no submit, no import log here — nothing to write.
  */
 export function useConnectedCompanyMetrics(companyId: string | null) {
-  const [metrics, setMetrics] = useState<MetricDef[]>([]);
-  const [entries, setEntries] = useState<Record<string, Record<string, number>>>({});
-  const [loading, setLoading] = useState(true);
-  const [forbidden, setForbidden] = useState(false);
+  const { data, isLoading } = useQuery({
+    queryKey: ["connected-company-metrics", companyId],
+    queryFn: () => fetchConnectedCompanyMetrics(companyId!),
+    enabled: !!companyId,
+  });
 
-  useEffect(() => {
-    if (!companyId) {
-      setMetrics([]);
-      setEntries({});
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    setForbidden(false);
-    (async () => {
-      try {
-        const qs = `?company_id=${encodeURIComponent(companyId)}`;
-        const [defsRes, recordsRes] = await Promise.all([
-          fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
-          fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}`, { credentials: "include" }),
-        ]);
-        if (cancelled) return;
-
-        if (defsRes.status === 403 || recordsRes.status === 403) {
-          setForbidden(true);
-          setMetrics([]);
-          setEntries({});
-          return;
-        }
-
-        let defs: FinancialMetricDef[] = [];
-        if (defsRes.ok) {
-          const data = await defsRes.json();
-          defs = Array.isArray(data?.metrics) ? data.metrics : [];
-        }
-        const mapped = defs.map(toMetricDef);
-        setMetrics(mapped);
-
-        // Métricas no compartidas vienen ausentes del objeto (undefined), no
-        // null — buildEntriesFromRecords ya filtra ambos casos por igual.
-        let nextEntries: Record<string, Record<string, number>> = {};
-        if (recordsRes.ok) {
-          const data = await recordsRes.json();
-          const records: Record<string, unknown>[] = Array.isArray(data?.records) ? data.records : [];
-          nextEntries = buildEntriesFromRecords(mapped, records);
-        }
-        setEntries(nextEntries);
-      } catch {
-        if (!cancelled) {
-          setMetrics([]);
-          setEntries({});
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [companyId]);
-
-  return { metrics, entries, loading, forbidden };
+  return {
+    metrics: data?.metrics ?? [],
+    entries: data?.entries ?? {},
+    loading: isLoading,
+    forbidden: data?.forbidden ?? false,
+  };
 }

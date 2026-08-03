@@ -19,15 +19,17 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { ReportSectionView } from "@/components/metrics/ReportSectionView";
+import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
 import { cn } from "@/lib/utils";
 import { handleMembershipError } from "@/lib/membership";
-import { LIST_FINANCIAL_METRICS_URL, LIST_FINANCIAL_RECORDS_URL, type FinancialMetricDef } from "@/lib/financialData";
+import { LIST_FINANCIAL_METRICS_URL, LIST_FINANCIAL_RECORDS_URL } from "@/lib/financialData";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
 import { buildEntriesFromRecords, periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
-import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { toMetricDef, type MetricDef } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
+import { useMetricReportData } from "@/hooks/useMetricReportData";
 import {
   GET_FINANCIAL_REPORT_URL,
   UPDATE_FINANCIAL_REPORT_URL,
@@ -39,24 +41,6 @@ import {
 } from "@/lib/financialReports";
 import { toast } from "sonner";
 import { ChevronUp, ChevronDown, X, Plus, Save, GripVertical, Eye, Pencil, Share2, FileText } from "lucide-react";
-
-const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
-  id: d.metric_id,
-  name: d.name,
-  category: d.category,
-  metric_type: d.metric_type,
-  input_key: d.input_key,
-  value_type: d.value_type ?? null,
-  source: d.source ?? null,
-  source_connection_id: d.source_connection_id ?? null,
-  formula_expression: d.formula_expression,
-  unit: d.unit,
-  formula: d.formula_expression,
-  description: d.description ?? null,
-  why_it_matters: d.why_it_matters ?? null,
-  benchmark: d.benchmark ?? null,
-  order_index: d.display_order,
-});
 
 const now = new Date();
 
@@ -135,65 +119,15 @@ export default function ReportEditor() {
 
   // ---- Preview data (mismo cálculo que InvestorCompany.tsx) ----
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
-  const allInputDefs = useMemo(() => metrics.filter((m) => m.metric_type === "input"), [metrics]);
   const allCalcDefs = useMemo(() => metrics.filter((m) => m.metric_type === "calculated"), [metrics]);
-  const inputsForPeriod = (m: number, y: number): InputsMap => {
-    const result: InputsMap = {};
-    const pk = periodKey(m, y);
-    for (const def of allInputDefs) {
-      if (!def.input_key) continue;
-      const v = entries[def.id]?.[pk];
-      if (v !== undefined) result[def.input_key] = v;
-    }
-    return result;
-  };
-  const currentInputs = inputsForPeriod(period.month, period.year);
-  const prev = prevMonth(period.month, period.year);
-  const prevInputs = inputsForPeriod(prev.m, prev.y);
-  const historyInputs = useMemo(() => {
-    const arr: InputsMap[] = [];
-    let m = period.month, y = period.year;
-    for (let i = 0; i < 6; i++) {
-      arr.unshift(inputsForPeriod(m, y));
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries, period, allInputDefs]);
-  const formulaHistory = useMemo(() => {
-    const arr: PeriodInputs[] = [];
-    let m = period.month, y = period.year;
-    for (let i = 0; i < 24; i++) {
-      arr.unshift({ month: m, year: y, values: inputsForPeriod(m, y) });
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries, period, allInputDefs]);
+  const { inputsForPeriod, currentInputs, prevInputs, prev, historyInputs, formulaHistory, baseRawFieldPeriods } =
+    useMetricReportData({ metrics, entries, period });
 
   // Ver Metrics.tsx: misma idea, una sola resolución deduplicada de
   // FIELDSUM/etc. para toda la pantalla (mes actual + anterior para la
   // preview, últimos 12 meses para el panel de info).
   const allFormulas = useMemo(() => allCalcDefs.map((d) => d.formula_expression), [allCalcDefs]);
-  const rawFieldPeriods = useMemo(() => {
-    const set = new Set<string>();
-    set.add(toPeriodString(period.month, period.year));
-    set.add(toPeriodString(prev.m, prev.y));
-    let m = now.getMonth() + 1;
-    let y = now.getFullYear();
-    for (let i = 0; i < 12; i++) {
-      set.add(toPeriodString(m, y));
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return Array.from(set);
-  }, [period, prev.m, prev.y]);
-  const { valuesByPeriod: rawFieldValuesByPeriod } = useRawFieldValues(company_id, rawFieldPeriods, allFormulas);
+  const { valuesByPeriod: rawFieldValuesByPeriod } = useRawFieldValues(company_id, baseRawFieldPeriods, allFormulas);
 
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
     if (!openInfo) return [];
@@ -319,8 +253,6 @@ export default function ReportEditor() {
   if (role !== "user") return <Navigate to="/dashboard" replace />;
   if (!company_id) return <Navigate to="/reporting" replace />;
 
-  const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-
   return (
     <AppLayout>
       <div className="max-w-3xl mx-auto px-8 py-12 space-y-8">
@@ -359,25 +291,7 @@ export default function ReportEditor() {
                       </button>
                     </div>
                   )}
-                  {mode === "preview" && (
-                    <select
-                      value={`${period.year}-${period.month}`}
-                      onChange={(e) => {
-                        const [y, m] = e.target.value.split("-").map(Number);
-                        setPeriod({ month: m, year: y });
-                      }}
-                      className="border border-border rounded-md px-3 py-1.5 text-sm bg-background h-9"
-                    >
-                      {Array.from({ length: 12 }, (_, i) => {
-                        const d = new Date(now.getFullYear(), now.getMonth() - i);
-                        return (
-                          <option key={i} value={`${d.getFullYear()}-${d.getMonth() + 1}`}>
-                            {months[d.getMonth()]} {d.getFullYear()}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  )}
+                  {mode === "preview" && <PeriodSelect period={period} onChange={setPeriod} />}
                   {is_owner && mode === "edit" && (
                     <Button onClick={save} disabled={saving}>
                       <Save size={14} className="mr-1" /> {saving ? "Guardando…" : "Guardar"}
@@ -389,7 +303,12 @@ export default function ReportEditor() {
 
             {mode === "preview" ? (
               sections.length === 0 ? (
-                <EmptyState icon={FileText} title="Este reporte todavía no tiene secciones." />
+                <EmptyState
+                  icon={FileText}
+                  title="Este reporte todavía no tiene secciones."
+                  description="Agregá métricas al reporte desde el modo de edición."
+                  action={is_owner ? { label: "Volver a editar", onClick: () => setMode("edit") } : undefined}
+                />
               ) : (
                 <div className="space-y-10 animate-fade-in">
                   {sections.map((section, i) => (

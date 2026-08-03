@@ -335,7 +335,7 @@ export function FormulaField({
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
           <PopoverTrigger asChild>
             <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1">
-              <Plus size={12} /> Insertar variable
+              <Plus size={12} aria-hidden="true" /> Insertar variable
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-80 p-0" align="end">
@@ -415,12 +415,24 @@ export function FormulaField({
           className="font-mono text-sm"
           rows={6}
           placeholder='Ej: SUM(revenue, headcount) o revenue / headcount'
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={autoOpen && filtered.length > 0}
+          aria-controls="formula-autocomplete-listbox"
+          aria-activedescendant={autoOpen && filtered.length > 0 ? `formula-option-${autoIndex}` : undefined}
         />
         {autoOpen && filtered.length > 0 && (
-          <div className="absolute z-20 mt-1 w-full max-w-sm rounded-md border border-border bg-popover shadow-md overflow-hidden py-1">
+          <div
+            id="formula-autocomplete-listbox"
+            role="listbox"
+            className="absolute z-20 mt-1 w-full max-w-sm rounded-md border border-border bg-popover shadow-md overflow-hidden py-1"
+          >
             {filtered.map((s, i) => (
               <button
                 key={suggestionId(s)}
+                id={`formula-option-${i}`}
+                role="option"
+                aria-selected={i === autoIndex}
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => acceptSuggestion(s)}

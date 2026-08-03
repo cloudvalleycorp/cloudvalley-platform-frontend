@@ -3,6 +3,8 @@
 // place so the "y-m" key format used to index `entries` stays consistent
 // everywhere.
 
+export const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+
 export const periodKey = (m: number, y: number) => `${y}-${m}`;
 
 export const prevMonth = (m: number, y: number) => (m === 1 ? { m: 12, y: y - 1 } : { m: m - 1, y });

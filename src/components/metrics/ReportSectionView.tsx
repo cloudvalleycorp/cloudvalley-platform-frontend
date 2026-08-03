@@ -1,8 +1,9 @@
-import { Info, ArrowUp, ArrowDown } from "lucide-react";
-import { LineChart, Line, ResponsiveContainer } from "recharts";
-import { formatMetricValue, type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { useMemo } from "react";
+import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
 import { evalFormula, evalFormulaDetailed, type CalcDefLike } from "@/lib/formulaEngine";
 import type { ReportSection } from "@/lib/financialReports";
+import { MetricValueCard } from "@/components/metrics/MetricValueCard";
+import { EmptyState } from "@/components/EmptyState";
 
 type Props = {
   section: ReportSection;
@@ -47,7 +48,7 @@ export function ReportSectionView({
         {section.subtitle && <p className="text-xs text-muted-foreground mt-0.5">{section.subtitle}</p>}
       </div>
       {resolvedBlocks.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Sin métricas en esta sección.</p>
+        <EmptyState title="Sin métricas en esta sección." bordered={false} className="p-8" />
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {resolvedBlocks.map((def) => (
@@ -93,61 +94,38 @@ function MetricBlockCard({
 }) {
   const expr = def.metric_type === "calculated" ? def.formula_expression : null;
 
-  const valueFor = (inputs: InputsMap, history?: PeriodInputs[], raw?: Record<string, number | null>): number | null => {
-    if (expr) return evalFormula(expr, inputs, history, calcDefs, raw);
-    return def.input_key ? inputs[def.input_key] ?? null : null;
-  };
+  const resolved = useMemo(() => {
+    const valueFor = (inputs: InputsMap, history?: PeriodInputs[], raw?: Record<string, number | null>): number | null => {
+      if (expr) return evalFormula(expr, inputs, history, calcDefs, raw);
+      return def.input_key ? inputs[def.input_key] ?? null : null;
+    };
 
-  const currentDetailed = expr ? evalFormulaDetailed(expr, currentInputs, formulaHistory, calcDefs, rawFieldValues) : null;
-  const current = expr ? currentDetailed!.value : valueFor(currentInputs);
-  const prev = valueFor(prevInputs, undefined, prevRawFieldValues);
-  const change = current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
-  const sparkData = historyInputs.map((inp) => ({ v: valueFor(inp) ?? 0 }));
-  const missing = expr
-    ? currentDetailed!.missing
-    : def.input_key && currentInputs[def.input_key] === undefined
-      ? [def.input_key]
-      : [];
-  const formulaError = currentDetailed?.error ?? null;
+    const currentDetailed = expr ? evalFormulaDetailed(expr, currentInputs, formulaHistory, calcDefs, rawFieldValues) : null;
+    const current = expr ? currentDetailed!.value : valueFor(currentInputs);
+    const prev = valueFor(prevInputs, undefined, prevRawFieldValues);
+    const change = current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
+    const sparkData = historyInputs.map((inp) => ({ v: valueFor(inp) ?? 0 }));
+    const missing = expr
+      ? currentDetailed!.missing
+      : def.input_key && currentInputs[def.input_key] === undefined
+        ? [def.input_key]
+        : [];
+    const error = currentDetailed?.error ?? null;
+
+    return { current, change, sparkData, missing, error };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [def, currentInputs, prevInputs, historyInputs, formulaHistory, calcDefs, rawFieldValues, prevRawFieldValues]);
 
   return (
-    <div className="border border-border rounded-lg bg-card p-5">
-      <div className="flex items-start justify-between">
-        <h4 className="text-sm font-medium text-muted-foreground">{def.name}</h4>
-        <button onClick={() => onInfo(def)} className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground" aria-label={`Info sobre ${def.name}`}>
-          <Info size={14} strokeWidth={1.5} />
-        </button>
-      </div>
-      <div className="mt-4">
-        {formulaError ? (
-          <div className="border border-dashed border-destructive/40 rounded-md p-3 mt-1">
-            <p className="text-xs text-destructive">{formulaError}</p>
-          </div>
-        ) : missing.length > 0 ? (
-          <div className="border border-dashed border-border rounded-md p-3 mt-1">
-            <p className="text-xs text-muted-foreground">Métrica no disponible.</p>
-          </div>
-        ) : (
-          <>
-            <div className="text-3xl font-medium tracking-tight">{formatMetricValue(current, def.unit)}</div>
-            {change != null && (
-              <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                {change >= 0 ? <ArrowUp size={12} strokeWidth={1.5} /> : <ArrowDown size={12} strokeWidth={1.5} />}
-                {Math.abs(change).toFixed(1)}% vs mes anterior
-              </div>
-            )}
-          </>
-        )}
-      </div>
-      {!formulaError && missing.length === 0 && (
-        <div className="mt-4 h-10">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={sparkData}>
-              <Line type="monotone" dataKey="v" stroke="hsl(var(--foreground))" strokeWidth={1} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-    </div>
+    <MetricValueCard
+      name={def.name}
+      unit={def.unit}
+      onInfo={() => onInfo(def)}
+      current={resolved.current}
+      missing={resolved.missing}
+      error={resolved.error}
+      change={resolved.change}
+      sparkData={resolved.sparkData}
+    />
   );
 }

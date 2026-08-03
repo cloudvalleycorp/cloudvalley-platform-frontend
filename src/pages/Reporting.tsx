@@ -187,6 +187,7 @@ export default function Reporting() {
             title="Todavía no armaste ningún reporte."
             description="Un reporte agrupa las métricas que elijas para compartir con un fondo puntual."
             action={is_owner ? { label: "Nuevo reporte", onClick: () => setCreateOpen(true) } : undefined}
+            secondaryAction={{ label: "Ver Growth Tracker", onClick: () => navigate("/metrics") }}
           />
         ) : (
           <div className="space-y-2">

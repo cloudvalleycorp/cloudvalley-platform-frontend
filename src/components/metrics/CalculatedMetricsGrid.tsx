@@ -1,8 +1,8 @@
-import { Info, ArrowUp, ArrowDown } from "lucide-react";
-import { LineChart, Line, ResponsiveContainer } from "recharts";
+import { useMemo } from "react";
 import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
-import { formatMetricValue, type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
 import { evalFormula, evalFormulaDetailed, type CalcDefLike } from "@/lib/formulaEngine";
+import { MetricValueCard } from "@/components/metrics/MetricValueCard";
 
 type Props = {
   metrics: MetricDef[];
@@ -51,110 +51,60 @@ export function CalculatedMetricsGrid({
     inputDefs.map((d) => [d.input_key!, d.name])
   );
 
+  const resolved = useMemo(
+    () =>
+      metrics.map((m) => {
+        const expr = m.formula_expression!;
+        const detailed = evalFormulaDetailed(expr, currentInputs, formulaHistory, calcDefs, rawFieldValues);
+        const prev = evalFormula(expr, prevInputs, [], calcDefs, prevRawFieldValues);
+        const current = detailed.value;
+        const change =
+          current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
+        const sparkData = historyInputs.map((inp) => ({ v: evalFormula(expr, inp, [], calcDefs) ?? 0 }));
+        return { metric: m, detailed, change, sparkData };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [metrics, currentInputs, prevInputs, historyInputs, formulaHistory, calcDefs, rawFieldValues, prevRawFieldValues]
+  );
+
   if (metrics.length === 0) return null;
 
   return (
     <div>
       <h2 className="text-sm font-medium mb-3">Métricas calculadas</h2>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {metrics.map((m) => {
-          const expr = m.formula_expression!;
-          const detailed = evalFormulaDetailed(expr, currentInputs, formulaHistory, calcDefs, rawFieldValues);
-          const current = detailed.value;
-          const missing = detailed.missing;
-          const prev = evalFormula(expr, prevInputs, [], calcDefs, prevRawFieldValues);
-          const change =
-            current != null && prev != null && prev !== 0
-              ? ((current - prev) / Math.abs(prev)) * 100
-              : null;
-          const sparkData = historyInputs.map((inp) => ({
-            v: evalFormula(expr, inp, [], calcDefs) ?? 0,
-          }));
-
-          return (
-            <div key={m.id} className="border border-border rounded-lg bg-card p-5">
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    {onTogglePrivacy && (
-                      <PrivacyToggle
-                        isPublic={privacy?.[m.id] ?? true}
-                        onChange={(next) => onTogglePrivacy(m.id, next)}
-                      />
-                    )}
-                    <h3 className="text-sm font-medium text-muted-foreground">{m.name}</h3>
-                  </div>
-                  {m.formula && (
-                    <p className="text-xs text-muted-foreground/70 mt-0.5">{m.formula}</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => onInfo(m)}
-                  className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"
-                  aria-label={`Info sobre ${m.name}`}
-                >
-                  <Info size={14} strokeWidth={1.5} />
-                </button>
-              </div>
-
-              <div className="mt-4">
-                {detailed.error ? (
-                  <div className="border border-dashed border-destructive/40 rounded-md p-3 mt-1">
-                    <p className="text-xs text-destructive">{detailed.error}</p>
-                  </div>
-                ) : missing.length > 0 ? (
-                  <div className="border border-dashed border-border rounded-md p-3 mt-1">
-                    <p className="text-xs text-muted-foreground">
-                      {readOnly ? (
-                        "Métrica no disponible."
-                      ) : (
-                        <>
-                          Cargá{" "}
-                          <span className="text-foreground font-medium">
-                            {missing.map((k) => inputNameByKey[k] ?? k).join(" y ")}
-                          </span>{" "}
-                          para ver esta métrica.
-                        </>
-                      )}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-3xl font-medium tracking-tight">
-                      {formatMetricValue(current, m.unit)}
-                    </div>
-                    {change != null && (
-                      <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                        {change >= 0 ? (
-                          <ArrowUp size={12} strokeWidth={1.5} />
-                        ) : (
-                          <ArrowDown size={12} strokeWidth={1.5} />
-                        )}
-                        {Math.abs(change).toFixed(1)}% vs mes anterior
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {!detailed.error && missing.length === 0 && (
-                <div className="mt-4 h-10">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={sparkData}>
-                      <Line
-                        type="monotone"
-                        dataKey="v"
-                        stroke="hsl(var(--foreground))"
-                        strokeWidth={1}
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {resolved.map(({ metric: m, detailed, change, sparkData }) => (
+          <MetricValueCard
+            key={m.id}
+            name={m.name}
+            unit={m.unit}
+            subtitle={m.formula}
+            privacyToggle={
+              onTogglePrivacy && (
+                <PrivacyToggle isPublic={privacy?.[m.id] ?? true} onChange={(next) => onTogglePrivacy(m.id, next)} />
+              )
+            }
+            onInfo={() => onInfo(m)}
+            current={detailed.value}
+            missing={detailed.missing}
+            missingMessage={
+              readOnly ? (
+                "Métrica no disponible."
+              ) : (
+                <>
+                  Cargá{" "}
+                  <span className="text-foreground font-medium">
+                    {detailed.missing.map((k) => inputNameByKey[k] ?? k).join(" y ")}
+                  </span>{" "}
+                  para ver esta métrica.
+                </>
+              )
+            }
+            error={detailed.error}
+            change={change}
+            sparkData={sparkData}
+          />
+        ))}
       </div>
     </div>
   );
