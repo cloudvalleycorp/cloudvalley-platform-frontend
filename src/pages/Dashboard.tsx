@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, Map, BarChart3, FolderOpen, Bell, Check } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { ReadinessScore } from "@/components/ReadinessScore";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
+import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
+import { percentChange } from "@/lib/metrics";
 import { supabase } from "@/integrations/supabase/client";
 import { calculateReadinessScore, PillarBreakdown } from "@/lib/score";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,6 +25,7 @@ type DocRequest = {
 export default function Dashboard() {
   const { user, role, company_id, fund_id, email } = useAuth();
   const { startup, refetch } = useStartup();
+  const financial = useFinancialMetrics(company_id ?? null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
@@ -40,7 +43,6 @@ export default function Dashboard() {
   const [pillars, setPillars] = useState<PillarBreakdown[]>([]);
   const [taskStats, setTaskStats] = useState({ done: 0, total: 0 });
   const [docStats, setDocStats] = useState({ uploaded: 0, total: 0 });
-  const [mrr, setMrr] = useState<{ value: number | null; change: number | null }>({ value: null, change: null });
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const [profileName, setProfileName] = useState("");
   const [docRequests, setDocRequests] = useState<DocRequest[]>([]);
@@ -70,24 +72,6 @@ export default function Dashboard() {
         uploaded: (docs ?? []).filter((d) => d.status !== "missing").length,
         total: (docs ?? []).length,
       });
-
-      // Revenue: latest entry of the Revenue input metric
-      const { data: revDef } = await supabase
-        .from("metric_definitions").select("id").eq("input_key", "revenue").maybeSingle();
-      if (revDef) {
-        const { data: entries } = await supabase
-          .from("metric_entries").select("value, period_month, period_year")
-          .eq("startup_id", startup.id).eq("metric_id", revDef.id)
-          .not("value", "is", null)
-          .order("period_year", { ascending: false }).order("period_month", { ascending: false })
-          .limit(2);
-        if (entries && entries.length > 0) {
-          const current = Number(entries[0].value);
-          const prev = entries[1] ? Number(entries[1].value) : null;
-          const change = prev && prev > 0 ? ((current - prev) / prev) * 100 : null;
-          setMrr({ value: current, change });
-        }
-      }
 
       // Next 3 pending tasks
       const { data: pending } = await supabase
@@ -121,6 +105,23 @@ export default function Dashboard() {
       await refetch();
     }
   };
+
+  // Revenue: latest two loaded periods of the Revenue input metric (GCP
+  // financial module — replaces the old Supabase metric_definitions/
+  // metric_entries lookup, which is no longer read here).
+  const mrr = useMemo(() => {
+    const revenueDef = financial.metrics.find((m) => m.metric_type === "input" && m.input_key === "revenue");
+    const revenueEntries = revenueDef ? financial.entries[revenueDef.id] ?? {} : {};
+    const sorted = Object.keys(revenueEntries)
+      .map((key) => {
+        const [y, m] = key.split("-").map(Number);
+        return { key, y, m };
+      })
+      .sort((a, b) => b.y - a.y || b.m - a.m);
+    const current = sorted[0] ? revenueEntries[sorted[0].key] : null;
+    const prev = sorted[1] ? revenueEntries[sorted[1].key] : null;
+    return { value: current ?? null, change: percentChange(current ?? null, prev ?? null) };
+  }, [financial.metrics, financial.entries]);
 
   const today = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
   const greeting = profileName ? `Hola, ${profileName.split(" ")[0]}` : "Buen día";

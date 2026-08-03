@@ -336,10 +336,16 @@ export function IntegrationsSection() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{p.name}</span>
-                    {connected && (
-                      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-foreground bg-surface px-1.5 py-0.5 rounded">
-                        <CheckCircle2 size={10} /> Conectado
+                    {connected && p.notWiredToGrowthTracker ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-warning-foreground bg-surface px-1.5 py-0.5 rounded">
+                        <AlertTriangle size={10} /> Conectado, sin sincronizar
                       </span>
+                    ) : (
+                      connected && (
+                        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-foreground bg-surface px-1.5 py-0.5 rounded">
+                          <CheckCircle2 size={10} /> Conectado
+                        </span>
+                      )
                     )}
                     {error && (
                       <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-destructive">

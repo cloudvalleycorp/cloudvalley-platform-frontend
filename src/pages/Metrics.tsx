@@ -13,16 +13,18 @@ import { AnnualGrid } from "@/components/metrics/AnnualGrid";
 import { MetricsManager } from "@/components/metrics/MetricsManager";
 import { MetricPropertyPanel } from "@/components/metrics/MetricPropertyPanel";
 import { ImportLogTable } from "@/components/financial/ImportLogTable";
+import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { LoadingState } from "@/components/LoadingState";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { LayoutGrid, Table2, Settings2, BarChart3 } from "lucide-react";
-import { type MetricDef, type InputsMap, type PeriodInputs, type RawField, sourceLabel } from "@/lib/metrics";
+import { type MetricDef, type RawField, sourceLabel } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 import { RAW_INPUT_KEYS } from "@/lib/financialReports";
 import { LIST_RAW_FIELDS_URL } from "@/lib/sheetsIntegration";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
+import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { handleMembershipError } from "@/lib/membership";
 
 // Los tabs son 100% dinámicos: cualquier category que devuelva list-metrics
@@ -36,7 +38,6 @@ function labelForCategory(cat: string) {
   return FINANCIAL_CATEGORY_LABELS[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1).replace(/_/g, " ");
 }
 
-const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const now = new Date();
 
 type ViewMode = "annual" | "monthly";
@@ -222,76 +223,21 @@ export default function Metrics() {
     () => financial.metrics.filter((m) => m.metric_type === "calculated" && m.category === activeCat),
     [financial.metrics, activeCat]
   );
-  const allInputDefs = useMemo(
-    () => financial.metrics.filter((m) => m.metric_type === "input"),
-    [financial.metrics]
-  );
-  const inputsForPeriod = (m: number, y: number): InputsMap => {
-    const result: InputsMap = {};
-    const pk = periodKey(m, y);
-    for (const def of allInputDefs) {
-      if (!def.input_key) continue;
-      const v = financial.entries[def.id]?.[pk];
-      if (v !== undefined) result[def.input_key] = v;
-    }
-    return result;
-  };
-
-  const currentInputs = inputsForPeriod(period.month, period.year);
-  const prev = prevMonth(period.month, period.year);
-  const prevInputs = inputsForPeriod(prev.m, prev.y);
-
-  const historyInputs = useMemo(() => {
-    const arr: InputsMap[] = [];
-    let m = period.month, y = period.year;
-    for (let i = 0; i < 6; i++) {
-      arr.unshift(inputsForPeriod(m, y));
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [financial.entries, period, allInputDefs]);
-
-  // Ventana más ancha (24 meses) para SUMLAST/AVGLAST/YTD en fórmulas
-  // custom — no pega a la API de nuevo, financial.entries ya trae todo el
-  // histórico (list-records no manda from/to).
-  const formulaHistory = useMemo(() => {
-    const arr: PeriodInputs[] = [];
-    let m = period.month, y = period.year;
-    for (let i = 0; i < 24; i++) {
-      arr.unshift({ month: m, year: y, values: inputsForPeriod(m, y) });
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [financial.entries, period, allInputDefs]);
+  const { allInputDefs, inputsForPeriod, currentInputs, prevInputs, prev, historyInputs, formulaHistory, baseRawFieldPeriods } =
+    useMetricReportData({ metrics: financial.metrics, entries: financial.entries, period });
 
   // Todos los períodos que alguna parte de la pantalla puede llegar a
   // necesitar para resolver FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG: los 12
-  // meses del año del grid anual, el mes actual + el anterior (comparación %
-  // en la vista mensual), y los últimos 12 meses desde hoy (panel de info,
-  // independiente del año que esté mirando el grid anual). Una sola
-  // resolución deduplicada para toda la página en vez de una por componente.
+  // meses del año del grid anual (extra sobre lo que ya cubre
+  // useMetricReportData) más el set base (mes actual + anterior + últimos 12
+  // meses desde hoy). Una sola resolución deduplicada para toda la página en
+  // vez de una por componente.
   const allFormulas = useMemo(() => allCalcDefs.map((d) => d.formula_expression), [allCalcDefs]);
   const rawFieldPeriods = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set(baseRawFieldPeriods);
     for (let m = 1; m <= 12; m++) set.add(toPeriodString(m, year));
-    set.add(toPeriodString(period.month, period.year));
-    set.add(toPeriodString(prev.m, prev.y));
-    let m = now.getMonth() + 1;
-    let y = now.getFullYear();
-    for (let i = 0; i < 12; i++) {
-      set.add(toPeriodString(m, y));
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
     return Array.from(set);
-  }, [year, period, prev.m, prev.y]);
+  }, [year, baseRawFieldPeriods]);
   const { valuesByPeriod: rawFieldValuesByPeriod } = useRawFieldValues(company_id, rawFieldPeriods, allFormulas);
 
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
@@ -332,45 +278,29 @@ export default function Metrics() {
           action={
             pageMode === "data" ? (
               <>
-                {view === "monthly" && (
-                  <select
-                    value={`${period.year}-${period.month}`}
-                    onChange={(e) => {
-                      const [y, m] = e.target.value.split("-").map(Number);
-                      setPeriod({ month: m, year: y });
-                    }}
-                    className="border border-border rounded-md px-3 py-1.5 text-sm bg-background h-9"
-                  >
-                    {Array.from({ length: 12 }, (_, i) => {
-                      const d = new Date(now.getFullYear(), now.getMonth() - i);
-                      return (
-                        <option key={i} value={`${d.getFullYear()}-${d.getMonth() + 1}`}>
-                          {months[d.getMonth()]} {d.getFullYear()}
-                        </option>
-                      );
-                    })}
-                  </select>
-                )}
+                {view === "monthly" && <PeriodSelect period={period} onChange={setPeriod} />}
                 <div className="inline-flex border border-border rounded-md overflow-hidden h-9">
                   <button
                     onClick={() => setView("annual")}
+                    aria-pressed={view === "annual"}
                     className={cn(
                       "px-3 text-xs flex items-center gap-1.5 transition-all",
                       view === "annual" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
                     )}
                     title="Vista anual"
                   >
-                    <Table2 size={12} strokeWidth={1.5} /> Anual
+                    <Table2 size={12} strokeWidth={1.5} aria-hidden="true" /> Anual
                   </button>
                   <button
                     onClick={() => setView("monthly")}
+                    aria-pressed={view === "monthly"}
                     className={cn(
                       "px-3 text-xs flex items-center gap-1.5 transition-all border-l border-border",
                       view === "monthly" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
                     )}
                     title="Vista mensual"
                   >
-                    <LayoutGrid size={12} strokeWidth={1.5} /> Mensual
+                    <LayoutGrid size={12} strokeWidth={1.5} aria-hidden="true" /> Mensual
                   </button>
                 </div>
                 {is_owner && (
@@ -430,6 +360,18 @@ export default function Metrics() {
                   icon={BarChart3}
                   title="No hay métricas activas en esta categoría."
                   description="Las métricas disponibles dependen de tu modelo de negocio."
+                  action={
+                    is_owner
+                      ? {
+                          label: "Agregar métrica",
+                          onClick: () => {
+                            setPageMode("manage");
+                            setCreatingNew(true);
+                          },
+                        }
+                      : undefined
+                  }
+                  secondaryAction={{ label: "Ver reportes", onClick: () => navigate("/reporting") }}
                 />
               ) : (
                 <AnnualGrid
@@ -442,7 +384,7 @@ export default function Metrics() {
                   entries={financial.entries}
                   onSaveBatch={financialSaveAnnualBatch}
                   privacy={financial.privacy}
-                  onTogglePrivacy={financial.togglePrivacy}
+                  onTogglePrivacy={is_owner ? financial.togglePrivacy : undefined}
                   onInfo={setOpenInfo}
                   rawFieldValuesByPeriod={rawFieldValuesByPeriod}
                 />
@@ -456,7 +398,7 @@ export default function Metrics() {
                     onSave={financialSaveInput}
                     onInfo={setOpenInfo}
                     privacy={financial.privacy}
-                    onTogglePrivacy={financial.togglePrivacy}
+                    onTogglePrivacy={is_owner ? financial.togglePrivacy : undefined}
                   />
                 )}
 
@@ -473,7 +415,7 @@ export default function Metrics() {
                     prevRawFieldValues={rawFieldValuesByPeriod[toPeriodString(prev.m, prev.y)] ?? {}}
                     onInfo={setOpenInfo}
                     privacy={financial.privacy}
-                    onTogglePrivacy={financial.togglePrivacy}
+                    onTogglePrivacy={is_owner ? financial.togglePrivacy : undefined}
                   />
                 )}
 

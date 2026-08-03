@@ -1,9 +1,10 @@
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { groupRowErrors, type ImportLogEntry } from "@/lib/financialData";
+import { EmptyState } from "@/components/EmptyState";
 
 export function ImportLogTable({ logs, emptyLabel }: { logs: ImportLogEntry[]; emptyLabel: string }) {
   if (logs.length === 0) {
-    return <div className="border border-border rounded-lg p-8 text-center text-sm text-muted-foreground bg-card">{emptyLabel}</div>;
+    return <EmptyState title={emptyLabel} />;
   }
   return (
     <div className="space-y-2">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { Link2, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
@@ -14,67 +14,11 @@ import {
   type MetricDef,
   type InputsMap,
   type PeriodInputs,
-  type ValueType,
   type RawField,
   sourceLabel,
   sourceSettingsPath,
 } from "@/lib/metrics";
-import { handleMembershipError } from "@/lib/membership";
-import { toPeriodString } from "@/lib/metricPeriod";
-import { useRawFieldValues } from "@/hooks/useRawFieldValues";
-import {
-  UPSERT_FINANCIAL_METRIC_DEFINITION_URL,
-  DELETE_FINANCIAL_METRIC_DEFINITION_URL,
-  type DeleteMetricDefinitionResponse,
-} from "@/lib/financialReports";
-
-type Draft = {
-  name: string;
-  category: string;
-  unit: string;
-  description: string;
-  metric_type: "input" | "calculated";
-  input_key: string;
-  value_type: ValueType;
-  formula: string;
-};
-
-const DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
-function slugify(s: string): string {
-  return s
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(DIACRITICS_RE, "")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function emptyDraft(defaultCategory: string): Draft {
-  return {
-    name: "",
-    category: defaultCategory,
-    unit: "",
-    description: "",
-    metric_type: "calculated",
-    input_key: "",
-    value_type: "count",
-    formula: "",
-  };
-}
-
-function draftFromMetric(m: MetricDef): Draft {
-  return {
-    name: m.name,
-    category: m.category,
-    unit: m.unit ?? "",
-    description: m.description ?? "",
-    metric_type: m.metric_type,
-    input_key: m.input_key ?? "",
-    value_type: m.value_type ?? "count",
-    formula: m.formula_expression ?? "",
-  };
-}
+import { useMetricPropertyForm, type Draft } from "@/hooks/useMetricPropertyForm";
 
 type Props = {
   metric: MetricDef | null; // null = creando una nueva
@@ -111,6 +55,8 @@ type Props = {
 // ver el plan), Fórmula es el componente FormulaField completo, y
 // Configuración persiste por un endpoint aparte (update-metric-privacy, no
 // upsert-metric-definition), no por el botón Guardar de este panel.
+// Form state, draft-formula preview data, and save/delete mutations all live
+// in useMetricPropertyForm — this component only renders.
 export function MetricPropertyPanel({
   metric,
   creating,
@@ -130,18 +76,30 @@ export function MetricPropertyPanel({
   onSaved,
   onDeleted,
 }: Props) {
-  const [draft, setDraft] = useState<Draft>(() => emptyDraft(defaultCategory));
-  const [saving, setSaving] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleteRecordsToo, setDeleteRecordsToo] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const seedKey = metric?.id ?? (creating ? "__new__" : null);
-  useEffect(() => {
-    if (metric) setDraft(draftFromMetric(metric));
-    else if (creating) setDraft(emptyDraft(defaultCategory));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seedKey]);
+  const {
+    draft,
+    setField,
+    saving,
+    confirmDelete,
+    setConfirmDelete,
+    deleteRecordsToo,
+    setDeleteRecordsToo,
+    deleting,
+    handleSave,
+    confirmDeleteMetric,
+    draftRawFieldValues,
+    draftRawFieldValuesLoading,
+  } = useMetricPropertyForm({
+    metric,
+    creating,
+    companyId,
+    allMetrics,
+    categories,
+    defaultCategory,
+    formulaHistory,
+    onSaved,
+    onDeleted,
+  });
 
   const readOnly = !isOwner;
 
@@ -151,25 +109,6 @@ export function MetricPropertyPanel({
     () => allCalcDefs.filter((m) => m.id !== metric?.id),
     [allCalcDefs, metric?.id]
   );
-
-  // El período actual es siempre el último de formulaHistory (ver Metrics.tsx:
-  // "chronological, ending at the current period"). Se resuelve acá, sobre
-  // draft.formula (lo que se está tipeando, guardado o no), en vez de
-  // reusar los valores ya resueltos a nivel página (esos solo cubren
-  // fórmulas YA guardadas) — así la preview de un FIELDSUM/FIELDCOUNT recién
-  // escrito calcula sin tener que guardar primero.
-  const currentPeriod =
-    formulaHistory.length > 0
-      ? toPeriodString(formulaHistory[formulaHistory.length - 1].month, formulaHistory[formulaHistory.length - 1].year)
-      : null;
-  const { valuesByPeriod: draftRawFieldValuesByPeriod, loading: draftRawFieldValuesLoading } = useRawFieldValues(
-    companyId,
-    currentPeriod ? [currentPeriod] : [],
-    [draft.formula]
-  );
-  const draftRawFieldValues = currentPeriod ? draftRawFieldValuesByPeriod[currentPeriod] ?? {} : {};
-
-  const setField = (key: string, value: string | boolean) => setDraft((prev) => ({ ...prev, [key]: value }));
 
   const generalFields: PropertyFieldDef[] = [
     { key: "name", label: "Nombre", type: "text", placeholder: "Ej: Revenue por empleado" },
@@ -230,121 +169,6 @@ export function MetricPropertyPanel({
     toast.success("Link copiado");
   };
 
-  const handleSave = async () => {
-    if (!companyId) return;
-    const category = draft.category.trim();
-    if (!draft.name.trim() || !category) {
-      toast.error("Nombre y categoría son obligatorios");
-      return;
-    }
-    if (draft.metric_type === "calculated" && !draft.formula.trim()) {
-      toast.error("La fórmula es obligatoria para una métrica calculada");
-      return;
-    }
-    const inputKeySlug = slugify(draft.input_key);
-    if (draft.metric_type === "input" && !inputKeySlug) {
-      toast.error("El campo es obligatorio para un dato crudo");
-      return;
-    }
-
-    let slug: string;
-    let displayOrder: number;
-    let isNew: boolean;
-    if (metric) {
-      slug = metric.id;
-      displayOrder = metric.order_index;
-      isNew = false;
-    } else {
-      const existingIds = new Set(allMetrics.map((m) => m.id));
-      const base = slugify(draft.name);
-      slug = base;
-      let suffix = 2;
-      while (existingIds.has(slug)) {
-        slug = `${base}_${suffix}`;
-        suffix++;
-      }
-      displayOrder = Math.max(0, ...allMetrics.filter((m) => m.category === category).map((m) => m.order_index)) + 1;
-      isNew = true;
-    }
-
-    const body: Record<string, unknown> = {
-      company_id: companyId,
-      metric_id: slug,
-      name: draft.name.trim(),
-      category,
-      metric_type: draft.metric_type,
-      unit: draft.unit.trim() || null,
-      display_order: displayOrder,
-    };
-    if (draft.metric_type === "input") {
-      body.input_key = inputKeySlug;
-      body.value_type = draft.value_type;
-    } else {
-      body.formula_expression = draft.formula.trim();
-    }
-    if (draft.description.trim()) body.description = draft.description.trim();
-
-    setSaving(true);
-    try {
-      const res = await fetch(UPSERT_FINANCIAL_METRIC_DEFINITION_URL, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (await handleMembershipError(res)) return;
-      toast.success(isNew ? "Métrica agregada" : "Métrica actualizada");
-      onSaved(slug, isNew);
-    } catch {
-      toast.error(isNew ? "No se pudo agregar la métrica" : "No se pudo actualizar la métrica");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const confirmDeleteMetric = async () => {
-    if (!companyId || !metric) return;
-    setDeleting(true);
-    try {
-      const res = await fetch(DELETE_FINANCIAL_METRIC_DEFINITION_URL, {
-        method: "DELETE",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company_id: companyId,
-          metric_id: metric.id,
-          delete_records: metric.metric_type === "input" ? deleteRecordsToo : false,
-        }),
-      });
-      if (res.status === 404) {
-        toast.error(
-          "Esta métrica es parte del catálogo default y todavía no tiene una versión propia de tu startup, no se puede eliminar. Podés editarla si querés cambiarla."
-        );
-        return;
-      }
-      if (await handleMembershipError(res)) return;
-      if (!res.ok) {
-        toast.error("No se pudo eliminar la métrica");
-        return;
-      }
-      const data = (await res.json().catch(() => null)) as DeleteMetricDefinitionResponse | null;
-      toast.success("Métrica eliminada");
-      if (data?.affected_reports && data.affected_reports.length > 0) {
-        const names = data.affected_reports.map((r) => r.name).join(", ");
-        toast.error(
-          `Esta métrica sigue en ${data.affected_reports.length} reporte${data.affected_reports.length === 1 ? "" : "s"} (${names}). Esa sección va a quedar sin poder resolver valor hasta que la saques del reporte.`,
-          { duration: 8000 }
-        );
-      }
-      setConfirmDelete(false);
-      onDeleted();
-    } catch {
-      toast.error("No se pudo eliminar la métrica");
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   return (
     <>
       <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
@@ -354,7 +178,7 @@ export function MetricPropertyPanel({
               <SheetTitle>{creating ? "Agregar métrica" : metric?.name}</SheetTitle>
               {metric && (
                 <Button variant="ghost" size="sm" onClick={copyLink} aria-label="Copiar link a esta métrica">
-                  <Link2 size={13} className="mr-1.5" /> Copiar link
+                  <Link2 size={13} className="mr-1.5" aria-hidden="true" /> Copiar link
                 </Button>
               )}
             </div>
@@ -368,7 +192,7 @@ export function MetricPropertyPanel({
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto px-6">
-            <Accordion type="multiple" defaultValue={["general", "tipo", "fuente", "formula", "config"]}>
+            <Accordion type="multiple" defaultValue={["general"]}>
               <AccordionItem value="general">
                 <AccordionTrigger>General</AccordionTrigger>
                 <AccordionContent className="space-y-4">
@@ -487,7 +311,7 @@ export function MetricPropertyPanel({
                         setConfirmDelete(true);
                       }}
                     >
-                      <Trash2 size={13} className="mr-1.5" /> Eliminar
+                      <Trash2 size={13} className="mr-1.5" aria-hidden="true" /> Eliminar
                     </Button>
                   )
                 }

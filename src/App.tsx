@@ -33,7 +33,6 @@ const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminFunds = lazy(() => import("./pages/AdminFunds"));
 const AdminFinancialData = lazy(() => import("./pages/AdminFinancialData"));
 
-const PortfolioStartup = lazy(() => import("./pages/PortfolioStartup"));
 const InvestorPortfolio = lazy(() => import("./pages/InvestorPortfolio"));
 const InvestorCompany = lazy(() => import("./pages/InvestorCompany"));
 
@@ -71,7 +70,6 @@ const App = () => (
             <Route path="/admin/financial-data" element={<AdminFinancialData />} />
             <Route path="/portfolio" element={<InvestorPortfolio />} />
             <Route path="/portfolio/:company_id" element={<InvestorCompany />} />
-            <Route path="/portfolio/:orgId/:startupId" element={<PortfolioStartup />} />
             <Route path="/conexiones" element={<Connections />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

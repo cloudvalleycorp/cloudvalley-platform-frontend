@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { handleMembershipError } from "@/lib/membership";
 import {
@@ -11,26 +12,55 @@ import {
   type FinancialMetricDef,
   type ImportLogEntry,
 } from "@/lib/financialData";
-import type { MetricDef } from "@/lib/metrics";
+import { toMetricDef, type MetricDef } from "@/lib/metrics";
 import { periodKey, buildEntriesFromRecords } from "@/lib/metricPeriod";
 
-const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
-  id: d.metric_id,
-  name: d.name,
-  category: d.category,
-  metric_type: d.metric_type,
-  input_key: d.input_key,
-  value_type: d.value_type ?? null,
-  source: d.source ?? null,
-  source_connection_id: d.source_connection_id ?? null,
-  formula_expression: d.formula_expression,
-  unit: d.unit,
-  formula: d.formula_expression,
-  description: d.description ?? null,
-  why_it_matters: d.why_it_matters ?? null,
-  benchmark: d.benchmark ?? null,
-  order_index: d.display_order,
-});
+type FinancialData = {
+  metrics: MetricDef[];
+  entries: Record<string, Record<string, number>>;
+  privacy: Record<string, boolean>;
+};
+
+async function fetchFinancialData(companyId: string): Promise<FinancialData> {
+  const qs = `?company_id=${encodeURIComponent(companyId)}`;
+  const [defsRes, recordsRes, privacyRes] = await Promise.all([
+    fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
+    fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}`, { credentials: "include" }),
+    fetch(`${LIST_FINANCIAL_METRIC_PRIVACY_URL}${qs}`, { credentials: "include" }),
+  ]);
+
+  let defs: FinancialMetricDef[] = [];
+  if (defsRes.ok) {
+    const data = await defsRes.json();
+    defs = Array.isArray(data?.metrics) ? data.metrics : [];
+  }
+  const mapped = defs.map(toMetricDef);
+
+  let entries: Record<string, Record<string, number>> = {};
+  if (recordsRes.ok) {
+    const data = await recordsRes.json();
+    const records: Record<string, unknown>[] = Array.isArray(data?.records) ? data.records : [];
+    entries = buildEntriesFromRecords(mapped, records);
+  }
+
+  const privacy: Record<string, boolean> = {};
+  if (privacyRes.ok) {
+    const data = await privacyRes.json();
+    const list: { metric_id: string; is_public: boolean }[] = Array.isArray(data?.privacy) ? data.privacy : [];
+    for (const p of list) privacy[p.metric_id] = p.is_public;
+  }
+
+  return { metrics: mapped, entries, privacy };
+}
+
+async function fetchImportLog(companyId: string): Promise<ImportLogEntry[]> {
+  const res = await fetch(`${LIST_FINANCIAL_IMPORT_LOG_URL}?company_id=${encodeURIComponent(companyId)}`, {
+    credentials: "include",
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data?.logs) ? data.logs : [];
+}
 
 /**
  * Data layer for all Growth Tracker categories (Revenue, Cash & Efficiency,
@@ -39,14 +69,25 @@ const toMetricDef = (d: FinancialMetricDef): MetricDef => ({
  * MetricInfoSheet.
  */
 export function useFinancialMetrics(companyId: string | null) {
-  const [metrics, setMetrics] = useState<MetricDef[]>([]);
-  const [entries, setEntries] = useState<Record<string, Record<string, number>>>({});
-  const [privacy, setPrivacy] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [notEnabled, setNotEnabled] = useState(false);
 
-  const [logs, setLogs] = useState<ImportLogEntry[]>([]);
-  const [loadingLogs, setLoadingLogs] = useState(true);
+  const dataQueryKey = ["financial-metrics", companyId] as const;
+  const { data, isLoading: loading } = useQuery({
+    queryKey: dataQueryKey,
+    queryFn: () => fetchFinancialData(companyId!),
+    enabled: !!companyId,
+  });
+  const metrics = data?.metrics ?? [];
+  const entries = data?.entries ?? {};
+  const privacy = data?.privacy ?? {};
+
+  const logsQueryKey = ["financial-import-log", companyId] as const;
+  const { data: logs = [], isLoading: loadingLogs } = useQuery({
+    queryKey: logsQueryKey,
+    queryFn: () => fetchImportLog(companyId!),
+    enabled: !!companyId,
+  });
 
   const inputKeyByMetricId = useMemo(() => {
     const map: Record<string, string> = {};
@@ -56,82 +97,8 @@ export function useFinancialMetrics(companyId: string | null) {
     return map;
   }, [metrics]);
 
-  const load = async () => {
-    if (!companyId) {
-      setMetrics([]);
-      setEntries({});
-      setPrivacy({});
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const qs = `?company_id=${encodeURIComponent(companyId)}`;
-      const [defsRes, recordsRes, privacyRes] = await Promise.all([
-        fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
-        fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}`, { credentials: "include" }),
-        fetch(`${LIST_FINANCIAL_METRIC_PRIVACY_URL}${qs}`, { credentials: "include" }),
-      ]);
-
-      let defs: FinancialMetricDef[] = [];
-      if (defsRes.ok) {
-        const data = await defsRes.json();
-        defs = Array.isArray(data?.metrics) ? data.metrics : [];
-      }
-      const mapped = defs.map(toMetricDef);
-      setMetrics(mapped);
-
-      let nextEntries: Record<string, Record<string, number>> = {};
-      if (recordsRes.ok) {
-        const data = await recordsRes.json();
-        const records: Record<string, unknown>[] = Array.isArray(data?.records) ? data.records : [];
-        nextEntries = buildEntriesFromRecords(mapped, records);
-      }
-      setEntries(nextEntries);
-
-      const nextPrivacy: Record<string, boolean> = {};
-      if (privacyRes.ok) {
-        const data = await privacyRes.json();
-        const list: { metric_id: string; is_public: boolean }[] = Array.isArray(data?.privacy) ? data.privacy : [];
-        for (const p of list) nextPrivacy[p.metric_id] = p.is_public;
-      }
-      setPrivacy(nextPrivacy);
-    } catch {
-      toast.error("No se pudieron cargar las métricas financieras");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadLogs = async () => {
-    if (!companyId) {
-      setLogs([]);
-      setLoadingLogs(false);
-      return;
-    }
-    setLoadingLogs(true);
-    try {
-      const res = await fetch(`${LIST_FINANCIAL_IMPORT_LOG_URL}?company_id=${encodeURIComponent(companyId)}`, {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        setLogs([]);
-        return;
-      }
-      const data = await res.json();
-      setLogs(Array.isArray(data?.logs) ? data.logs : []);
-    } catch {
-      setLogs([]);
-    } finally {
-      setLoadingLogs(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-    loadLogs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
+  const reload = () => queryClient.invalidateQueries({ queryKey: dataQueryKey });
+  const reloadLogs = () => queryClient.invalidateQueries({ queryKey: logsQueryKey });
 
   /** POST submit-financial-record for one period. Returns false on failure (already toasted, except the "not enabled" case — see `notEnabled`). */
   const submitValues = async (periodStr: string, values: Record<string, number>): Promise<boolean> => {
@@ -155,11 +122,11 @@ export function useFinancialMetrics(companyId: string | null) {
       }
       if (await handleMembershipError(res)) return false;
       setNotEnabled(false);
-      const data = await res.json();
-      if (Array.isArray(data?.row_errors)) {
-        for (const e of data.row_errors) toast.error(`${e.field}: ${e.reason}`);
+      const resBody = await res.json();
+      if (Array.isArray(resBody?.row_errors)) {
+        for (const e of resBody.row_errors) toast.error(`${e.field}: ${e.reason}`);
       }
-      loadLogs();
+      reloadLogs();
       return true;
     } catch {
       toast.error("No se pudieron guardar los datos");
@@ -168,15 +135,24 @@ export function useFinancialMetrics(companyId: string | null) {
   };
 
   const applyLocalEntry = (metricId: string, month: number, year: number, value: number) => {
-    setEntries((prev) => ({
-      ...prev,
-      [metricId]: { ...(prev[metricId] ?? {}), [periodKey(month, year)]: value },
-    }));
+    queryClient.setQueryData<FinancialData>(dataQueryKey, (prev) =>
+      prev
+        ? {
+            ...prev,
+            entries: {
+              ...prev.entries,
+              [metricId]: { ...(prev.entries[metricId] ?? {}), [periodKey(month, year)]: value },
+            },
+          }
+        : prev
+    );
   };
 
   const togglePrivacy = async (metricId: string, next: boolean) => {
     if (!companyId) return;
-    setPrivacy((p) => ({ ...p, [metricId]: next }));
+    queryClient.setQueryData<FinancialData>(dataQueryKey, (prev) =>
+      prev ? { ...prev, privacy: { ...prev.privacy, [metricId]: next } } : prev
+    );
     try {
       const res = await fetch(UPDATE_FINANCIAL_METRIC_PRIVACY_URL, {
         method: "POST",
@@ -185,11 +161,15 @@ export function useFinancialMetrics(companyId: string | null) {
         body: JSON.stringify({ company_id: companyId, metric_id: metricId, is_public: next }),
       });
       if (await handleMembershipError(res)) {
-        setPrivacy((p) => ({ ...p, [metricId]: !next }));
+        queryClient.setQueryData<FinancialData>(dataQueryKey, (prev) =>
+          prev ? { ...prev, privacy: { ...prev.privacy, [metricId]: !next } } : prev
+        );
       }
     } catch {
       toast.error("No se pudo actualizar la privacidad");
-      setPrivacy((p) => ({ ...p, [metricId]: !next }));
+      queryClient.setQueryData<FinancialData>(dataQueryKey, (prev) =>
+        prev ? { ...prev, privacy: { ...prev.privacy, [metricId]: !next } } : prev
+      );
     }
   };
 
@@ -205,7 +185,7 @@ export function useFinancialMetrics(companyId: string | null) {
     applyLocalEntry,
     togglePrivacy,
     inputKeyByMetricId,
-    reload: load,
-    reloadLogs: loadLogs,
+    reload,
+    reloadLogs,
   };
 }

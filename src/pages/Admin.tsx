@@ -20,8 +20,6 @@ type Row = {
   stage: string | null;
   business_model: string | null;
   readiness_score: number;
-  mrr: number | null;
-  runway: number | null;
   updated_at: string;
 };
 
@@ -29,7 +27,6 @@ export default function Admin() {
   const { isAdmin, loading } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [loadingRows, setLoadingRows] = useState(true);
-  const [sortBy, setSortBy] = useState<"score" | "mrr">("score");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -38,34 +35,7 @@ export default function Admin() {
       const { data: startups } = await supabase
         .from("startups")
         .select("id, name, stage, business_model, readiness_score, updated_at");
-
-      // TODO: migrar a backend propio
-      const { data: mrrDef } = await supabase.from("metric_definitions")
-        .select("id").eq("name", "MRR").maybeSingle();
-      // TODO: migrar a backend propio
-      const { data: runwayDef } = await supabase.from("metric_definitions")
-        .select("id").eq("name", "Runway").maybeSingle();
-
-      const enriched: Row[] = [];
-      for (const s of startups ?? []) {
-        let mrr: number | null = null, runway: number | null = null;
-        if (mrrDef) {
-          // TODO: migrar a backend propio
-          const { data } = await supabase.from("metric_entries")
-            .select("value").eq("startup_id", s.id).eq("metric_id", mrrDef.id)
-            .order("period_year", { ascending: false }).order("period_month", { ascending: false }).limit(1);
-          mrr = data?.[0] ? Number(data[0].value) : null;
-        }
-        if (runwayDef) {
-          // TODO: migrar a backend propio
-          const { data } = await supabase.from("metric_entries")
-            .select("value").eq("startup_id", s.id).eq("metric_id", runwayDef.id)
-            .order("period_year", { ascending: false }).order("period_month", { ascending: false }).limit(1);
-          runway = data?.[0] ? Number(data[0].value) : null;
-        }
-        enriched.push({ ...s, mrr, runway } as Row);
-      }
-      setRows(enriched);
+      setRows((startups ?? []) as Row[]);
       setLoadingRows(false);
     })();
   }, [isAdmin]);
@@ -74,9 +44,7 @@ export default function Admin() {
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
   const filtered = rows.filter((r) => r.name.toLowerCase().includes(search.trim().toLowerCase()));
-  const sorted = [...filtered].sort((a, b) =>
-    sortBy === "score" ? b.readiness_score - a.readiness_score : (b.mrr ?? 0) - (a.mrr ?? 0)
-  );
+  const sorted = [...filtered].sort((a, b) => b.readiness_score - a.readiness_score);
 
   const avgScore = rows.length > 0
     ? Math.round(rows.reduce((acc, r) => acc + r.readiness_score, 0) / rows.length)
@@ -126,8 +94,7 @@ export default function Admin() {
                 cell: (r) => <span className="text-muted-foreground capitalize">{r.business_model?.replace("_", " ")}</span>,
               },
               {
-                header: <>Readiness {sortBy === "score" && "↓"}</>,
-                onHeaderClick: () => setSortBy("score"),
+                header: "Readiness",
                 cell: (r) => (
                   <div className="flex items-center gap-2">
                     <span className="tabular-nums">{r.readiness_score}</span>
@@ -136,15 +103,6 @@ export default function Admin() {
                     </div>
                   </div>
                 ),
-              },
-              {
-                header: <>MRR {sortBy === "mrr" && "↓"}</>,
-                onHeaderClick: () => setSortBy("mrr"),
-                cell: (r) => <span className="tabular-nums">{r.mrr != null ? `$${r.mrr.toLocaleString()}` : "—"}</span>,
-              },
-              {
-                header: "Runway",
-                cell: (r) => <span className="tabular-nums">{r.runway != null ? `${r.runway}m` : "—"}</span>,
               },
             ]}
             rows={sorted}
