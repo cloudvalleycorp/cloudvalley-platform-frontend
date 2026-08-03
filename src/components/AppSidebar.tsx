@@ -16,13 +16,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
 import { StageBadge } from "./StageBadge";
 
+// `end: false` para las secciones que tienen sub-rutas propias (/metrics/:id,
+// /reporting/:id) — si no, el NavLink solo se marca activo en la URL exacta
+// y se apaga apenas entrás al detalle de una métrica o un reporte.
 const items = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Roadmap", url: "/roadmap", icon: Map },
-  { title: "Métricas", url: "/metrics", icon: BarChart3 },
-  { title: "Reporting", url: "/reporting", icon: FileBarChart },
-  { title: "Data Room", url: "/data-room", icon: FolderOpen },
-  { title: "Conexiones", url: "/conexiones", icon: Network },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, end: true },
+  { title: "Roadmap", url: "/roadmap", icon: Map, end: true },
+  { title: "Métricas", url: "/metrics", icon: BarChart3, end: false },
+  { title: "Reporting", url: "/reporting", icon: FileBarChart, end: false },
+  { title: "Data Room", url: "/data-room", icon: FolderOpen, end: true },
+  { title: "Conexiones", url: "/conexiones", icon: Network, end: true },
 ];
 
 export function AppSidebar() {
@@ -70,7 +73,6 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild>
                     <NavLink
                       to="/portfolio"
-                      end
                       className={({ isActive }) =>
                         `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
                           isActive
@@ -145,7 +147,7 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild>
                     <NavLink
                       to={item.url}
-                      end
+                      end={item.end}
                       className={({ isActive }) =>
                         `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
                           isActive
