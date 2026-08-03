@@ -292,11 +292,7 @@ export default function Metrics() {
     }
     return Array.from(set);
   }, [year, period, prev.m, prev.y]);
-  const { valuesByPeriod: rawFieldValuesByPeriod, loading: rawFieldValuesLoading } = useRawFieldValues(
-    company_id,
-    rawFieldPeriods,
-    allFormulas
-  );
+  const { valuesByPeriod: rawFieldValuesByPeriod } = useRawFieldValues(company_id, rawFieldPeriods, allFormulas);
 
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
     if (!openInfo) return [];
@@ -550,8 +546,6 @@ export default function Metrics() {
           currentInputs={currentInputs}
           formulaHistory={formulaHistory}
           rawFields={rawFields}
-          rawFieldValues={rawFieldValuesByPeriod[toPeriodString(period.month, period.year)] ?? {}}
-          rawFieldValuesLoading={rawFieldValuesLoading}
           privacy={financial.privacy}
           onTogglePrivacy={financial.togglePrivacy}
           onClose={() => {
