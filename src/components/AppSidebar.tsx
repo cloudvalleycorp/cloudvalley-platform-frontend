@@ -1,5 +1,18 @@
-import { LayoutDashboard, Map, BarChart3, FolderOpen, Shield, Network, Building2, Users, Landmark, DollarSign, FileBarChart } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Map,
+  BarChart3,
+  FolderOpen,
+  Shield,
+  Network,
+  Building2,
+  Users,
+  Landmark,
+  DollarSign,
+  FileBarChart,
+  type LucideIcon,
+} from "lucide-react";
+import { NavLink, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
 import {
@@ -15,10 +28,12 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
 import { StageBadge } from "./StageBadge";
+import { cn } from "@/lib/utils";
 
 // `end: false` para las secciones que tienen sub-rutas propias (/metrics/:id,
-// /reporting/:id) — si no, el NavLink solo se marca activo en la URL exacta
-// y se apaga apenas entrás al detalle de una métrica o un reporte.
+// /reporting/:id, /portfolio/:id) — si no, el ítem solo se marca activo en la
+// URL exacta y se apaga apenas entrás al detalle de una métrica, un reporte o
+// una empresa del portfolio.
 const items = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, end: true },
   { title: "Roadmap", url: "/roadmap", icon: Map, end: true },
@@ -27,6 +42,49 @@ const items = [
   { title: "Data Room", url: "/data-room", icon: FolderOpen, end: true },
   { title: "Conexiones", url: "/conexiones", icon: Network, end: true },
 ];
+
+function isNavActive(pathname: string, url: string, end: boolean) {
+  return end ? pathname === url : pathname === url || pathname.startsWith(`${url}/`);
+}
+
+// SidebarMenuButton ya trae su propio resaltado de "activo" vía data-active
+// (bg-sidebar-accent/font-medium en sidebar.tsx) — pasarle isActive acá en
+// vez de calcular el fondo a mano en el className de NavLink. Esto último se
+// probó y no funciona: NavLink con className en forma de función, envuelto
+// en el asChild/Slot de SidebarMenuButton, pierde ese cálculo al fusionarse
+// (Slot espera className como string) y el ítem activo nunca se resalta.
+function NavItem({
+  to,
+  end,
+  icon: Icon,
+  label,
+  className,
+}: {
+  to: string;
+  end: boolean;
+  icon: LucideIcon;
+  label: string;
+  className?: string;
+}) {
+  const { pathname } = useLocation();
+  const active = isNavActive(pathname, to, end);
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={active}>
+        <NavLink
+          to={to}
+          className={cn(
+            "flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 text-muted-foreground hover:text-foreground",
+            className,
+          )}
+        >
+          <Icon size={16} strokeWidth={1.5} />
+          <span>{label}</span>
+        </NavLink>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
 
 export function AppSidebar() {
   const { isAdmin, isOrgViewer, fund_name, company_id } = useAuth();
@@ -69,41 +127,8 @@ export function AppSidebar() {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <NavLink
-                      to="/portfolio"
-                      className={({ isActive }) =>
-                        `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
-                          isActive
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                            : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
-                        }`
-                      }
-                    >
-                      <Building2 size={16} strokeWidth={1.5} />
-                      <span>Portfolio</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <NavLink
-                      to="/conexiones"
-                      end
-                      className={({ isActive }) =>
-                        `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
-                          isActive
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                            : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
-                        }`
-                      }
-                    >
-                      <Network size={16} strokeWidth={1.5} />
-                      <span>Conexiones</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <NavItem to="/portfolio" end={false} icon={Building2} label="Portfolio" />
+                <NavItem to="/conexiones" end icon={Network} label="Conexiones" />
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -143,121 +168,16 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton asChild>
-                    <NavLink
-                      to={item.url}
-                      end={item.end}
-                      className={({ isActive }) =>
-                        `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
-                          isActive
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                            : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
-                        }`
-                      }
-                    >
-                      <item.icon size={16} strokeWidth={1.5} />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <NavItem key={item.url} to={item.url} end={item.end} icon={item.icon} label={item.title} />
               ))}
 
               {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <NavLink
-                      to="/admin"
-                      end
-                      className={({ isActive }) =>
-                        `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm mt-4 transition-all duration-150 ${
-                          isActive
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                            : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
-                        }`
-                      }
-                    >
-                      <Shield size={16} strokeWidth={1.5} />
-                      <span>Admin</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              {isAdmin && (
                 <>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild>
-                      <NavLink
-                        to="/admin/companies"
-                        end
-                        className={({ isActive }) =>
-                          `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
-                            isActive
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                              : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
-                          }`
-                        }
-                      >
-                        <Building2 size={16} strokeWidth={1.5} />
-                        <span>Empresas</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild>
-                      <NavLink
-                        to="/admin/users"
-                        end
-                        className={({ isActive }) =>
-                          `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
-                            isActive
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                              : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
-                          }`
-                        }
-                      >
-                        <Users size={16} strokeWidth={1.5} />
-                        <span>Usuarios</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild>
-                      <NavLink
-                        to="/admin/funds"
-                        end
-                        className={({ isActive }) =>
-                          `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
-                            isActive
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                              : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
-                          }`
-                        }
-                      >
-                        <Landmark size={16} strokeWidth={1.5} />
-                        <span>Fondos</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild>
-                      <NavLink
-                        to="/admin/financial-data"
-                        end
-                        className={({ isActive }) =>
-                          `flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 ${
-                            isActive
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                              : "text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/60"
-                          }`
-                        }
-                      >
-                        <DollarSign size={16} strokeWidth={1.5} />
-                        <span>Datos financieros</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <NavItem to="/admin" end icon={Shield} label="Admin" className="mt-4" />
+                  <NavItem to="/admin/companies" end icon={Building2} label="Empresas" />
+                  <NavItem to="/admin/users" end icon={Users} label="Usuarios" />
+                  <NavItem to="/admin/funds" end icon={Landmark} label="Fondos" />
+                  <NavItem to="/admin/financial-data" end icon={DollarSign} label="Datos financieros" />
                 </>
               )}
             </SidebarMenu>
