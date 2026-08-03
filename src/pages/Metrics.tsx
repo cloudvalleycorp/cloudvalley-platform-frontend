@@ -332,11 +332,12 @@ export default function Metrics() {
                 <button
                   key={c.id}
                   onClick={() => setActiveCat(c.id)}
+                  aria-pressed={activeCat === c.id}
                   className={cn(
-                    "px-3 py-2 text-sm transition-all duration-150 border-b-2 -mb-px",
+                    "px-3 py-2 text-sm rounded-md transition-all duration-150",
                     activeCat === c.id
-                      ? "border-foreground text-foreground"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
+                      ? "bg-surface text-foreground font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-surface/60"
                   )}
                 >
                   {c.label}
