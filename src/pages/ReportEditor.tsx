@@ -24,9 +24,10 @@ import { cn } from "@/lib/utils";
 import { handleMembershipError } from "@/lib/membership";
 import { LIST_FINANCIAL_METRICS_URL, LIST_FINANCIAL_RECORDS_URL, type FinancialMetricDef } from "@/lib/financialData";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
-import { buildEntriesFromRecords, periodKey, prevMonth } from "@/lib/metricPeriod";
+import { buildEntriesFromRecords, periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
+import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import {
   GET_FINANCIAL_REPORT_URL,
   UPDATE_FINANCIAL_REPORT_URL,
@@ -173,6 +174,27 @@ export default function ReportEditor() {
     return arr;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries, period, allInputDefs]);
+
+  // Ver Metrics.tsx: misma idea, una sola resolución deduplicada de
+  // FIELDSUM/etc. para toda la pantalla (mes actual + anterior para la
+  // preview, últimos 12 meses para el panel de info).
+  const allFormulas = useMemo(() => allCalcDefs.map((d) => d.formula_expression), [allCalcDefs]);
+  const rawFieldPeriods = useMemo(() => {
+    const set = new Set<string>();
+    set.add(toPeriodString(period.month, period.year));
+    set.add(toPeriodString(prev.m, prev.y));
+    let m = now.getMonth() + 1;
+    let y = now.getFullYear();
+    for (let i = 0; i < 12; i++) {
+      set.add(toPeriodString(m, y));
+      const p = prevMonth(m, y);
+      m = p.m;
+      y = p.y;
+    }
+    return Array.from(set);
+  }, [period, prev.m, prev.y]);
+  const { valuesByPeriod: rawFieldValuesByPeriod } = useRawFieldValues(company_id, rawFieldPeriods, allFormulas);
+
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
     if (!openInfo) return [];
     const out: MetricHistoryPoint[] = [];
@@ -184,7 +206,13 @@ export default function ReportEditor() {
         const raw = entries[openInfo.id]?.[periodKey(m, y)];
         if (raw !== undefined) v = raw;
       } else if (openInfo.metric_type === "calculated" && openInfo.formula_expression) {
-        v = evalFormula(openInfo.formula_expression, inputsForPeriod(m, y), [], allCalcDefs);
+        v = evalFormula(
+          openInfo.formula_expression,
+          inputsForPeriod(m, y),
+          [],
+          allCalcDefs,
+          rawFieldValuesByPeriod[toPeriodString(m, y)] ?? {}
+        );
       }
       if (v !== null && v !== undefined) out.unshift({ year: y, month: m, value: v });
       const p = prevMonth(m, y);
@@ -193,7 +221,7 @@ export default function ReportEditor() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openInfo, entries]);
+  }, [openInfo, entries, rawFieldValuesByPeriod]);
 
   // ---- Edit actions ----
   const addSection = () => setSections((s) => [...s, { title: "Nueva sección", subtitle: null, blocks: [] }]);
@@ -374,6 +402,8 @@ export default function ReportEditor() {
                       historyInputs={historyInputs}
                       formulaHistory={formulaHistory}
                       calcDefs={allCalcDefs}
+                      rawFieldValues={rawFieldValuesByPeriod[toPeriodString(period.month, period.year)] ?? {}}
+                      prevRawFieldValues={rawFieldValuesByPeriod[toPeriodString(prev.m, prev.y)] ?? {}}
                       onInfo={setOpenInfo}
                     />
                   ))}

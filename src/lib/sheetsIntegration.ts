@@ -10,6 +10,11 @@ export const LIST_SHEET_CONNECTIONS_URL = `${API_BASE_URL}/list-sheet-connection
 export const REMOVE_SHEET_CONNECTION_URL = `${API_BASE_URL}/remove-sheet-connection`;
 export const SYNC_SHEETS_URL = `${API_BASE_URL}/sync-sheets`;
 export const DISCONNECT_SHEETS_URL = `${API_BASE_URL}/disconnect-sheets`;
+// Datos crudos: listado de campos disponibles (autocomplete de fórmulas) y
+// consulta agregada bajo demanda — reemplazan el modelo viejo de
+// agregación/filtros configurados en la conexión, ver formulaEngine.ts.
+export const LIST_RAW_FIELDS_URL = `${API_BASE_URL}/list-raw-fields`;
+export const QUERY_RAW_FIELD_URL = `${API_BASE_URL}/query-raw-field`;
 
 // A company can have several Google accounts connected (each its own OAuth
 // grant) — replaces the old singular get-sheets-status.
@@ -36,27 +41,20 @@ export type GoogleAccountsResponse = {
 
 export type SheetSummary = { spreadsheet_id: string; name: string };
 
-export type Aggregation = "sum" | "count" | "count_distinct" | "last" | "average";
-
-export type MetricFilter = { column: string; values: string[] };
-
-// One target metric's config: where its value comes from (or "count rows"),
-// how to combine multiple rows in the same period, and which rows count
-// toward it at all. A single value_column can feed several of these (e.g.
-// "Monto" → new_mrr filtered Evento=New, and separately → churned_mrr
-// filtered Evento=Churn) — that's why this is keyed by input_key, not by
-// sheet column like the old column_mapping was.
-export type MetricMappingConfig = {
-  input_key: string;
-  aggregation: Aggregation;
-  value_column?: string; // required for sum/last/average
-  distinct_column?: string; // required for count_distinct
-  filters?: MetricFilter[]; // AND across filters, OR within one filter's values
+// Una columna de la planilla mapeada a un campo crudo propio de ESTA
+// conexión — nada de agregación ni filtros acá (eso vive en las fórmulas de
+// Métricas, ver formulaEngine.ts). field_key es un namespace propio de la
+// conexión: no tiene que coincidir con ningún input_key del catálogo de
+// métricas, es libre (snake_case).
+export type FieldMapping = {
+  column: string;
+  field_key: string;
+  value_type: "number" | "text";
 };
 
-// One spreadsheet+sheet mapped to metrics, belonging to one Google account.
-// A company can have several of these active at once, across one or more
-// accounts — replaces the old singular get-sheet-mapping.
+// One spreadsheet+sheet mapped to raw fields, belonging to one Google
+// account. A company can have several of these active at once, across one
+// or more accounts — replaces the old singular get-sheet-mapping.
 export type SheetConnection = {
   connection_id: string;
   account_id: string;
@@ -65,7 +63,7 @@ export type SheetConnection = {
   spreadsheet_name: string;
   sheet_name: string;
   period_column: string;
-  metrics: MetricMappingConfig[];
+  field_mappings: FieldMapping[];
   last_synced_at: string | null;
   last_sync_status: string | null;
   created_at: string;
@@ -90,26 +88,14 @@ export type SyncResult = {
 // A 400 from list-sheets/get-sheet-tabs/get-sheet-headers/save-sheet-mapping/
 // sync-sheets can mean "Google revoked access" (reconnect_required: true), a
 // company-level pause ("source_disabled": true — an admin turned off the
-// "sheet" source), a validation error ({error}), a "the sheet's columns
-// changed" list, or (save-sheet-mapping specifically) one of several
-// metrics-config validation problems — never assume it's just {error} like
-// the generic lib/membership.ts 400 handling does.
+// "sheet" source), a validation error ({error}), or a "the sheet's columns
+// changed" list — never assume it's just {error} like the generic
+// lib/membership.ts 400 handling does.
 export type SheetsApiError = {
   reconnectRequired: boolean;
   sourceDisabled: boolean;
   message: string | null;
   missingHeaders?: string[];
-  invalidInputKeys?: string[];
-  duplicateInputKeys?: string[];
-  // Distinto de duplicateInputKeys: ese es "repetida dos veces DENTRO del
-  // mapeo que estás guardando"; este es "ya está mapeada en OTRA conexión
-  // de esta company" — un input_key solo puede estar activo en una conexión
-  // a la vez.
-  duplicateInputKeysAcrossConnections?: string[];
-  invalidAggregations?: { input_key: string; aggregation: string }[];
-  missingValueColumn?: string[];
-  missingDistinctColumn?: string[];
-  malformedFilters?: unknown[];
 };
 
 export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
@@ -120,25 +106,30 @@ export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
       sourceDisabled: data?.source_disabled === true,
       message: typeof data?.error === "string" ? data.error : null,
       missingHeaders: Array.isArray(data?.missing_headers) ? data.missing_headers : undefined,
-      invalidInputKeys: Array.isArray(data?.invalid_input_keys) ? data.invalid_input_keys : undefined,
-      duplicateInputKeys: Array.isArray(data?.duplicate_input_keys) ? data.duplicate_input_keys : undefined,
-      duplicateInputKeysAcrossConnections: Array.isArray(data?.duplicate_input_keys_across_connections)
-        ? data.duplicate_input_keys_across_connections
-        : undefined,
-      invalidAggregations: Array.isArray(data?.invalid_aggregations) ? data.invalid_aggregations : undefined,
-      missingValueColumn: Array.isArray(data?.missing_value_column) ? data.missing_value_column : undefined,
-      missingDistinctColumn: Array.isArray(data?.missing_distinct_column) ? data.missing_distinct_column : undefined,
-      malformedFilters: Array.isArray(data?.malformed_filters) ? data.malformed_filters : undefined,
     };
   } catch {
     return { reconnectRequired: false, sourceDisabled: false, message: null };
   }
 }
 
-export const AGGREGATION_LABELS: Record<Aggregation, string> = {
-  sum: "Sumar",
-  count: "Contar filas",
-  count_distinct: "Contar valores únicos",
-  last: "Último valor",
-  average: "Promediar",
+// ---- Datos crudos: consulta agregada bajo demanda (formulaEngine.ts) ----
+
+// Sin "last" acá — a diferencia del viejo modelo de agregación en la
+// conexión, esto es lo que query-raw-field acepta hoy.
+export type RawFieldAggregation = "sum" | "count" | "count_distinct" | "average";
+
+// AND entre objetos de este array, OR dentro de los "values" de uno solo —
+// mismo criterio que el viejo MetricFilter, ahora vive en la llamada a
+// query-raw-field en vez de en el mapeo de la conexión.
+export type RawFieldFilter = { field_key: string; values: string[] };
+
+export type QueryRawFieldRequest = {
+  company_id: string;
+  period: string; // "YYYY-MM"
+  field_key: string;
+  aggregation: RawFieldAggregation;
+  distinct_field_key?: string; // solo cuando aggregation === "count_distinct"
+  filters?: RawFieldFilter[];
 };
+
+export type QueryRawFieldResponse = { value: number | null };

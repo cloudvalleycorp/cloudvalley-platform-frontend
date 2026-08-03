@@ -15,6 +15,7 @@ import {
   type InputsMap,
   type PeriodInputs,
   type ValueType,
+  type RawField,
   sourceLabel,
   sourceSettingsPath,
 } from "@/lib/metrics";
@@ -85,6 +86,12 @@ type Props = {
   defaultCategory: string;
   currentInputs: InputsMap;
   formulaHistory: PeriodInputs[];
+  // Campos crudos de integraciones (autocomplete de FormulaField) y sus
+  // valores ya resueltos para el período actual (FIELDSUM/etc. en la
+  // preview en vivo) — ver useRawFieldValues.
+  rawFields?: RawField[];
+  rawFieldValues?: Record<string, number | null>;
+  rawFieldValuesLoading?: boolean;
   privacy: Record<string, boolean>;
   onTogglePrivacy: (metricId: string, next: boolean) => Promise<void>;
   onClose: () => void;
@@ -112,6 +119,9 @@ export function MetricPropertyPanel({
   defaultCategory,
   currentInputs,
   formulaHistory,
+  rawFields = [],
+  rawFieldValues = {},
+  rawFieldValuesLoading = false,
   privacy,
   onTogglePrivacy,
   onClose,
@@ -184,6 +194,7 @@ export function MetricPropertyPanel({
               { value: "money", label: "Moneda" },
               { value: "count", label: "Entero" },
               { value: "percentage", label: "Porcentaje" },
+              { value: "text", label: "Texto" },
             ],
             helpText: "Define el formulario de carga que se ve todos los meses.",
           },
@@ -407,6 +418,9 @@ export function MetricPropertyPanel({
                         calcDefs={reusableCalcDefs}
                         currentInputs={currentInputs}
                         formulaHistory={formulaHistory}
+                        rawFields={rawFields}
+                        rawFieldValues={rawFieldValues}
+                        rawFieldValuesLoading={rawFieldValuesLoading}
                       />
                     )}
                   </AccordionContent>

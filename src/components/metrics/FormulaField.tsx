@@ -6,10 +6,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
-import { formatMetricValue, formatValueByType, type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
+import { formatMetricValue, formatValueByType, type MetricDef, type InputsMap, type PeriodInputs, type RawField } from "@/lib/metrics";
 import {
   evalFormula,
   evalFormulaDetailed,
+  extractRawFieldQueries,
   findEnclosingCall,
   RECOMMENDED_FUNCTIONS,
   FUNCTION_SIGNATURES,
@@ -18,21 +19,28 @@ import {
 type Suggestion =
   | { kind: "function"; name: string }
   | { kind: "field"; key: string; label: string; value: number | undefined; valueType: MetricDef["value_type"] }
-  | { kind: "metric"; id: string; label: string; value: number | null; unit: string | null };
+  | { kind: "metric"; id: string; label: string; value: number | null; unit: string | null }
+  // Un campo crudo de una integración — nunca se usa suelto, siempre dentro
+  // de FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG (ver formulaEngine.ts), así
+  // que insertarlo arma la llamada completa, no solo el nombre.
+  | { kind: "rawfield"; fieldKey: string; valueType: RawField["value_type"] };
 
 function suggestionId(s: Suggestion): string {
-  return s.kind === "function" ? s.name : s.kind === "field" ? s.key : s.id;
+  return s.kind === "function" ? s.name : s.kind === "field" ? s.key : s.kind === "rawfield" ? s.fieldKey : s.id;
 }
 
 function suggestionSearchValue(s: Suggestion): string {
-  return s.kind === "function" ? s.name : s.kind === "field" ? `${s.label} ${s.key}` : `${s.label} ${s.id}`;
+  if (s.kind === "function") return s.name;
+  if (s.kind === "field") return `${s.label} ${s.key}`;
+  if (s.kind === "rawfield") return s.fieldKey;
+  return `${s.label} ${s.id}`;
 }
 
 function matchesToken(s: Suggestion, token: string): boolean {
   const t = token.toLowerCase();
   if (!t) return false;
   const id = suggestionId(s).toLowerCase();
-  const label = s.kind === "function" ? "" : s.label.toLowerCase();
+  const label = s.kind === "function" ? "" : s.kind === "rawfield" ? "" : s.label.toLowerCase();
   return id.startsWith(t) || label.startsWith(t);
 }
 
@@ -49,6 +57,19 @@ function SuggestionRow({ s }: { s: Suggestion }) {
           {sig && <span className="block text-[10px] text-tertiary truncate">{sig.description}</span>}
         </span>
         <span className="text-[10px] uppercase tracking-wide text-tertiary shrink-0">función</span>
+      </div>
+    );
+  }
+  if (s.kind === "rawfield") {
+    return (
+      <div className="flex items-center justify-between gap-3 min-w-0 w-full">
+        <span className="min-w-0">
+          <span className="block truncate font-mono">{s.fieldKey}</span>
+          <span className="block text-[10px] text-tertiary truncate">Inserta FIELDSUM("{s.fieldKey}")</span>
+        </span>
+        <span className="text-[10px] uppercase tracking-wide text-tertiary shrink-0">
+          {s.valueType === "text" ? "texto" : "número"}
+        </span>
       </div>
     );
   }
@@ -79,6 +100,17 @@ type Props = {
   calcDefs: MetricDef[]; // all OTHER calculated metrics — reuse suggestions (self already excluded by caller)
   currentInputs: InputsMap;
   formulaHistory?: PeriodInputs[];
+  // Campos crudos de integraciones disponibles (list-raw-fields) — opcional,
+  // sin esto simplemente no aparece el grupo "Campos crudos" en el picker.
+  rawFields?: RawField[];
+  // Valores ya resueltos (useRawFieldValues → resolveRawFieldQueries) para
+  // el período actual, necesarios para que la preview calcule algo cuando
+  // la fórmula usa FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG.
+  rawFieldValues?: Record<string, number | null>;
+  // Mientras se resuelven esos valores (llamada de red en curso) — la
+  // preview muestra "Calculando…" en vez de un resultado potencialmente
+  // desactualizado.
+  rawFieldValuesLoading?: boolean;
 };
 
 /**
@@ -88,7 +120,18 @@ type Props = {
  * pairs, a parameter-hint bar while inside a function call, and a live
  * preview against the real current-period data.
  */
-export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, currentInputs, formulaHistory }: Props) {
+export function FormulaField({
+  value,
+  onChange,
+  unit,
+  inputDefs,
+  calcDefs,
+  currentInputs,
+  formulaHistory,
+  rawFields = [],
+  rawFieldValues = {},
+  rawFieldValuesLoading = false,
+}: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [autoOpen, setAutoOpen] = useState(false);
@@ -127,14 +170,21 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
     []
   );
 
-  const allSuggestions = useMemo(
-    () => [...functionSuggestions, ...fields, ...metricSuggestions],
-    [functionSuggestions, fields, metricSuggestions]
+  const rawFieldSuggestions: Extract<Suggestion, { kind: "rawfield" }>[] = useMemo(
+    () => rawFields.map((f) => ({ kind: "rawfield" as const, fieldKey: f.field_key, valueType: f.value_type })),
+    [rawFields]
   );
 
+  const allSuggestions = useMemo(
+    () => [...functionSuggestions, ...fields, ...metricSuggestions, ...rawFieldSuggestions],
+    [functionSuggestions, fields, metricSuggestions, rawFieldSuggestions]
+  );
+
+  const hasRawFieldRefs = useMemo(() => extractRawFieldQueries(value).length > 0, [value]);
+
   const preview = useMemo(
-    () => evalFormulaDetailed(value, currentInputs, formulaHistory, calcDefs),
-    [value, currentInputs, formulaHistory, calcDefs]
+    () => evalFormulaDetailed(value, currentInputs, formulaHistory, calcDefs, rawFieldValues),
+    [value, currentInputs, formulaHistory, calcDefs, rawFieldValues]
   );
 
   const enclosingCall = useMemo(() => findEnclosingCall(value, cursorPos), [value, cursorPos]);
@@ -175,6 +225,9 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
   const acceptSuggestion = (s: Suggestion) => {
     if (s.kind === "function") {
       insertAtCursor(`${s.name}()`, s.name.length + 1, tokenStart ?? undefined, cursorPos);
+    } else if (s.kind === "rawfield") {
+      const text = `FIELDSUM("${s.fieldKey}")`;
+      insertAtCursor(text, text.length, tokenStart ?? undefined, cursorPos);
     } else {
       const id = suggestionId(s);
       insertAtCursor(id, id.length, tokenStart ?? undefined, cursorPos);
@@ -184,6 +237,9 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
   const insertFromPicker = (s: Suggestion) => {
     if (s.kind === "function") {
       insertAtCursor(`${s.name}()`, s.name.length + 1);
+    } else if (s.kind === "rawfield") {
+      const text = `FIELDSUM("${s.fieldKey}")`;
+      insertAtCursor(text, text.length);
     } else {
       const id = suggestionId(s);
       insertAtCursor(id, id.length);
@@ -315,6 +371,20 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
                     ))}
                   </CommandGroup>
                 )}
+                {rawFieldSuggestions.length > 0 && (
+                  <CommandGroup heading="Campos crudos">
+                    {rawFieldSuggestions.map((s) => (
+                      <CommandItem
+                        key={suggestionId(s)}
+                        value={suggestionSearchValue(s)}
+                        onSelect={() => insertFromPicker(s)}
+                        className="flex items-center justify-between gap-3"
+                      >
+                        <SuggestionRow s={s} />
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
                 <CommandGroup heading="Funciones">
                   {functionSuggestions.map((s) => (
                     <CommandItem
@@ -402,14 +472,18 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
           aria-live="polite"
           className={cn(
             "mt-1.5 rounded-md border px-3 py-2 text-xs",
-            preview.error
-              ? "border-destructive/40 bg-destructive/5 text-destructive"
-              : preview.value !== null
-                ? "border-success/40 bg-success/5 text-foreground"
-                : "border-border bg-surface text-muted-foreground"
+            hasRawFieldRefs && rawFieldValuesLoading
+              ? "border-border bg-surface text-muted-foreground"
+              : preview.error
+                ? "border-destructive/40 bg-destructive/5 text-destructive"
+                : preview.value !== null
+                  ? "border-success/40 bg-success/5 text-foreground"
+                  : "border-border bg-surface text-muted-foreground"
           )}
         >
-          {preview.error ? (
+          {hasRawFieldRefs && rawFieldValuesLoading ? (
+            <>Calculando con los datos crudos…</>
+          ) : preview.error ? (
             <>No se puede calcular: {preview.error}</>
           ) : preview.value !== null ? (
             <>
@@ -428,7 +502,11 @@ export function FormulaField({ value, onChange, unit, inputDefs, calcDefs, curre
       <p className="text-xs text-muted-foreground mt-1.5">
         Funciona como Google Sheets: escribí y elegí de la lista, o usá <span className="font-medium">Insertar variable</span>.
         Para promediar o sumar meses anteriores usá <code>SUMLAST("revenue", 3)</code>, <code>AVGLAST("revenue", 3)</code> o{" "}
-        <code>YTD("revenue")</code>. El nombre del campo va entre comillas solo en esas tres.
+        <code>YTD("revenue")</code>. Para traer datos crudos de una integración usá{" "}
+        <code>FIELDSUM("campo")</code>, <code>FIELDCOUNT("campo")</code>, <code>FIELDCOUNTD("campo")</code> o{" "}
+        <code>FIELDAVG("campo")</code> — opcionalmente con un filtro:{" "}
+        <code>FIELDSUM("monto", "evento", "New,Renewal")</code> suma "monto" solo en las filas donde "evento" es "New"
+        o "Renewal". El nombre del campo (y los filtros) van siempre entre comillas.
       </p>
     </div>
   );

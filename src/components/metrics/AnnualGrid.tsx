@@ -7,6 +7,7 @@ import { PrivacyToggle } from "@/components/privacy/PrivacyToggle";
 import type { MetricDef, InputsMap } from "@/lib/metrics";
 import { formatMetricValue, formatValueByType, sourceLabel, sourceSettingsPath } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
+import { toPeriodString } from "@/lib/metricPeriod";
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -25,6 +26,12 @@ type Props = {
   privacy: Record<string, boolean>; // metric_id -> is_public
   onTogglePrivacy: (metricId: string, next: boolean) => Promise<void>;
   onInfo: (m: MetricDef) => void;
+  // Valores pre-resueltos de FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG por
+  // período ("YYYY-MM", ver toPeriodString) — necesarios para que una
+  // fórmula que lee datos crudos de una integración calcule algo en cada
+  // columna del año. Sin esto, esas fórmulas dan "—" en todo el grid (no
+  // rompen, simplemente no tienen con qué calcular).
+  rawFieldValuesByPeriod?: Record<string, Record<string, number | null>>;
 };
 
 const k = (y: number, m: number) => `${y}-${m}`;
@@ -41,6 +48,7 @@ export function AnnualGrid({
   privacy,
   onTogglePrivacy,
   onInfo,
+  rawFieldValuesByPeriod = {},
 }: Props) {
   // pending edits keyed `metric_id|month` -> raw string
   const [pending, setPending] = useState<Record<string, string>>({});
@@ -348,7 +356,8 @@ export function AnnualGrid({
                     {months.map((_, i) => {
                       const month = i + 1;
                       const inputs = inputsForMonth(month);
-                      const v = evalFormula(def.formula_expression!, inputs, [], allCalcDefs);
+                      const rawFieldValues = rawFieldValuesByPeriod[toPeriodString(month, year)] ?? {};
+                      const v = evalFormula(def.formula_expression!, inputs, [], allCalcDefs, rawFieldValues);
                       return (
                         <td key={month} className="px-2 py-2 text-right tabular-nums w-20 text-muted-foreground">
                           {v === null ? "—" : formatMetricValue(v, def.unit)}

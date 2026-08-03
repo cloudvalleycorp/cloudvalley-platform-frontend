@@ -5,12 +5,27 @@
 // in; importing lib/metrics.ts alone does not.
 import { Parser, SUPPORTED_FORMULAS } from "hot-formula-parser";
 import type { InputsMap, PeriodInputs } from "@/lib/metrics";
+import {
+  QUERY_RAW_FIELD_URL,
+  type QueryRawFieldRequest,
+  type QueryRawFieldResponse,
+  type RawFieldFilter,
+} from "@/lib/sheetsIntegration";
 
 // Every function name available in a formula — hot-formula-parser's ~280
-// Excel/Sheets functions plus our 3 custom ones. Exported for the formula
+// Excel/Sheets functions plus our custom ones. Exported for the formula
 // editor's autocomplete (src/components/metrics/FormulaField.tsx).
 export const ALL_FORMULA_FUNCTIONS: string[] = Array.from(
-  new Set([...SUPPORTED_FORMULAS.map((f) => f.toUpperCase()), "SUMLAST", "AVGLAST", "YTD"])
+  new Set([
+    ...SUPPORTED_FORMULAS.map((f) => f.toUpperCase()),
+    "SUMLAST",
+    "AVGLAST",
+    "YTD",
+    "FIELDSUM",
+    "FIELDCOUNT",
+    "FIELDCOUNTD",
+    "FIELDAVG",
+  ])
 ).sort();
 
 // Function names hot-formula-parser resolves as formulas, plus our own
@@ -69,6 +84,22 @@ export const FUNCTION_SIGNATURES: Record<string, FunctionSignature> = {
   SUMLAST: { params: ['"campo" (entre comillas)', "n_meses"], description: "Suma el campo en los últimos N meses, incluido el actual." },
   AVGLAST: { params: ['"campo" (entre comillas)', "n_meses"], description: "Promedia el campo en los últimos N meses, incluido el actual." },
   YTD: { params: ['"campo" (entre comillas)'], description: "Acumulado del campo desde enero del año en curso." },
+  FIELDSUM: {
+    params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
+    description: "Suma un campo crudo de una integración sobre el período actual. Opcional: filtrar por otro campo (varios valores separados por coma = OR).",
+  },
+  FIELDCOUNT: {
+    params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
+    description: "Cuenta filas del período actual donde el campo tiene valor. Mismos filtros opcionales que FIELDSUM.",
+  },
+  FIELDCOUNTD: {
+    params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
+    description: "Cuenta valores únicos de un campo crudo en el período actual. Mismos filtros opcionales que FIELDSUM.",
+  },
+  FIELDAVG: {
+    params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
+    description: "Promedia un campo crudo sobre el período actual. Mismos filtros opcionales que FIELDSUM.",
+  },
 };
 
 export const RECOMMENDED_FUNCTIONS: string[] = Object.keys(FUNCTION_SIGNATURES).sort();
@@ -127,6 +158,166 @@ export function requiredInputs(expression: string): string[] {
   );
 }
 
+// ---- Campos crudos (FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG) ----
+//
+// A diferencia de SUMLAST/AVGLAST/YTD (que solo necesitan `history`, ya
+// disponible en memoria), estas 4 funciones agregan datos crudos de una
+// integración — eso vive en el backend (POST /query-raw-field), no en el
+// browser. hot-formula-parser evalúa todo de forma síncrona, así que no se
+// puede hacer fetch() adentro de parser.setFunction. La solución: antes de
+// evaluar la fórmula, se escanea su texto (extractRawFieldQueries), se
+// resuelven todas las llamadas encontradas en paralelo (resolveRawFieldQueries,
+// async), y RECIÉN AHÍ se evalúa la fórmula de forma síncrona de siempre,
+// con esos valores ya en mano (rawFieldValues, ver evalFormula más abajo).
+//
+// Todos los argumentos de estas 4 funciones son siempre strings entre
+// comillas (nombre de campo, o pares campo-de-filtro/valores) — nunca
+// identificadores sueltos ni fórmulas anidadas — así que un scanner de texto
+// simple alcanza, sin depender de que el resto de la fórmula ya sea
+// evaluable (a diferencia de correr el parser completo).
+
+const RAW_FIELD_FUNCTION_NAMES = ["FIELDSUM", "FIELDCOUNT", "FIELDCOUNTD", "FIELDAVG"] as const;
+export type RawFieldFunctionName = (typeof RAW_FIELD_FUNCTION_NAMES)[number];
+
+export type RawFieldQuery = {
+  /** Cache/lookup key — misma función que produce este key a partir del texto (extracción) y de los params ya evaluados (runtime), para que ambos coincidan. */
+  key: string;
+  fn: RawFieldFunctionName;
+  field: string;
+  filters: RawFieldFilter[];
+};
+
+// Lee los argumentos entre comillas de una llamada tipo FUNC("a", "b", "c")
+// a partir de `start` (justo después del "("). Devuelve null si algo no es
+// un string literal — no intentamos adivinar, esa llamada se ignora (se
+// resuelve como "sin datos" al evaluar, no rompe el resto de la fórmula).
+function readQuotedArgs(text: string, start: number): string[] | null {
+  const args: string[] = [];
+  let i = start;
+  const skipSpace = () => {
+    while (i < text.length && /\s/.test(text[i])) i++;
+  };
+  skipSpace();
+  if (text[i] === ")") return args;
+  for (;;) {
+    if (text[i] !== '"') return null;
+    i++;
+    let value = "";
+    while (i < text.length && text[i] !== '"') {
+      if (text[i] === "\\" && text[i + 1] === '"') {
+        value += '"';
+        i += 2;
+        continue;
+      }
+      value += text[i];
+      i++;
+    }
+    if (text[i] !== '"') return null; // sin comilla de cierre
+    i++;
+    args.push(value);
+    skipSpace();
+    if (text[i] === ",") {
+      i++;
+      skipSpace();
+      continue;
+    }
+    if (text[i] === ")") return args;
+    return null;
+  }
+}
+
+function buildRawFieldQuery(fn: RawFieldFunctionName, args: string[]): RawFieldQuery | null {
+  if (args.length === 0) return null;
+  const [field, ...rest] = args;
+  if (!field || rest.length % 2 !== 0) return null; // los filtros vienen en pares campo/valores
+  const filters: RawFieldFilter[] = [];
+  for (let i = 0; i < rest.length; i += 2) {
+    const values = rest[i + 1]
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    if (!rest[i] || values.length === 0) return null;
+    filters.push({ field_key: rest[i], values });
+  }
+  return { key: JSON.stringify({ fn, field, filters }), fn, field, filters };
+}
+
+/** Todas las llamadas a FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG en una fórmula, listas para resolver con resolveRawFieldQueries antes de evaluar. */
+export function extractRawFieldQueries(expression: string): RawFieldQuery[] {
+  const queries: RawFieldQuery[] = [];
+  const re = new RegExp(`\\b(${RAW_FIELD_FUNCTION_NAMES.join("|")})\\s*\\(`, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(expression))) {
+    const fn = m[1].toUpperCase() as RawFieldFunctionName;
+    const args = readQuotedArgs(expression, m.index + m[0].length);
+    if (!args) continue;
+    const query = buildRawFieldQuery(fn, args);
+    if (query) queries.push(query);
+  }
+  return queries;
+}
+
+const AGGREGATION_BY_FUNCTION: Record<RawFieldFunctionName, QueryRawFieldRequest["aggregation"]> = {
+  FIELDSUM: "sum",
+  FIELDCOUNT: "count",
+  FIELDCOUNTD: "count_distinct",
+  FIELDAVG: "average",
+};
+
+/**
+ * Resuelve, en paralelo y deduplicadas por key, todas las queries que haga
+ * falta para evaluar una o varias fórmulas — llamar UNA vez por período con
+ * la unión de extractRawFieldQueries(...) de todas las fórmulas en pantalla
+ * (no una vez por fórmula), para no repetir la misma consulta varias veces.
+ * Un fallo de red en una query puntual la deja en `null` (mismo criterio que
+ * "sin datos" de SUMLAST/AVGLAST/YTD), no tira el resto.
+ */
+export async function resolveRawFieldQueries(
+  queries: RawFieldQuery[],
+  companyId: string,
+  period: string
+): Promise<Record<string, number | null>> {
+  const unique = new Map<string, RawFieldQuery>();
+  for (const q of queries) unique.set(q.key, q);
+  const entries = await Promise.all(
+    Array.from(unique.values()).map(async ({ key, fn, field, filters }): Promise<[string, number | null]> => {
+      const body: QueryRawFieldRequest = {
+        company_id: companyId,
+        period,
+        field_key: field,
+        aggregation: AGGREGATION_BY_FUNCTION[fn],
+        ...(fn === "FIELDCOUNTD" ? { distinct_field_key: field } : {}),
+        ...(filters.length > 0 ? { filters } : {}),
+      };
+      try {
+        const res = await fetch(QUERY_RAW_FIELD_URL, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) return [key, null];
+        const data = (await res.json()) as QueryRawFieldResponse;
+        return [key, data.value];
+      } catch {
+        return [key, null];
+      }
+    })
+  );
+  return Object.fromEntries(entries);
+}
+
+function registerRawFieldFunctions(parser: Parser, resolved: Record<string, number | null>) {
+  const lookup = (fn: RawFieldFunctionName) => (params: unknown[]) => {
+    if (!params.every((p): p is string => typeof p === "string")) return null;
+    const query = buildRawFieldQuery(fn, params);
+    if (!query) return null;
+    const value = resolved[query.key];
+    return value === undefined ? null : value;
+  };
+  for (const fn of RAW_FIELD_FUNCTION_NAMES) parser.setFunction(fn, lookup(fn));
+}
+
 function numberOrNull(values: (number | undefined)[]): number[] {
   return values.filter((v): v is number => v !== undefined);
 }
@@ -162,7 +353,8 @@ function resolveIdentifier(
   history: PeriodInputs[],
   calcDefs: CalcDefLike[],
   visiting: Set<string>,
-  cache: InputsMap
+  cache: InputsMap,
+  rawFieldValues: Record<string, number | null>
 ): number | null {
   if (cache[id] !== undefined) return cache[id];
   if (inputs[id] !== undefined && inputs[id] !== null && !Number.isNaN(inputs[id])) return inputs[id];
@@ -170,7 +362,7 @@ function resolveIdentifier(
   const def = calcDefs.find((d) => d.id === id);
   if (!def?.formula_expression) return null;
   visiting.add(id);
-  const result = evaluateInternal(def.formula_expression, inputs, history, calcDefs, visiting, cache);
+  const result = evaluateInternal(def.formula_expression, inputs, history, calcDefs, visiting, cache, rawFieldValues);
   visiting.delete(id);
   if (result.value !== null) cache[id] = result.value;
   return result.value;
@@ -182,10 +374,13 @@ function evaluateInternal(
   history: PeriodInputs[],
   calcDefs: CalcDefLike[],
   visiting: Set<string>,
-  cache: InputsMap
+  cache: InputsMap,
+  rawFieldValues: Record<string, number | null>
 ): FormulaEvalResult {
   const identifiers = requiredInputs(expression);
-  const missing = identifiers.filter((id) => resolveIdentifier(id, inputs, history, calcDefs, visiting, cache) === null);
+  const missing = identifiers.filter(
+    (id) => resolveIdentifier(id, inputs, history, calcDefs, visiting, cache, rawFieldValues) === null
+  );
   if (missing.length > 0) return { value: null, error: null, missing };
 
   try {
@@ -193,6 +388,7 @@ function evaluateInternal(
     for (const [key, value] of Object.entries(inputs)) parser.setVariable(key, value);
     for (const [key, value] of Object.entries(cache)) parser.setVariable(key, value);
     registerHistoryFunctions(parser, history);
+    registerRawFieldFunctions(parser, rawFieldValues);
     const cleaned = expression.trim().replace(/^=/, "");
     const { result, error } = parser.parse(cleaned);
     if (error) return { value: null, error: ERROR_MESSAGES[error] ?? "La fórmula tiene un error.", missing: [] };
@@ -211,15 +407,20 @@ function evaluateInternal(
  * authoring a formula. `calcDefs` (optional) lets the formula reference
  * other calculated metrics by id, resolved recursively with cycle
  * protection (a circular reference just resolves as "missing", never hangs).
+ * `rawFieldValues` (optional) is the pre-resolved map from
+ * resolveRawFieldQueries — without it, FIELDSUM/FIELDCOUNT/FIELDCOUNTD/
+ * FIELDAVG simply return null (same "no data" behavior as SUMLAST/AVGLAST/
+ * YTD without `history`).
  */
 export function evalFormulaDetailed(
   expression: string,
   inputs: InputsMap,
   history: PeriodInputs[] = [],
-  calcDefs: CalcDefLike[] = []
+  calcDefs: CalcDefLike[] = [],
+  rawFieldValues: Record<string, number | null> = {}
 ): FormulaEvalResult {
   if (!expression.trim()) return { value: null, error: null, missing: [] };
-  return evaluateInternal(expression, inputs, history, calcDefs, new Set(), {});
+  return evaluateInternal(expression, inputs, history, calcDefs, new Set(), {}, rawFieldValues);
 }
 
 function registerHistoryFunctions(parser: Parser, history: PeriodInputs[]) {
@@ -254,14 +455,17 @@ function registerHistoryFunctions(parser: Parser, history: PeriodInputs[]) {
  * without it those three simply return null, everything else works the same.
  * `calcDefs` (optional) lets the formula also reference other calculated
  * metrics by id, resolved recursively — omit it for the old behavior (bare
- * identifiers only resolve against `inputs`). Returns null if any identifier
- * can't be resolved, or the formula itself errors.
+ * identifiers only resolve against `inputs`). `rawFieldValues` (optional) is
+ * the pre-resolved map from resolveRawFieldQueries — needed for FIELDSUM/
+ * FIELDCOUNT/FIELDCOUNTD/FIELDAVG, see the block above registerRawFieldFunctions.
+ * Returns null if any identifier can't be resolved, or the formula itself errors.
  */
 export function evalFormula(
   expression: string,
   inputs: InputsMap,
   history: PeriodInputs[] = [],
-  calcDefs: CalcDefLike[] = []
+  calcDefs: CalcDefLike[] = [],
+  rawFieldValues: Record<string, number | null> = {}
 ): number | null {
-  return evaluateInternal(expression, inputs, history, calcDefs, new Set(), {}).value;
+  return evaluateInternal(expression, inputs, history, calcDefs, new Set(), {}, rawFieldValues).value;
 }
