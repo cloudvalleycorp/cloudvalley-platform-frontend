@@ -11,7 +11,6 @@ import {
   ChevronsUpDown,
   Plus,
   Trash2,
-  X,
 } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -26,16 +25,15 @@ import { ImportLogTable } from "@/components/financial/ImportLogTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
 import { handleMembershipError } from "@/lib/membership";
-import { requiredInputs } from "@/lib/formulaEngine";
 import { groupRowErrors } from "@/lib/financialData";
 import { cn } from "@/lib/utils";
-import type { MetricDef } from "@/lib/metrics";
 import {
   LIST_GOOGLE_ACCOUNTS_URL,
   CONNECT_SHEETS_URL,
@@ -48,13 +46,10 @@ import {
   SYNC_SHEETS_URL,
   DISCONNECT_SHEETS_URL,
   parseSheetsError,
-  AGGREGATION_LABELS,
   type GoogleAccount,
   type GoogleAccountsResponse,
   type SheetSummary,
-  type Aggregation,
-  type MetricFilter,
-  type MetricMappingConfig,
+  type FieldMapping,
   type SheetConnection,
   type SyncResult,
 } from "@/lib/sheetsIntegration";
@@ -63,16 +58,15 @@ const PERIOD_PATTERNS = ["periodo", "period", "mes", "month", "fecha", "date"];
 
 type WizardStep = 1 | 2 | 3;
 
-// Local editing shape for a metric config: aggregation starts unset (no
-// sensible default per the backend contract — sum/count/last mean very
-// different things) until the user picks one or auto-map guesses "last".
-type DraftMetricConfig = {
-  _id: string;
-  input_key: string;
-  aggregation: Aggregation | "";
-  value_column?: string;
-  distinct_column?: string;
-  filters: MetricFilter[];
+// Un campo crudo en edición: cada columna de la hoja se usa (con un
+// field_key propio y un tipo) o no se usa — nada de agregación ni filtros
+// acá, eso vive en las fórmulas de Métricas (ver formulaEngine.ts:
+// FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG). La integración solo dice "qué
+// columna se lee y cómo se llama."
+type DraftFieldMapping = {
+  column: string;
+  field_key: string;
+  value_type: "number" | "text";
 };
 
 const DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
@@ -84,18 +78,28 @@ function normalizeForMatch(s: string): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-// Best-effort first pass so the user reviews/adjusts instead of mapping every
-// column from scratch: exact match on the period column's usual names, then
-// exact match between the header and a metric's input_key or display name.
-// "last" is the auto-picked aggregation for a matched column — it reproduces
-// the old flat-mapping behavior (one row per period = the value), the most
-// common case; transaction logs need the user to pick sum/count themselves.
-function autoMapHeaders(
-  headers: string[],
-  inputDefs: MetricDef[]
-): { periodColumn: string | null; metricConfigs: DraftMetricConfig[] } {
+// Igual que normalizeForMatch pero conserva separadores como "_" (snake_case
+// legible: "Cliente ID" → "cliente_id") — para sugerir un field_key, no para
+// comparar coincidencias.
+function slugifyFieldKey(s: string): string {
+  const slug = s
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(DIACRITICS_RE, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return slug || "campo";
+}
+
+// Primer pase para que el usuario revise/ajuste en vez de nombrar cada
+// columna desde cero: detecta la columna de período por nombre, y sugiere un
+// field_key (snake_case) para cada columna restante — todas number por
+// default (no hay forma confiable de adivinar texto vs. número solo por el
+// nombre de la columna, el usuario lo corrige si hace falta).
+function autoMapHeaders(headers: string[]): { periodColumn: string | null; fieldMappings: Record<string, DraftFieldMapping> } {
   let periodColumn: string | null = null;
-  const metricConfigs: DraftMetricConfig[] = [];
+  const fieldMappings: Record<string, DraftFieldMapping> = {};
   const usedKeys = new Set<string>();
   for (const header of headers) {
     const norm = normalizeForMatch(header);
@@ -103,24 +107,17 @@ function autoMapHeaders(
       periodColumn = header;
       continue;
     }
-    const match = inputDefs.find(
-      (d) =>
-        d.input_key &&
-        !usedKeys.has(d.input_key) &&
-        (normalizeForMatch(d.input_key) === norm || normalizeForMatch(d.name) === norm)
-    );
-    if (match?.input_key) {
-      usedKeys.add(match.input_key);
-      metricConfigs.push({
-        _id: crypto.randomUUID(),
-        input_key: match.input_key,
-        aggregation: "last",
-        value_column: header,
-        filters: [],
-      });
+    const base = slugifyFieldKey(header);
+    let key = base;
+    let suffix = 2;
+    while (usedKeys.has(key)) {
+      key = `${base}_${suffix}`;
+      suffix++;
     }
+    usedKeys.add(key);
+    fieldMappings[header] = { column: header, field_key: key, value_type: "number" };
   }
-  return { periodColumn, metricConfigs };
+  return { periodColumn, fieldMappings };
 }
 
 function timeAgo(iso: string | null) {
@@ -171,7 +168,11 @@ export default function GrowthTrackerSheets() {
   const [headers, setHeaders] = useState<string[]>([]);
   const [loadingHeaders, setLoadingHeaders] = useState(false);
   const [periodColumn, setPeriodColumn] = useState<string | null>(null);
-  const [metricConfigs, setMetricConfigs] = useState<DraftMetricConfig[]>([]);
+  // Keyed por columna — cada columna de la hoja se usa (con su field_key +
+  // tipo) o no aparece acá. Reemplaza el viejo metricConfigs (agregación +
+  // filtros por métrica), que ya no existe: eso vive en las fórmulas de
+  // Métricas ahora.
+  const [fieldMappings, setFieldMappings] = useState<Record<string, DraftFieldMapping>>({});
   const [staleHeaders, setStaleHeaders] = useState<string[]>([]);
   const [savingMapping, setSavingMapping] = useState(false);
   const [loadingEditConnection, setLoadingEditConnection] = useState(false);
@@ -183,55 +184,19 @@ export default function GrowthTrackerSheets() {
   const [syncResults, setSyncResults] = useState<Record<string, { result: SyncResult; wasDryRun: boolean }>>({});
   const [missingHeadersByConnection, setMissingHeadersByConnection] = useState<Record<string, string[]>>({});
 
-  const inputDefs = financial.metrics.filter((m) => m.metric_type === "input" && m.input_key);
-
-  // Which raw fields are actually referenced by an existing calculated
-  // metric's formula — so the wizard can flag "your formulas need this
-  // column" instead of leaving the user to find out later that a metric
-  // silently stopped calculating.
-  const requiredByInputKey = useMemo(() => {
-    const map: Record<string, string[]> = {};
-    const inputKeySet = new Set(inputDefs.map((d) => d.input_key!));
-    for (const c of financial.metrics) {
-      if (c.metric_type !== "calculated" || !c.formula_expression) continue;
-      for (const id of requiredInputs(c.formula_expression)) {
-        if (inputKeySet.has(id)) {
-          map[id] ??= [];
-          map[id].push(c.name);
-        }
-      }
-    }
-    return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [financial.metrics]);
-
-  const usedInputKeySet = new Set(metricConfigs.map((m) => m.input_key).filter(Boolean));
-  const missingRequiredKeys = Object.keys(requiredByInputKey).filter((key) => !usedInputKeySet.has(key));
-  const usedHeaderSet = useMemo(() => {
-    const set = new Set<string>();
-    if (periodColumn) set.add(periodColumn);
-    for (const m of metricConfigs) {
-      if (m.value_column) set.add(m.value_column);
-      if (m.distinct_column) set.add(m.distinct_column);
-      for (const f of m.filters) if (f.column) set.add(f.column);
-    }
-    return set;
-  }, [periodColumn, metricConfigs]);
-  const duplicateInputKeys = useMemo(() => {
+  const usedFieldKeys = Object.values(fieldMappings).map((m) => m.field_key);
+  const usedColumnsCount = Object.keys(fieldMappings).length;
+  const duplicateFieldKeys = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const m of metricConfigs) if (m.input_key) counts.set(m.input_key, (counts.get(m.input_key) ?? 0) + 1);
+    for (const k of usedFieldKeys) if (k) counts.set(k, (counts.get(k) ?? 0) + 1);
     return Array.from(counts.entries())
       .filter(([, c]) => c > 1)
       .map(([k]) => k);
-  }, [metricConfigs]);
-  const allConfigsValid = metricConfigs.every((m) => {
-    if (!m.input_key || !m.aggregation) return false;
-    if ((m.aggregation === "sum" || m.aggregation === "last" || m.aggregation === "average") && !m.value_column)
-      return false;
-    if (m.aggregation === "count_distinct" && !m.distinct_column) return false;
-    return true;
-  });
-  const canSaveMapping = !!periodColumn && metricConfigs.length > 0 && allConfigsValid && duplicateInputKeys.length === 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usedFieldKeys.join(",")]);
+  const allMappingsValid = Object.values(fieldMappings).every((m) => m.field_key.trim().length > 0);
+  const canSaveMapping =
+    !!periodColumn && usedColumnsCount > 0 && allMappingsValid && duplicateFieldKeys.length === 0;
 
   const wizardAccount = accounts.find((a) => a.account_id === wizardAccountId) ?? null;
   const connectionsByAccount = useMemo(() => {
@@ -398,20 +363,21 @@ export default function GrowthTrackerSheets() {
         const missing: string[] = [];
         const seededPeriod = hs.includes(seed.period_column) ? seed.period_column : null;
         if (!seededPeriod) missing.push(seed.period_column);
-        const seededMetrics: DraftMetricConfig[] = seed.metrics.map((m) => {
-          const cols = [m.value_column, m.distinct_column, ...(m.filters?.map((f) => f.column) ?? [])].filter(
-            (c): c is string => !!c
-          );
-          for (const c of cols) if (!hs.includes(c)) missing.push(c);
-          return { _id: crypto.randomUUID(), ...m, filters: m.filters ?? [] };
-        });
+        const seededMappings: Record<string, DraftFieldMapping> = {};
+        for (const fm of seed.field_mappings) {
+          if (!hs.includes(fm.column)) {
+            missing.push(fm.column);
+            continue;
+          }
+          seededMappings[fm.column] = { column: fm.column, field_key: fm.field_key, value_type: fm.value_type };
+        }
         setPeriodColumn(seededPeriod);
-        setMetricConfigs(seededMetrics);
+        setFieldMappings(seededMappings);
         setStaleHeaders(Array.from(new Set(missing)));
       } else {
-        const auto = autoMapHeaders(hs, inputDefs);
+        const auto = autoMapHeaders(hs);
         setPeriodColumn(auto.periodColumn);
-        setMetricConfigs(auto.metricConfigs);
+        setFieldMappings(auto.fieldMappings);
         setStaleHeaders([]);
       }
     } catch {
@@ -437,7 +403,7 @@ export default function GrowthTrackerSheets() {
     setSelectedSheetName(null);
     setHeaders([]);
     setPeriodColumn(null);
-    setMetricConfigs([]);
+    setFieldMappings({});
     setStaleHeaders([]);
     setSheetSearch("");
     setTabSearch("");
@@ -553,23 +519,16 @@ export default function GrowthTrackerSheets() {
   const handleSaveMapping = async () => {
     if (!company_id || !wizardAccountId || !selectedSpreadsheetId || !selectedSheetName || !periodColumn) return;
     if (!canSaveMapping) {
-      toast.error("Revisá el mapeo: hay métricas incompletas o repetidas.");
+      toast.error("Revisá el mapeo: hay campos sin nombre o repetidos.");
       return;
     }
     setSavingMapping(true);
     try {
-      const metrics: MetricMappingConfig[] = metricConfigs.map((m) => {
-        const cfg: MetricMappingConfig = { input_key: m.input_key, aggregation: m.aggregation as Aggregation };
-        if (m.aggregation === "sum" || m.aggregation === "last" || m.aggregation === "average") {
-          cfg.value_column = m.value_column;
-        }
-        if (m.aggregation === "count_distinct") {
-          cfg.distinct_column = m.distinct_column;
-        }
-        const filters = m.filters.filter((f) => f.column && f.values.length > 0);
-        if (filters.length > 0) cfg.filters = filters;
-        return cfg;
-      });
+      const field_mappings: FieldMapping[] = Object.values(fieldMappings).map((m) => ({
+        column: m.column,
+        field_key: m.field_key.trim(),
+        value_type: m.value_type,
+      }));
       const res = await fetch(SAVE_SHEET_MAPPING_URL, {
         method: "POST",
         credentials: "include",
@@ -582,7 +541,7 @@ export default function GrowthTrackerSheets() {
           spreadsheet_name: selectedSpreadsheetName,
           sheet_name: selectedSheetName,
           period_column: periodColumn,
-          metrics,
+          field_mappings,
         }),
       });
       if (res.status === 400) {
@@ -594,38 +553,6 @@ export default function GrowthTrackerSheets() {
         if (err.missingHeaders?.length) {
           setStaleHeaders(err.missingHeaders);
           toast.error("Algunas columnas del mapeo ya no existen en la hoja. Revisalas abajo.");
-          return;
-        }
-        if (err.invalidInputKeys?.length) {
-          toast.error(`Hay métricas que ya no existen: ${err.invalidInputKeys.join(", ")}`);
-          return;
-        }
-        if (err.duplicateInputKeys?.length) {
-          toast.error(`Hay métricas repetidas en el mapeo: ${err.duplicateInputKeys.join(", ")}`);
-          return;
-        }
-        if (err.duplicateInputKeysAcrossConnections?.length) {
-          toast.error(
-            `Estas métricas ya están mapeadas en otra conexión: ${err.duplicateInputKeysAcrossConnections.join(", ")}. Sacalas de ahí primero.`
-          );
-          return;
-        }
-        if (err.invalidAggregations?.length) {
-          toast.error(
-            `Combinación inválida: ${err.invalidAggregations.map((a) => `${a.input_key} (${a.aggregation})`).join(", ")}`
-          );
-          return;
-        }
-        if (err.missingValueColumn?.length) {
-          toast.error(`Falta la columna con el valor para: ${err.missingValueColumn.join(", ")}`);
-          return;
-        }
-        if (err.missingDistinctColumn?.length) {
-          toast.error(`Falta la columna de valores únicos para: ${err.missingDistinctColumn.join(", ")}`);
-          return;
-        }
-        if (err.malformedFilters?.length) {
-          toast.error("Hay filtros mal formados en el mapeo. Revisalos.");
           return;
         }
         toast.error(err.message ?? "No se pudo guardar el mapeo");
@@ -892,7 +819,7 @@ export default function GrowthTrackerSheets() {
                                   </span>
                                 </p>
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                  {conn.metrics.length} métrica{conn.metrics.length === 1 ? "" : "s"} · última
+                                  {conn.field_mappings.length} campo{conn.field_mappings.length === 1 ? "" : "s"} · última
                                   sincronización {timeAgo(conn.last_synced_at)}
                                   {conn.last_sync_status && (
                                     <>
@@ -1070,7 +997,7 @@ export default function GrowthTrackerSheets() {
                                 setSelectedSheetName(null);
                                 setHeaders([]);
                                 setPeriodColumn(null);
-                                setMetricConfigs([]);
+                                setFieldMappings({});
                                 setStaleHeaders([]);
                                 setStep(2);
                                 if (wizardAccountId) loadTabs(wizardAccountId, s.spreadsheet_id);
@@ -1154,15 +1081,15 @@ export default function GrowthTrackerSheets() {
                 title="Mapeá las columnas"
                 description={
                   headers.length > 0
-                    ? `${selectedSpreadsheetName} · ${selectedSheetName} · ${usedHeaderSet.size} de ${headers.length} columnas usadas`
+                    ? `${selectedSpreadsheetName} · ${selectedSheetName} · ${usedColumnsCount} de ${headers.length} columnas usadas`
                     : `${selectedSpreadsheetName} · ${selectedSheetName}`
                 }
               >
                 {!loadingHeaders && headers.length > 0 && (
                   <p className="text-xs text-muted-foreground mb-3">
-                    Elegí qué columna marca el período y qué métricas se arman a partir de las demás columnas. Si tu
-                    planilla tiene varias filas por mes (por transacción), elegí cómo combinarlas: sumar, contar
-                    filas, contar valores únicos, promediar o quedarte con el último valor.
+                    Elegí qué columna marca el período. Para las demás, decidí cuáles traer y cómo se van a llamar —
+                    solo lectura de datos acá, nada de sumar ni filtrar: eso se define después con fórmulas en la
+                    sección de Métricas (por ejemplo <code className="font-mono">FIELDSUM("monto")</code>).
                   </p>
                 )}
                 {staleHeaders.length > 0 && (
@@ -1171,28 +1098,10 @@ export default function GrowthTrackerSheets() {
                     <p className="text-muted-foreground mt-0.5">{staleHeaders.join(", ")}</p>
                   </div>
                 )}
-                {!loadingHeaders && missingRequiredKeys.length > 0 && (
-                  <div className="border border-warning/40 bg-warning/10 rounded-md p-3 mb-4 text-xs" aria-live="polite">
-                    <p className="font-medium">
-                      Tus métricas calculadas necesitan estos campos y todavía no están mapeados:
-                    </p>
-                    <ul className="mt-1 space-y-0.5 text-muted-foreground">
-                      {missingRequiredKeys.map((key) => {
-                        const def = inputDefs.find((d) => d.input_key === key);
-                        return (
-                          <li key={key}>
-                            <span className="font-mono text-foreground">{key}</span>
-                            {def && ` (${def.name})`}: usado en {requiredByInputKey[key].join(", ")}.
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-                {duplicateInputKeys.length > 0 && (
+                {duplicateFieldKeys.length > 0 && (
                   <div className="border border-destructive/40 bg-destructive/5 rounded-md p-3 mb-4 text-xs" aria-live="polite">
-                    <p className="font-medium text-destructive">Hay métricas repetidas: {duplicateInputKeys.join(", ")}</p>
-                    <p className="text-muted-foreground mt-0.5">Cada métrica solo puede configurarse una vez.</p>
+                    <p className="font-medium text-destructive">Hay nombres de campo repetidos: {duplicateFieldKeys.join(", ")}</p>
+                    <p className="text-muted-foreground mt-0.5">Cada campo tiene que tener un nombre único.</p>
                   </div>
                 )}
                 {loadingHeaders ? (
@@ -1207,7 +1116,15 @@ export default function GrowthTrackerSheets() {
                         <HeaderCombobox
                           headers={headers}
                           value={periodColumn}
-                          onChange={setPeriodColumn}
+                          onChange={(v) => {
+                            setPeriodColumn(v);
+                            setFieldMappings((prev) => {
+                              if (!prev[v]) return prev;
+                              const next = { ...prev };
+                              delete next[v];
+                              return next;
+                            });
+                          }}
                           placeholder="Elegí una columna…"
                           ariaLabel="Columna de período"
                         />
@@ -1215,50 +1132,28 @@ export default function GrowthTrackerSheets() {
                     </div>
 
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-medium">Métricas</label>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setMetricConfigs((prev) => [
-                              ...prev,
-                              { _id: crypto.randomUUID(), input_key: "", aggregation: "", filters: [] },
-                            ])
-                          }
-                        >
-                          <Plus size={12} className="mr-1.5" /> Agregar métrica
-                        </Button>
-                      </div>
-                      {metricConfigs.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-6 border border-dashed border-border rounded-md">
-                          Todavía no agregaste ninguna métrica.
-                        </p>
-                      ) : (
-                        <div className="space-y-3">
-                          {metricConfigs.map((config) => (
-                            <MetricConfigCard
-                              key={config._id}
-                              config={config}
-                              headers={headers}
-                              inputDefs={inputDefs}
-                              usedInputKeys={
-                                new Set(
-                                  metricConfigs
-                                    .filter((m) => m._id !== config._id)
-                                    .map((m) => m.input_key)
-                                    .filter(Boolean)
-                                )
-                              }
-                              requiredByInputKey={requiredByInputKey}
+                      <label className="text-xs font-medium block mb-1.5">Columnas a traer</label>
+                      <div className="space-y-1.5">
+                        {headers
+                          .filter((h) => h !== periodColumn)
+                          .map((header) => (
+                            <FieldMappingRow
+                              key={header}
+                              header={header}
+                              mapping={fieldMappings[header] ?? null}
                               onChange={(next) =>
-                                setMetricConfigs((prev) => prev.map((m) => (m._id === config._id ? next : m)))
+                                setFieldMappings((prev) => ({ ...prev, [header]: next }))
                               }
-                              onRemove={() => setMetricConfigs((prev) => prev.filter((m) => m._id !== config._id))}
+                              onRemove={() =>
+                                setFieldMappings((prev) => {
+                                  const next = { ...prev };
+                                  delete next[header];
+                                  return next;
+                                })
+                              }
                             />
                           ))}
-                        </div>
-                      )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1266,12 +1161,12 @@ export default function GrowthTrackerSheets() {
                   <p className="text-xs text-muted-foreground pt-3">
                     {!periodColumn
                       ? "Falta elegir la columna de período (mes)."
-                      : metricConfigs.length === 0
-                        ? "Agregá al menos una métrica."
-                        : !allConfigsValid
-                          ? "Hay métricas incompletas: revisá que cada una tenga cómo combinar filas y su columna."
-                          : duplicateInputKeys.length > 0
-                            ? "Hay métricas repetidas: dejá cada una una sola vez."
+                      : usedColumnsCount === 0
+                        ? "Elegí al menos una columna para traer."
+                        : !allMappingsValid
+                          ? "Hay columnas sin nombre de campo."
+                          : duplicateFieldKeys.length > 0
+                            ? "Hay nombres de campo repetidos: dejá cada uno una sola vez."
                             : "Listo para guardar."}
                   </p>
                 )}
@@ -1327,7 +1222,7 @@ export default function GrowthTrackerSheets() {
         title="Quitar hoja conectada"
         description={
           confirmRemoveConnection
-            ? `Se deja de sincronizar "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}". Sus métricas mapeadas (${confirmRemoveConnection.metrics.length}) vuelven a estar disponibles para cargar a mano o mapear en otra hoja. No afecta la cuenta de Google ni tus otras conexiones.`
+            ? `Se deja de sincronizar "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}". Sus ${confirmRemoveConnection.field_mappings.length} campo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} crudo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} deja${confirmRemoveConnection.field_mappings.length === 1 ? "" : "n"} de estar disponibles — cualquier fórmula que los use (FIELDSUM, etc.) va a dejar de calcular hasta que mapees el campo de nuevo. No afecta la cuenta de Google ni tus otras conexiones.`
             : ""
         }
         confirmLabel="Quitar hoja"
@@ -1391,248 +1286,58 @@ function HeaderCombobox({
   );
 }
 
-// One metric's config: which raw metric it feeds, how to combine rows that
-// share a period (sum/count/count_distinct/last/average), which column(s)
-// that needs, and which rows count at all (filters). A single sheet column
-// can be the value_column for several of these cards with different filters
-// (e.g. "Monto" → new_mrr filtered Evento=New, → churned_mrr filtered
-// Evento=Churn) — that's why config is keyed per metric, not per column.
-function MetricConfigCard({
-  config,
-  headers,
-  inputDefs,
-  usedInputKeys,
-  requiredByInputKey,
+// Una fila por columna de la hoja (menos la de período, que se elige
+// aparte arriba): usarla o no, y si se usa, cómo se llama el campo y de qué
+// tipo es. Nada de agregación ni filtros acá a propósito — ver el comentario
+// arriba de DraftFieldMapping.
+function FieldMappingRow({
+  header,
+  mapping,
   onChange,
   onRemove,
 }: {
-  config: DraftMetricConfig;
-  headers: string[];
-  inputDefs: MetricDef[];
-  usedInputKeys: Set<string>;
-  requiredByInputKey: Record<string, string[]>;
-  onChange: (next: DraftMetricConfig) => void;
+  header: string;
+  mapping: DraftFieldMapping | null;
+  onChange: (next: DraftFieldMapping) => void;
   onRemove: () => void;
 }) {
-  const [metricPickerOpen, setMetricPickerOpen] = useState(false);
-  const needsValueColumn = config.aggregation === "sum" || config.aggregation === "last" || config.aggregation === "average";
-  const needsDistinctColumn = config.aggregation === "count_distinct";
-  const selectedDef = inputDefs.find((d) => d.input_key === config.input_key);
-  const requiredIn = config.input_key ? requiredByInputKey[config.input_key] : undefined;
-
-  const addFilter = () =>
-    onChange({ ...config, filters: [...config.filters, { column: headers[0] ?? "", values: [] }] });
-  const updateFilter = (i: number, next: MetricFilter) =>
-    onChange({ ...config, filters: config.filters.map((f, idx) => (idx === i ? next : f)) });
-  const removeFilter = (i: number) => onChange({ ...config, filters: config.filters.filter((_, idx) => idx !== i) });
-
+  const used = !!mapping;
   return (
-    <div className="border border-border rounded-md p-3 space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div>
-            <label className="text-[11px] text-muted-foreground block mb-1">Métrica</label>
-            <Popover open={metricPickerOpen} onOpenChange={setMetricPickerOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 w-full justify-between font-normal"
-                  aria-label="Elegir métrica"
-                >
-                  <span className="truncate">{selectedDef?.name ?? "Elegir métrica…"}</span>
-                  <ChevronsUpDown size={12} className="opacity-50 shrink-0" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 p-0" align="start">
-                <Command>
-                  <CommandInput placeholder="Buscar métrica…" />
-                  <CommandList>
-                    <CommandEmpty>Sin resultados.</CommandEmpty>
-                    <CommandGroup>
-                      {inputDefs
-                        .filter((d) => !usedInputKeys.has(d.input_key!) || d.input_key === config.input_key)
-                        .map((d) => {
-                          const reqIn = requiredByInputKey[d.input_key!];
-                          return (
-                            <CommandItem
-                              key={d.input_key}
-                              value={`${d.name} ${d.input_key}`}
-                              onSelect={() => {
-                                onChange({ ...config, input_key: d.input_key! });
-                                setMetricPickerOpen(false);
-                              }}
-                              className="flex items-center justify-between gap-3"
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate">{d.name}</span>
-                                {reqIn && (
-                                  <span className="block text-[10px] text-tertiary truncate">
-                                    Usada en {reqIn.join(", ")}
-                                  </span>
-                                )}
-                              </span>
-                              <span className="text-[10px] font-mono text-tertiary shrink-0">{d.input_key}</span>
-                            </CommandItem>
-                          );
-                        })}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
-          <div>
-            <label className="text-[11px] text-muted-foreground block mb-1">Cómo combinar filas</label>
-            <Select
-              value={config.aggregation}
-              onValueChange={(v) =>
-                onChange({ ...config, aggregation: v as Aggregation, value_column: undefined, distinct_column: undefined })
-              }
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Elegir…" />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(AGGREGATION_LABELS) as Aggregation[]).map((a) => (
-                  <SelectItem key={a} value={a}>
-                    {AGGREGATION_LABELS[a]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0 h-9 w-9"
-          onClick={onRemove}
-          aria-label={`Quitar ${selectedDef?.name ?? "métrica"}`}
-        >
-          <Trash2 size={14} strokeWidth={1.5} />
-        </Button>
-      </div>
-
-      {(needsValueColumn || needsDistinctColumn) && (
-        <div>
-          <label className="text-[11px] text-muted-foreground block mb-1">
-            {needsDistinctColumn ? "Columna a contar valores únicos" : "Columna con el valor"}
-          </label>
-          <div className="max-w-xs">
-            <HeaderCombobox
-              headers={headers}
-              value={needsDistinctColumn ? (config.distinct_column ?? null) : (config.value_column ?? null)}
-              onChange={(v) =>
-                onChange(needsDistinctColumn ? { ...config, distinct_column: v } : { ...config, value_column: v })
-              }
-              placeholder="Elegí una columna…"
-              ariaLabel={needsDistinctColumn ? "Columna de valores únicos" : "Columna de valor"}
-            />
-          </div>
-        </div>
-      )}
-
-      <div>
-        <div className="flex items-center justify-between">
-          <label className="text-[11px] text-muted-foreground">Filtros: solo contar filas que cumplan</label>
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={addFilter}>
-            <Plus size={11} className="mr-1" /> Agregar filtro
-          </Button>
-        </div>
-        {config.filters.length > 0 && (
-          <div className="space-y-2 mt-1.5">
-            {config.filters.map((f, i) => (
-              <FilterRow
-                key={i}
-                filter={f}
-                headers={headers}
-                onChange={(next) => updateFilter(i, next)}
-                onRemove={() => removeFilter(i)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// A filter row: which column gates the rows, and which values of that column
-// count (OR within this list — several filter rows on the same metric AND
-// together). Values are entered as free-text tags since sheet cell values
-// aren't known ahead of time (no API to list distinct values).
-function FilterRow({
-  filter,
-  headers,
-  onChange,
-  onRemove,
-}: {
-  filter: MetricFilter;
-  headers: string[];
-  onChange: (next: MetricFilter) => void;
-  onRemove: () => void;
-}) {
-  const [draft, setDraft] = useState("");
-
-  const addValue = () => {
-    const v = draft.trim();
-    if (!v || filter.values.includes(v)) {
-      setDraft("");
-      return;
-    }
-    onChange({ ...filter, values: [...filter.values, v] });
-    setDraft("");
-  };
-  const removeValue = (v: string) => onChange({ ...filter, values: filter.values.filter((x) => x !== v) });
-
-  return (
-    <div className="flex items-start gap-2 bg-surface rounded-md p-2">
-      <div className="w-36 shrink-0">
-        <HeaderCombobox
-          headers={headers}
-          value={filter.column || null}
-          onChange={(v) => onChange({ ...filter, column: v })}
-          placeholder="Columna…"
-          ariaLabel="Columna del filtro"
-        />
-      </div>
-      <div className="flex-1 min-w-0">
-        {filter.values.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-1">
-            {filter.values.map((v) => (
-              <Badge key={v} variant="secondary" className="gap-1">
-                {v}
-                <button
-                  type="button"
-                  onClick={() => removeValue(v)}
-                  aria-label={`Quitar valor ${v}`}
-                  className="hover:text-destructive"
-                >
-                  <X size={10} />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        )}
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === ",") {
-              e.preventDefault();
-              addValue();
-            }
+    <div className="flex items-center gap-3 py-1.5 border-b border-border/50 last:border-0">
+      <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+        <Checkbox
+          checked={used}
+          onCheckedChange={(c) => {
+            if (c === true) onChange({ column: header, field_key: slugifyFieldKey(header), value_type: "number" });
+            else onRemove();
           }}
-          onBlur={addValue}
-          placeholder="Valor y Enter…"
-          aria-label="Agregar valor al filtro"
-          className="h-8 text-xs"
+          aria-label={`Usar la columna ${header}`}
         />
-      </div>
-      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onRemove} aria-label="Quitar filtro">
-        <X size={12} />
-      </Button>
+        <span className="text-sm font-mono truncate">{header}</span>
+      </label>
+      {used && mapping && (
+        <>
+          <Input
+            value={mapping.field_key}
+            onChange={(e) => onChange({ ...mapping, field_key: e.target.value })}
+            placeholder="nombre_del_campo"
+            aria-label={`Nombre del campo para la columna ${header}`}
+            className="h-8 text-xs font-mono w-40 shrink-0"
+          />
+          <Select
+            value={mapping.value_type}
+            onValueChange={(v: "number" | "text") => onChange({ ...mapping, value_type: v })}
+          >
+            <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label={`Tipo de dato para ${header}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="number">Número</SelectItem>
+              <SelectItem value="text">Texto</SelectItem>
+            </SelectContent>
+          </Select>
+        </>
+      )}
     </div>
   );
 }

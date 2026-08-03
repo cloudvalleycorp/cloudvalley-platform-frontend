@@ -15,6 +15,13 @@ type Props = {
   inputDefs: MetricDef[]; // to render friendly missing-input names
   // Other calculated metrics a formula can reference by id (metric reuse).
   calcDefs?: CalcDefLike[];
+  // Valores pre-resueltos de FIELDSUM/etc. para el período actual (headline)
+  // y el anterior (comparación %) — ver useRawFieldValues. El sparkline de
+  // 6 meses no los usa (limitación conocida: una fórmula que lee datos
+  // crudos hoy se ve como una línea en 0 en el sparkline, el valor grande sí
+  // calcula bien).
+  rawFieldValues?: Record<string, number | null>;
+  prevRawFieldValues?: Record<string, number | null>;
   onInfo: (m: MetricDef) => void;
   privacy?: Record<string, boolean>;
   onTogglePrivacy?: (metricId: string, next: boolean) => Promise<void>;
@@ -33,6 +40,8 @@ export function CalculatedMetricsGrid({
   formulaHistory,
   inputDefs,
   calcDefs = [],
+  rawFieldValues = {},
+  prevRawFieldValues = {},
   onInfo,
   privacy,
   onTogglePrivacy,
@@ -50,10 +59,10 @@ export function CalculatedMetricsGrid({
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {metrics.map((m) => {
           const expr = m.formula_expression!;
-          const detailed = evalFormulaDetailed(expr, currentInputs, formulaHistory, calcDefs);
+          const detailed = evalFormulaDetailed(expr, currentInputs, formulaHistory, calcDefs, rawFieldValues);
           const current = detailed.value;
           const missing = detailed.missing;
-          const prev = evalFormula(expr, prevInputs, [], calcDefs);
+          const prev = evalFormula(expr, prevInputs, [], calcDefs, prevRawFieldValues);
           const change =
             current != null && prev != null && prev !== 0
               ? ((current - prev) / Math.abs(prev)) * 100

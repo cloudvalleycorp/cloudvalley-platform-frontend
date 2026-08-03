@@ -17,10 +17,13 @@ import { LoadingState } from "@/components/LoadingState";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { LayoutGrid, Table2, Settings2, BarChart3 } from "lucide-react";
-import { type MetricDef, type InputsMap, type PeriodInputs, sourceLabel } from "@/lib/metrics";
+import { type MetricDef, type InputsMap, type PeriodInputs, type RawField, sourceLabel } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
 import { RAW_INPUT_KEYS } from "@/lib/financialReports";
+import { LIST_RAW_FIELDS_URL } from "@/lib/sheetsIntegration";
+import { useRawFieldValues } from "@/hooks/useRawFieldValues";
+import { handleMembershipError } from "@/lib/membership";
 
 // Los tabs son 100% dinámicos: cualquier category que devuelva list-metrics
 // se vuelve un tab (así una métrica custom con category nueva, o el catálogo
@@ -124,6 +127,27 @@ export default function Metrics() {
     () => financial.metrics.filter((m) => m.metric_type === "calculated"),
     [financial.metrics]
   );
+
+  // Campos crudos de integraciones (Sheets, a futuro Stripe) — para el
+  // autocomplete de fórmulas (FormulaField) y para saber qué queries
+  // resolver (una fórmula puede usar FIELDSUM/etc. sin que ese campo
+  // aparezca en ningún otro lado de la company).
+  const [rawFields, setRawFields] = useState<RawField[]>([]);
+  useEffect(() => {
+    if (!company_id) return;
+    (async () => {
+      try {
+        const res = await fetch(`${LIST_RAW_FIELDS_URL}?company_id=${encodeURIComponent(company_id)}`, {
+          credentials: "include",
+        });
+        if (await handleMembershipError(res)) return;
+        const data = await res.json();
+        setRawFields(Array.isArray(data?.fields) ? data.fields : []);
+      } catch {
+        // silencioso: el editor de fórmulas simplemente no sugiere campos crudos
+      }
+    })();
+  }, [company_id]);
 
   const financialSaveInput = async (inputKey: string, value: number | null) => {
     if (value === null) {
@@ -246,6 +270,34 @@ export default function Metrics() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [financial.entries, period, allInputDefs]);
 
+  // Todos los períodos que alguna parte de la pantalla puede llegar a
+  // necesitar para resolver FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG: los 12
+  // meses del año del grid anual, el mes actual + el anterior (comparación %
+  // en la vista mensual), y los últimos 12 meses desde hoy (panel de info,
+  // independiente del año que esté mirando el grid anual). Una sola
+  // resolución deduplicada para toda la página en vez de una por componente.
+  const allFormulas = useMemo(() => allCalcDefs.map((d) => d.formula_expression), [allCalcDefs]);
+  const rawFieldPeriods = useMemo(() => {
+    const set = new Set<string>();
+    for (let m = 1; m <= 12; m++) set.add(toPeriodString(m, year));
+    set.add(toPeriodString(period.month, period.year));
+    set.add(toPeriodString(prev.m, prev.y));
+    let m = now.getMonth() + 1;
+    let y = now.getFullYear();
+    for (let i = 0; i < 12; i++) {
+      set.add(toPeriodString(m, y));
+      const p = prevMonth(m, y);
+      m = p.m;
+      y = p.y;
+    }
+    return Array.from(set);
+  }, [year, period, prev.m, prev.y]);
+  const { valuesByPeriod: rawFieldValuesByPeriod, loading: rawFieldValuesLoading } = useRawFieldValues(
+    company_id,
+    rawFieldPeriods,
+    allFormulas
+  );
+
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
     if (!openInfo) return [];
     const out: MetricHistoryPoint[] = [];
@@ -258,7 +310,13 @@ export default function Metrics() {
         if (raw !== undefined) v = raw;
       } else if (openInfo.metric_type === "calculated" && openInfo.formula_expression) {
         const inp = inputsForPeriod(m, y);
-        v = evalFormula(openInfo.formula_expression, inp, [], allCalcDefs);
+        v = evalFormula(
+          openInfo.formula_expression,
+          inp,
+          [],
+          allCalcDefs,
+          rawFieldValuesByPeriod[toPeriodString(m, y)] ?? {}
+        );
       }
       if (v !== null && v !== undefined) out.unshift({ year: y, month: m, value: v });
       const p = prevMonth(m, y);
@@ -267,7 +325,7 @@ export default function Metrics() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openInfo, financial.entries, allInputDefs]);
+  }, [openInfo, financial.entries, allInputDefs, rawFieldValuesByPeriod]);
 
   return (
     <AppLayout>
@@ -390,6 +448,7 @@ export default function Metrics() {
                   privacy={financial.privacy}
                   onTogglePrivacy={financial.togglePrivacy}
                   onInfo={setOpenInfo}
+                  rawFieldValuesByPeriod={rawFieldValuesByPeriod}
                 />
               )
             ) : (
@@ -414,6 +473,8 @@ export default function Metrics() {
                     formulaHistory={formulaHistory}
                     inputDefs={allInputDefs}
                     calcDefs={allCalcDefs}
+                    rawFieldValues={rawFieldValuesByPeriod[toPeriodString(period.month, period.year)] ?? {}}
+                    prevRawFieldValues={rawFieldValuesByPeriod[toPeriodString(prev.m, prev.y)] ?? {}}
                     onInfo={setOpenInfo}
                     privacy={financial.privacy}
                     onTogglePrivacy={financial.togglePrivacy}
@@ -488,6 +549,9 @@ export default function Metrics() {
           defaultCategory={activeCat}
           currentInputs={currentInputs}
           formulaHistory={formulaHistory}
+          rawFields={rawFields}
+          rawFieldValues={rawFieldValuesByPeriod[toPeriodString(period.month, period.year)] ?? {}}
+          rawFieldValuesLoading={rawFieldValuesLoading}
           privacy={financial.privacy}
           onTogglePrivacy={financial.togglePrivacy}
           onClose={() => {

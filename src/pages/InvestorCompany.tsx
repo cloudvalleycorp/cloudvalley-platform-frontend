@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/select";
 import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
-import { periodKey, prevMonth } from "@/lib/metricPeriod";
+import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
+import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { API_BASE_URL } from "@/lib/apiConfig";
 
 const GET_COMPANY_PROFILE_URL = `${API_BASE_URL}/get-company-profile`;
@@ -130,6 +131,25 @@ export default function InvestorCompany() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metrics.entries, period, allInputDefs]);
 
+  // Ver Metrics.tsx: misma idea, una sola resolución deduplicada de
+  // FIELDSUM/etc. para toda la pantalla.
+  const allFormulas = useMemo(() => allCalcDefs.map((d) => d.formula_expression), [allCalcDefs]);
+  const rawFieldPeriods = useMemo(() => {
+    const set = new Set<string>();
+    set.add(toPeriodString(period.month, period.year));
+    set.add(toPeriodString(prev.m, prev.y));
+    let m = now.getMonth() + 1;
+    let y = now.getFullYear();
+    for (let i = 0; i < 12; i++) {
+      set.add(toPeriodString(m, y));
+      const p = prevMonth(m, y);
+      m = p.m;
+      y = p.y;
+    }
+    return Array.from(set);
+  }, [period, prev.m, prev.y]);
+  const { valuesByPeriod: rawFieldValuesByPeriod } = useRawFieldValues(company_id ?? null, rawFieldPeriods, allFormulas);
+
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
     if (!openInfo) return [];
     const out: MetricHistoryPoint[] = [];
@@ -141,7 +161,13 @@ export default function InvestorCompany() {
         const raw = metrics.entries[openInfo.id]?.[periodKey(m, y)];
         if (raw !== undefined) v = raw;
       } else if (openInfo.metric_type === "calculated" && openInfo.formula_expression) {
-        v = evalFormula(openInfo.formula_expression, inputsForPeriod(m, y), [], allCalcDefs);
+        v = evalFormula(
+          openInfo.formula_expression,
+          inputsForPeriod(m, y),
+          [],
+          allCalcDefs,
+          rawFieldValuesByPeriod[toPeriodString(m, y)] ?? {}
+        );
       }
       if (v !== null && v !== undefined) out.unshift({ year: y, month: m, value: v });
       const p = prevMonth(m, y);
@@ -150,7 +176,7 @@ export default function InvestorCompany() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openInfo, metrics.entries]);
+  }, [openInfo, metrics.entries, rawFieldValuesByPeriod]);
 
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
@@ -267,6 +293,8 @@ export default function InvestorCompany() {
                         historyInputs={historyInputs}
                         formulaHistory={formulaHistory}
                         calcDefs={allCalcDefs}
+                        rawFieldValues={rawFieldValuesByPeriod[toPeriodString(period.month, period.year)] ?? {}}
+                        prevRawFieldValues={rawFieldValuesByPeriod[toPeriodString(prev.m, prev.y)] ?? {}}
                         onInfo={setOpenInfo}
                       />
                     ))}

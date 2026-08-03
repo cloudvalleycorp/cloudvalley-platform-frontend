@@ -1,5 +1,8 @@
 export type MetricType = "input" | "calculated";
-export type ValueType = "money" | "count" | "percentage";
+// "text" cubre el caso borde de una métrica que muestra directamente un
+// campo crudo de texto (no el uso principal — los campos crudos viven en
+// las conexiones, no en el catálogo de métricas, ver RawField más abajo).
+export type ValueType = "money" | "count" | "percentage" | "text";
 
 export type MetricDef = {
   id: string;
@@ -12,11 +15,17 @@ export type MetricDef = {
   // it's typed in by hand; anything else ("sheet", "stripe", ...) means an
   // integration owns it now and InputsPanel/AnnualGrid show it read-only.
   // Always null for metric_type "calculated" (not applicable).
+  // NOTE: desde el rediseño a datos crudos + FIELDSUM-style fórmulas, una
+  // integración ya no llena un input_key directamente — llena un RawField
+  // (ver más abajo), consumido desde una fórmula de una métrica calculada.
+  // Backend confirma que source/source_connection_id vienen siempre null
+  // ahora — el bloqueo de carga manual en InputsPanel/AnnualGrid queda
+  // dormido para datos de integraciones (las métricas calculadas nunca
+  // tuvieron carga manual de por sí), no se retira el código porque sigue
+  // siendo correcto (source null = editable), solo deja de activarse acá.
   source: string | null;
-  // Which sheet connection (of possibly several) is mapping this field right
-  // now — only set when source === "sheet". Needed to deep-link the "se
-  // sincroniza desde X" badge to the specific connection instead of a
-  // generic list the user has to search through.
+  // Qué conexión (de posiblemente varias) es responsable — solo se usaba
+  // cuando source !== null. Ver nota arriba.
   source_connection_id: string | null;
   formula_expression: string | null;
   unit: string | null;
@@ -55,6 +64,18 @@ export function sourceSettingsPath(source: string | null, connectionId?: string 
   if (!base) return null;
   return connectionId ? `${base}?connection_id=${encodeURIComponent(connectionId)}` : base;
 }
+
+// Un campo crudo traído por una integración (Sheets, a futuro Stripe) — vive
+// en el namespace de la conexión, NO es una métrica ni aparece en el
+// catálogo de Métricas. Solo se usa como argumento de FIELDSUM/FIELDCOUNT/
+// FIELDCOUNTD/FIELDAVG dentro de una fórmula (ver formulaEngine.ts). Viene
+// de GET /list-raw-fields.
+export type RawField = {
+  field_key: string;
+  value_type: "number" | "text";
+  connection_id: string;
+  sample_column: string;
+};
 
 export type InputsMap = Record<string, number>; // input_key -> value
 

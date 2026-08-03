@@ -14,6 +14,11 @@ type Props = {
   // All of the company's calculated metrics (not just this report's blocks)
   // so a formula can reference one that isn't itself in the report.
   calcDefs?: CalcDefLike[];
+  // Valores pre-resueltos de FIELDSUM/etc. para el período actual y el
+  // anterior — ver useRawFieldValues. El sparkline no los usa (misma
+  // limitación conocida que CalculatedMetricsGrid).
+  rawFieldValues?: Record<string, number | null>;
+  prevRawFieldValues?: Record<string, number | null>;
   onInfo: (m: MetricDef) => void;
 };
 
@@ -21,7 +26,18 @@ type Props = {
 // Tracker (which splits them into a list + a grid), a report renders blocks
 // as one grid in the exact order the owner arranged them, so both types
 // share this one card shape.
-export function ReportSectionView({ section, metricById, currentInputs, prevInputs, historyInputs, formulaHistory, calcDefs, onInfo }: Props) {
+export function ReportSectionView({
+  section,
+  metricById,
+  currentInputs,
+  prevInputs,
+  historyInputs,
+  formulaHistory,
+  calcDefs,
+  rawFieldValues,
+  prevRawFieldValues,
+  onInfo,
+}: Props) {
   const resolvedBlocks = section.blocks.map((b) => metricById[b.metric_id]).filter((d): d is MetricDef => !!d);
 
   return (
@@ -43,6 +59,8 @@ export function ReportSectionView({ section, metricById, currentInputs, prevInpu
               historyInputs={historyInputs}
               formulaHistory={formulaHistory}
               calcDefs={calcDefs}
+              rawFieldValues={rawFieldValues}
+              prevRawFieldValues={prevRawFieldValues}
               onInfo={onInfo}
             />
           ))}
@@ -59,6 +77,8 @@ function MetricBlockCard({
   historyInputs,
   formulaHistory,
   calcDefs = [],
+  rawFieldValues = {},
+  prevRawFieldValues = {},
   onInfo,
 }: {
   def: MetricDef;
@@ -67,18 +87,20 @@ function MetricBlockCard({
   historyInputs: InputsMap[];
   formulaHistory?: PeriodInputs[];
   calcDefs?: CalcDefLike[];
+  rawFieldValues?: Record<string, number | null>;
+  prevRawFieldValues?: Record<string, number | null>;
   onInfo: (m: MetricDef) => void;
 }) {
   const expr = def.metric_type === "calculated" ? def.formula_expression : null;
 
-  const valueFor = (inputs: InputsMap, history?: PeriodInputs[]): number | null => {
-    if (expr) return evalFormula(expr, inputs, history, calcDefs);
+  const valueFor = (inputs: InputsMap, history?: PeriodInputs[], raw?: Record<string, number | null>): number | null => {
+    if (expr) return evalFormula(expr, inputs, history, calcDefs, raw);
     return def.input_key ? inputs[def.input_key] ?? null : null;
   };
 
-  const currentDetailed = expr ? evalFormulaDetailed(expr, currentInputs, formulaHistory, calcDefs) : null;
+  const currentDetailed = expr ? evalFormulaDetailed(expr, currentInputs, formulaHistory, calcDefs, rawFieldValues) : null;
   const current = expr ? currentDetailed!.value : valueFor(currentInputs);
-  const prev = valueFor(prevInputs);
+  const prev = valueFor(prevInputs, undefined, prevRawFieldValues);
   const change = current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
   const sparkData = historyInputs.map((inp) => ({ v: valueFor(inp) ?? 0 }));
   const missing = expr
