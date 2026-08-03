@@ -20,6 +20,8 @@ import {
   sourceSettingsPath,
 } from "@/lib/metrics";
 import { handleMembershipError } from "@/lib/membership";
+import { toPeriodString } from "@/lib/metricPeriod";
+import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import {
   UPSERT_FINANCIAL_METRIC_DEFINITION_URL,
   DELETE_FINANCIAL_METRIC_DEFINITION_URL,
@@ -86,12 +88,14 @@ type Props = {
   defaultCategory: string;
   currentInputs: InputsMap;
   formulaHistory: PeriodInputs[];
-  // Campos crudos de integraciones (autocomplete de FormulaField) y sus
-  // valores ya resueltos para el período actual (FIELDSUM/etc. en la
-  // preview en vivo) — ver useRawFieldValues.
+  // Campos crudos de integraciones disponibles, para el autocomplete de
+  // FormulaField ("Campos crudos" en el picker) — ver useRawFieldValues.
+  // Los VALORES resueltos (para la preview en vivo) el panel los pide él
+  // mismo más abajo, a partir de la fórmula que se está tipeando ahora
+  // mismo (draft.formula), no de las fórmulas ya guardadas — si no, la
+  // preview de un FIELDSUM/FIELDCOUNT recién escrito siempre da "sin datos"
+  // hasta guardar y volver a abrir el panel.
   rawFields?: RawField[];
-  rawFieldValues?: Record<string, number | null>;
-  rawFieldValuesLoading?: boolean;
   privacy: Record<string, boolean>;
   onTogglePrivacy: (metricId: string, next: boolean) => Promise<void>;
   onClose: () => void;
@@ -120,8 +124,6 @@ export function MetricPropertyPanel({
   currentInputs,
   formulaHistory,
   rawFields = [],
-  rawFieldValues = {},
-  rawFieldValuesLoading = false,
   privacy,
   onTogglePrivacy,
   onClose,
@@ -149,6 +151,23 @@ export function MetricPropertyPanel({
     () => allCalcDefs.filter((m) => m.id !== metric?.id),
     [allCalcDefs, metric?.id]
   );
+
+  // El período actual es siempre el último de formulaHistory (ver Metrics.tsx:
+  // "chronological, ending at the current period"). Se resuelve acá, sobre
+  // draft.formula (lo que se está tipeando, guardado o no), en vez de
+  // reusar los valores ya resueltos a nivel página (esos solo cubren
+  // fórmulas YA guardadas) — así la preview de un FIELDSUM/FIELDCOUNT recién
+  // escrito calcula sin tener que guardar primero.
+  const currentPeriod =
+    formulaHistory.length > 0
+      ? toPeriodString(formulaHistory[formulaHistory.length - 1].month, formulaHistory[formulaHistory.length - 1].year)
+      : null;
+  const { valuesByPeriod: draftRawFieldValuesByPeriod, loading: draftRawFieldValuesLoading } = useRawFieldValues(
+    companyId,
+    currentPeriod ? [currentPeriod] : [],
+    [draft.formula]
+  );
+  const draftRawFieldValues = currentPeriod ? draftRawFieldValuesByPeriod[currentPeriod] ?? {} : {};
 
   const setField = (key: string, value: string | boolean) => setDraft((prev) => ({ ...prev, [key]: value }));
 
@@ -419,8 +438,8 @@ export function MetricPropertyPanel({
                         currentInputs={currentInputs}
                         formulaHistory={formulaHistory}
                         rawFields={rawFields}
-                        rawFieldValues={rawFieldValues}
-                        rawFieldValuesLoading={rawFieldValuesLoading}
+                        rawFieldValues={draftRawFieldValues}
+                        rawFieldValuesLoading={draftRawFieldValuesLoading}
                       />
                     )}
                   </AccordionContent>
