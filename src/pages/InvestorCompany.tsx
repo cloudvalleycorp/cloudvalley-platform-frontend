@@ -21,11 +21,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Accordion } from "@/components/ui/accordion";
+import { CategoryAccordion } from "@/components/dataRoom/CategoryAccordion";
+import { DocumentRow } from "@/components/dataRoom/DocumentRow";
 import { type MetricDef } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
+import { useSharedDocuments } from "@/hooks/useSharedDocuments";
+import { DATA_ROOM_CATEGORIES } from "@/lib/dataRoom";
 import { API_BASE_URL } from "@/lib/apiConfig";
 
 const GET_COMPANY_PROFILE_URL = `${API_BASE_URL}/get-company-profile`;
@@ -90,10 +95,11 @@ export default function InvestorCompany() {
   const metricsRange = useMemo(() => periodRange(period, 24), [period]);
   const metrics = useConnectedCompanyMetrics(company_id ?? null, metricsRange);
   const shared = useSharedFinancialReports(company_id ?? null);
+  const sharedDocs = useSharedDocuments(company_id ?? null);
 
-  // "No access" (403) is distinct from "connection is active but nothing was
-  // shared yet" — only toast once, on the transition into forbidden.
-  const noAccess = metrics.forbidden || shared.forbidden;
+  // "No access" (403) is distinto de "la conexión está activa pero todavía
+  // no se compartió nada" — solo se avisa una vez, en la transición.
+  const noAccess = metrics.forbidden || shared.forbidden || sharedDocs.forbidden;
   const wasForbidden = useRef(false);
   useEffect(() => {
     if (noAccess && !wasForbidden.current) {
@@ -104,6 +110,14 @@ export default function InvestorCompany() {
 
   const metricById = useMemo(() => Object.fromEntries(metrics.metrics.map((m) => [m.id, m])), [metrics.metrics]);
   const allCalcDefs = useMemo(() => metrics.metrics.filter((m) => m.metric_type === "calculated"), [metrics.metrics]);
+
+  // Solo categorías con al menos un documento visible — a diferencia del
+  // lado founder (que siempre muestra las 7), acá una categoría vacía no
+  // aporta nada y solo genera ruido.
+  const visibleDataRoomCategories = useMemo(
+    () => DATA_ROOM_CATEGORIES.filter((cat) => sharedDocs.documents.some((d) => d.category === cat.id)),
+    [sharedDocs.documents]
+  );
 
   const { inputsForPeriod, currentInputs, prevInputs, prev, historyInputs, formulaHistory, baseRawFieldPeriods } =
     useMetricReportData({ metrics: metrics.metrics, entries: metrics.entries, period });
@@ -251,6 +265,67 @@ export default function InvestorCompany() {
                       />
                     ))}
                   </div>
+                )}
+              </div>
+
+              <div className="mt-10 pt-8 border-t border-border">
+                <div className="flex items-center justify-between mb-6 gap-2">
+                  <h2 className="text-sm font-medium">Data Room</h2>
+                  {sharedDocs.documents.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {sharedDocs.documents.length} documento{sharedDocs.documents.length === 1 ? "" : "s"} compartido
+                      {sharedDocs.documents.length === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </div>
+
+                {noAccess ? (
+                  <EmptyState
+                    icon={FileText}
+                    title="No tenés acceso a esta información."
+                    description="La conexión con esta empresa ya no está activa."
+                    className="p-8"
+                  />
+                ) : sharedDocs.loading ? (
+                  <LoadingState />
+                ) : visibleDataRoomCategories.length === 0 ? (
+                  <EmptyState
+                    icon={FileText}
+                    title="Todavía no hay documentos compartidos."
+                    description="La startup no marcó ningún documento como visible para tu organización."
+                    className="p-8"
+                  />
+                ) : (
+                  <Accordion type="multiple" defaultValue={visibleDataRoomCategories.map((c) => c.id)}>
+                    {visibleDataRoomCategories.map((cat) => {
+                      const items = sharedDocs.documents.filter((d) => d.category === cat.id);
+                      return (
+                        <CategoryAccordion
+                          key={cat.id}
+                          value={cat.id}
+                          title={cat.label}
+                          countLabel={`${items.length} documento${items.length === 1 ? "" : "s"}`}
+                        >
+                          {items.map((doc) => (
+                            <DocumentRow
+                              key={doc.id}
+                              doc={doc}
+                              tasks={[]}
+                              canEdit={false}
+                              isOwner={false}
+                              showRoadmapBadge={false}
+                              onOpen={() => doc.file_url && window.open(doc.file_url, "_blank")}
+                              onUpload={() => {}}
+                              onDelete={() => {}}
+                              onLinkTask={() => {}}
+                              onTogglePrivacy={() => {}}
+                              onSetVerified={() => {}}
+                            />
+                          ))}
+                        </CategoryAccordion>
+                      );
+                    })}
+                  </Accordion>
                 )}
               </div>
             </>
