@@ -983,6 +983,7 @@ export type Database = {
         | "financials"
         | "contracts_hr"
         | "pitch"
+        | "other"
       doc_status: "missing" | "uploaded" | "verified"
       integration_provider: "stripe" | "mercury" | "amplitude"
       integration_status: "connected" | "error" | "disconnected" | "pending"
@@ -1136,6 +1137,7 @@ export const Constants = {
         "financials",
         "contracts_hr",
         "pitch",
+        "other",
       ],
       doc_status: ["missing", "uploaded", "verified"],
       integration_provider: ["stripe", "mercury", "amplitude"],
