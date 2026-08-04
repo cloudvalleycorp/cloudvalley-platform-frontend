@@ -32,6 +32,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { useAuth } from "@/contexts/AuthContext";
 import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
 import { handleMembershipError } from "@/lib/membership";
+import { periodRange } from "@/lib/metricPeriod";
 import { groupRowErrors } from "@/lib/financialData";
 import { cn } from "@/lib/utils";
 import {
@@ -133,7 +134,13 @@ function timeAgo(iso: string | null) {
 
 export default function GrowthTrackerSheets() {
   const { user, loading, company_id } = useAuth();
-  const financial = useFinancialMetrics(company_id);
+  // Esta pantalla solo usa financial.logs/reloadLogs (import log de Sheets),
+  // nunca entries — un rango chico alcanza, no hace falta el histórico.
+  const financialRange = useMemo(() => {
+    const now = new Date();
+    return periodRange({ month: now.getMonth() + 1, year: now.getFullYear() }, 1);
+  }, []);
+  const financial = useFinancialMetrics(company_id, financialRange);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [accounts, setAccounts] = useState<GoogleAccount[]>([]);

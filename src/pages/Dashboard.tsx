@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
 import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
 import { percentChange } from "@/lib/metrics";
+import { periodRange } from "@/lib/metricPeriod";
 import { supabase } from "@/integrations/supabase/client";
 import { calculateReadinessScore, PillarBreakdown } from "@/lib/score";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,7 +26,13 @@ type DocRequest = {
 export default function Dashboard() {
   const { user, role, company_id, fund_id, email } = useAuth();
   const { startup, refetch } = useStartup();
-  const financial = useFinancialMetrics(company_id ?? null);
+  // No hay navegación de período acá (solo "último valor cargado") — un
+  // margen de 6 meses alcanza sin traer el histórico completo de la company.
+  const financialRange = useMemo(() => {
+    const now = new Date();
+    return periodRange({ month: now.getMonth() + 1, year: now.getFullYear() }, 6);
+  }, []);
+  const financial = useFinancialMetrics(company_id ?? null, financialRange);
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {

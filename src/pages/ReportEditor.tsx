@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { handleMembershipError } from "@/lib/membership";
 import { LIST_FINANCIAL_METRICS_URL, LIST_FINANCIAL_RECORDS_URL } from "@/lib/financialData";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
-import { buildEntriesFromRecords, periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
+import { buildEntriesFromRecords, periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
 import { toMetricDef, type MetricDef } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
@@ -65,6 +65,11 @@ export default function ReportEditor() {
   const [shares, setShares] = useState<ReportShare[]>([]);
   const [sharingId, setSharingId] = useState<string | null>(null);
 
+  const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
+  // 24 meses de margen sobre el período elegido en la preview, para que
+  // SUMLAST/AVGLAST/YTD sigan calculando — cambiar de período refetchea.
+  const recordsRange = useMemo(() => periodRange(period, 24), [period]);
+
   useEffect(() => {
     if (!reportId || !company_id) return;
     setLoadingReport(true);
@@ -74,7 +79,7 @@ export default function ReportEditor() {
         const [reportRes, metricsRes, recordsRes, connectionsRes, sharesRes] = await Promise.all([
           fetch(`${GET_FINANCIAL_REPORT_URL}?report_id=${encodeURIComponent(reportId)}`, { credentials: "include" }),
           fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
-          fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}`, { credentials: "include" }),
+          fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}&from=${recordsRange.from}&to=${recordsRange.to}`, { credentials: "include" }),
           fetch(LIST_CONNECTIONS_URL, { credentials: "include" }),
           fetch(`${LIST_FINANCIAL_REPORT_SHARES_URL}${qs}`, { credentials: "include" }),
         ]);
@@ -115,10 +120,9 @@ export default function ReportEditor() {
         setLoadingReport(false);
       }
     })();
-  }, [reportId, company_id]);
+  }, [reportId, company_id, recordsRange.from, recordsRange.to]);
 
   // ---- Preview data (mismo cálculo que InvestorCompany.tsx) ----
-  const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const allCalcDefs = useMemo(() => metrics.filter((m) => m.metric_type === "calculated"), [metrics]);
   const { inputsForPeriod, currentInputs, prevInputs, prev, historyInputs, formulaHistory, baseRawFieldPeriods } =
     useMetricReportData({ metrics, entries, period });

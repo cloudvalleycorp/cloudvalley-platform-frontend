@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { type MetricDef } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
-import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
+import { periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { API_BASE_URL } from "@/lib/apiConfig";
@@ -83,10 +83,13 @@ export default function InvestorCompany() {
     })();
   }, [company_id]);
 
-  const metrics = useConnectedCompanyMetrics(company_id ?? null);
-  const shared = useSharedFinancialReports(company_id ?? null);
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
+  // 24 meses de margen sobre el período elegido para que SUMLAST/AVGLAST/YTD
+  // sigan calculando — se recalcula (y refetchea) al cambiar de período.
+  const metricsRange = useMemo(() => periodRange(period, 24), [period]);
+  const metrics = useConnectedCompanyMetrics(company_id ?? null, metricsRange);
+  const shared = useSharedFinancialReports(company_id ?? null);
 
   // "No access" (403) is distinct from "connection is active but nothing was
   // shared yet" — only toast once, on the transition into forbidden.

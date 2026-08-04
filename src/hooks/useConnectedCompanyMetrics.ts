@@ -7,17 +7,19 @@ import {
 import { buildEntriesFromRecords } from "@/lib/metricPeriod";
 import { toMetricDef, type MetricDef } from "@/lib/metrics";
 
+type PeriodRange = { from: string; to: string };
+
 type Result = {
   metrics: MetricDef[];
   entries: Record<string, Record<string, number>>;
   forbidden: boolean;
 };
 
-async function fetchConnectedCompanyMetrics(companyId: string): Promise<Result> {
+async function fetchConnectedCompanyMetrics(companyId: string, range: PeriodRange): Promise<Result> {
   const qs = `?company_id=${encodeURIComponent(companyId)}`;
   const [defsRes, recordsRes] = await Promise.all([
     fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
-    fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}`, { credentials: "include" }),
+    fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}&from=${range.from}&to=${range.to}`, { credentials: "include" }),
   ]);
 
   if (defsRes.status === 403 || recordsRes.status === 403) {
@@ -50,10 +52,10 @@ async function fetchConnectedCompanyMetrics(companyId: string): Promise<Result> 
  * metrics for this caller type (backend-enforced), so there's no privacy
  * toggle, no submit, no import log here — nothing to write.
  */
-export function useConnectedCompanyMetrics(companyId: string | null) {
+export function useConnectedCompanyMetrics(companyId: string | null, range: PeriodRange) {
   const { data, isLoading } = useQuery({
-    queryKey: ["connected-company-metrics", companyId],
-    queryFn: () => fetchConnectedCompanyMetrics(companyId!),
+    queryKey: ["connected-company-metrics", companyId, range.from, range.to],
+    queryFn: () => fetchConnectedCompanyMetrics(companyId!, range),
     enabled: !!companyId,
   });
 
