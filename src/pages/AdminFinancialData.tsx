@@ -212,7 +212,7 @@ export default function AdminFinancialData() {
 
   return (
     <AppLayout>
-      <div className="max-w-5xl mx-auto px-8 py-12">
+      <div className="max-w-6xl mx-auto px-8 py-12">
         <BackLink to="/admin" label="Volver a Ecosistema CloudValley" className="mb-6" />
         <PageHeader title="Datos financieros" subtitle="Seguimiento de reportes mensuales del portfolio." />
 

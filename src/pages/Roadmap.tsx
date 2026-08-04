@@ -111,7 +111,7 @@ export default function Roadmap() {
 
   return (
     <AppLayout>
-      <div className="max-w-5xl mx-auto px-8 py-12">
+      <div className="max-w-6xl mx-auto px-8 py-12">
         <PageHeader
           title="Fundraising Roadmap"
           subtitle={

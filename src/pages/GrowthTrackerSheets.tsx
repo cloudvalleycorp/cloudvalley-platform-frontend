@@ -703,6 +703,8 @@ export default function GrowthTrackerSheets() {
 
   return (
     <AppLayout>
+      {/* Ancho intencionalmente menor al resto (max-w-6xl): es un wizard de
+          pasos secuenciales, no una tabla o lista — más ancho no aporta. */}
       <div className="max-w-3xl mx-auto px-8 py-12">
         <BackLink to="/metrics" label="Volver a Growth Tracker" className="mb-6" />
         <PageHeader

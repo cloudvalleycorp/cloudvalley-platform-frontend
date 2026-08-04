@@ -177,7 +177,7 @@ export default function AdminCompanies() {
 
   return (
     <AppLayout>
-      <div className="max-w-5xl mx-auto px-8 py-12">
+      <div className="max-w-6xl mx-auto px-8 py-12">
         <PageHeader
           title="Empresas"
           subtitle="Gestión de empresas del ecosistema."
