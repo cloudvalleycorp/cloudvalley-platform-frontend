@@ -41,7 +41,7 @@ export default function InvestorPortfolio() {
     }
     return (
       <AppLayout>
-        <div className="max-w-7xl mx-auto px-8 py-12">
+        <div className="max-w-6xl mx-auto px-8 py-12">
           <NoMembershipBanner role="investor" onOpen={() => setReopen(true)} />
           <EmptyState
             icon={Building2}
@@ -60,7 +60,7 @@ export default function InvestorPortfolio() {
 
   return (
     <AppLayout>
-      <div className="max-w-7xl mx-auto px-8 py-12 space-y-8">
+      <div className="max-w-6xl mx-auto px-8 py-12 space-y-8">
         <PageHeader
           title="Portfolio"
           subtitle={`${companies.length} empresa${companies.length === 1 ? "" : "s"}`}

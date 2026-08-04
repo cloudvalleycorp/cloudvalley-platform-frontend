@@ -164,7 +164,7 @@ export default function InvestorCompany() {
 
   return (
     <AppLayout>
-      <div className="max-w-3xl mx-auto px-8 py-12">
+      <div className="max-w-6xl mx-auto px-8 py-12">
         <BackLink to="/portfolio" label="Volver al portfolio" className="mb-6" />
         {name === null ? (
           <div className="text-sm text-muted-foreground">

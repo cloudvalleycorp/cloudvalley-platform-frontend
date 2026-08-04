@@ -154,7 +154,7 @@ export default function Reporting() {
     }
     return (
       <AppLayout>
-        <div className="max-w-3xl mx-auto px-8 py-12">
+        <div className="max-w-6xl mx-auto px-8 py-12">
           <NoMembershipBanner role="user" onOpen={() => setReopen(true)} />
           <div className="border border-border rounded-lg p-12 text-center text-sm text-muted-foreground bg-card">
             No hay nada para armar hasta que te unas a una startup.
@@ -166,7 +166,7 @@ export default function Reporting() {
 
   return (
     <AppLayout>
-      <div className="max-w-3xl mx-auto px-8 py-12">
+      <div className="max-w-6xl mx-auto px-8 py-12">
         <PageHeader
           title="Reporting"
           subtitle="Armá un reporte con las métricas que quieras y compartilo con un fondo puntual."

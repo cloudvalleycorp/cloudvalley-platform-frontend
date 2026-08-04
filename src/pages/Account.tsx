@@ -161,6 +161,8 @@ export default function Account() {
 
   return (
     <AppLayout>
+      {/* Ancho intencionalmente menor al resto (max-w-6xl): es un formulario
+          de un solo registro, no una tabla o lista — más ancho no aporta. */}
       <div className="max-w-2xl mx-auto px-8 py-12 space-y-8">
         <PageHeader
           title="Mi cuenta"

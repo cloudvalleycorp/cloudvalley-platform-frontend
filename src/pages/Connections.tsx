@@ -247,7 +247,7 @@ export default function Connections() {
     }
     return (
       <AppLayout>
-        <div className="max-w-5xl mx-auto px-8 py-12">
+        <div className="max-w-6xl mx-auto px-8 py-12">
           <NoMembershipBanner role={isFundSide ? "investor" : "user"} onOpen={() => setReopen(true)} />
           <EmptyState
             icon={isFundSide ? Building2 : Landmark}
@@ -263,7 +263,7 @@ export default function Connections() {
 
   return (
     <AppLayout>
-      <div className="max-w-5xl mx-auto px-8 py-12 space-y-8">
+      <div className="max-w-6xl mx-auto px-8 py-12 space-y-8">
         <PageHeader
           title="Conexiones"
           subtitle={`Conexiones institucionales con ${counterpartWords.noun}s.`}

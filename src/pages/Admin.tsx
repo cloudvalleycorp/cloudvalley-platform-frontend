@@ -53,7 +53,7 @@ export default function Admin() {
 
   return (
     <AppLayout>
-      <div className="max-w-7xl mx-auto px-8 py-12">
+      <div className="max-w-6xl mx-auto px-8 py-12">
         <InviteSection />
         <PageHeader
           title="Ecosistema CloudValley"

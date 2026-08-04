@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { BackLink } from "@/components/BackLink";
+import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { ReadinessScore } from "@/components/ReadinessScore";
@@ -57,15 +58,21 @@ export default function AdminStartup() {
         <BackLink to="/admin" label="Volver al ecosistema" className="mb-6" />
 
         {startup && (
-          <header className="mb-8">
-            <h1 className="text-3xl font-medium tracking-tight">{startup.name}</h1>
-            <div className="flex items-center gap-3 mt-2">
-              <StageBadge stage={startup.stage} />
-              <span className="text-sm text-muted-foreground capitalize">{startup.business_model?.replace("_", " ")}</span>
-              <span className="text-sm text-muted-foreground">·</span>
-              <span className="text-sm text-muted-foreground">{startup.industry}</span>
-            </div>
-          </header>
+          <PageHeader
+            title={startup.name}
+            subtitle={
+              <span className="inline-flex items-center gap-3">
+                <StageBadge stage={startup.stage} />
+                {startup.business_model && <span className="capitalize">{startup.business_model.replace("_", " ")}</span>}
+                {startup.industry && (
+                  <>
+                    <span>·</span>
+                    <span>{startup.industry}</span>
+                  </>
+                )}
+              </span>
+            }
+          />
         )}
 
         <div className="grid lg:grid-cols-3 gap-6">
