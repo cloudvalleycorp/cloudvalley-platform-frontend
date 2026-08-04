@@ -20,7 +20,6 @@ function valueTypeIcon(valueType: MetricDef["value_type"]) {
 
 type Props = {
   metrics: MetricDef[];
-  isOwner: boolean;
   categories: { id: string; label: string }[];
   onSelect: (m: MetricDef) => void;
   onCreateNew: () => void;
@@ -30,7 +29,7 @@ type Props = {
 // fila abre el panel de esa métrica (MetricPropertyPanel, renderizado por el
 // caller). Los mismos datos que ya lee list-metrics en modo "data" — esto es
 // una forma nueva de navegarlos, no una superficie de datos nueva.
-export function MetricsManager({ metrics, isOwner, categories, onSelect, onCreateNew }: Props) {
+export function MetricsManager({ metrics, categories, onSelect, onCreateNew }: Props) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [originFilter, setOriginFilter] = useState<string>("all");
@@ -124,11 +123,9 @@ export function MetricsManager({ metrics, isOwner, categories, onSelect, onCreat
           </>
         }
         actions={
-          isOwner && (
-            <Button onClick={onCreateNew}>
-              <Plus size={14} className="mr-1.5" /> Agregar métrica
-            </Button>
-          )
+          <Button onClick={onCreateNew}>
+            <Plus size={14} className="mr-1.5" /> Agregar métrica
+          </Button>
         }
       />
 
