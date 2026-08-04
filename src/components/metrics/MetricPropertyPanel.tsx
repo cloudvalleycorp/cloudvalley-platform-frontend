@@ -101,8 +101,10 @@ export function MetricPropertyPanel({
     onDeleted,
   });
 
-  const readOnly = !isOwner;
-
+  // Crear/editar/eliminar métricas es para todo el equipo (cualquiera que
+  // llega a esta pantalla ya es miembro de la startup) — solo la visibilidad
+  // ante inversores (Configuración, más abajo) queda exclusiva de owners,
+  // ver conversación sobre SEC-1.
   const allInputDefs = useMemo(() => allMetrics.filter((m) => m.metric_type === "input"), [allMetrics]);
   const allCalcDefs = useMemo(() => allMetrics.filter((m) => m.metric_type === "calculated"), [allMetrics]);
   const reusableCalcDefs = useMemo(
@@ -183,11 +185,7 @@ export function MetricPropertyPanel({
               )}
             </div>
             <SheetDescription>
-              {creating
-                ? "Se agrega solo para tu startup, no afecta a las demás."
-                : readOnly
-                  ? "Solo lectura."
-                  : "Los cambios aplican solo para tu startup."}
+              {creating ? "Se agrega solo para tu startup, no afecta a las demás." : "Los cambios aplican solo para tu startup."}
             </SheetDescription>
           </SheetHeader>
 
@@ -202,7 +200,6 @@ export function MetricPropertyPanel({
                       field={f}
                       value={draft[f.key as keyof Draft] as string}
                       onChange={setField}
-                      readOnly={readOnly}
                     />
                   ))}
                 </AccordionContent>
@@ -217,7 +214,6 @@ export function MetricPropertyPanel({
                       field={f}
                       value={draft[f.key as keyof Draft] as string}
                       onChange={setField}
-                      readOnly={readOnly}
                     />
                   ))}
                 </AccordionContent>
@@ -248,24 +244,18 @@ export function MetricPropertyPanel({
                 <AccordionItem value="formula">
                   <AccordionTrigger>Fórmula</AccordionTrigger>
                   <AccordionContent>
-                    {readOnly ? (
-                      <pre className="text-sm font-mono bg-surface border border-border rounded-md p-3 whitespace-pre-wrap">
-                        {draft.formula || "—"}
-                      </pre>
-                    ) : (
-                      <FormulaField
-                        value={draft.formula}
-                        onChange={(v) => setField("formula", v)}
-                        unit={draft.unit.trim() || null}
-                        inputDefs={allInputDefs}
-                        calcDefs={reusableCalcDefs}
-                        currentInputs={currentInputs}
-                        formulaHistory={formulaHistory}
-                        rawFields={rawFields}
-                        rawFieldValues={draftRawFieldValues}
-                        rawFieldValuesLoading={draftRawFieldValuesLoading}
-                      />
-                    )}
+                    <FormulaField
+                      value={draft.formula}
+                      onChange={(v) => setField("formula", v)}
+                      unit={draft.unit.trim() || null}
+                      inputDefs={allInputDefs}
+                      calcDefs={reusableCalcDefs}
+                      currentInputs={currentInputs}
+                      formulaHistory={formulaHistory}
+                      rawFields={rawFields}
+                      rawFieldValues={draftRawFieldValues}
+                      rawFieldValuesLoading={draftRawFieldValuesLoading}
+                    />
                   </AccordionContent>
                 </AccordionItem>
               )}
@@ -274,11 +264,7 @@ export function MetricPropertyPanel({
                 <AccordionItem value="config">
                   <AccordionTrigger>Configuración</AccordionTrigger>
                   <AccordionContent>
-                    {readOnly ? (
-                      <FormField label="Visible para inversores conectados">
-                        <p className="text-sm">{isPublic ? "Sí" : "No"}</p>
-                      </FormField>
-                    ) : (
+                    {isOwner ? (
                       <label className="flex items-start gap-2 text-sm cursor-pointer">
                         <Checkbox
                           checked={isPublic}
@@ -287,6 +273,11 @@ export function MetricPropertyPanel({
                         />
                         <span>Visible para inversores conectados</span>
                       </label>
+                    ) : (
+                      <FormField label="Visible para inversores conectados">
+                        <p className="text-sm">{isPublic ? "Sí" : "No"}</p>
+                        <p className="text-xs text-muted-foreground mt-1">Solo un owner puede cambiar esto.</p>
+                      </FormField>
                     )}
                   </AccordionContent>
                 </AccordionItem>
@@ -294,30 +285,28 @@ export function MetricPropertyPanel({
             </Accordion>
           </div>
 
-          {!readOnly && (
-            <div className="px-6 py-4 border-t border-border shrink-0">
-              <FormActions
-                onCancel={onClose}
-                onSubmit={handleSave}
-                submitLabel={creating ? "Agregar" : "Guardar"}
-                busy={saving}
-                extra={
-                  metric && (
-                    <Button
-                      variant="ghost"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => {
-                        setDeleteRecordsToo(false);
-                        setConfirmDelete(true);
-                      }}
-                    >
-                      <Trash2 size={13} className="mr-1.5" aria-hidden="true" /> Eliminar
-                    </Button>
-                  )
-                }
-              />
-            </div>
-          )}
+          <div className="px-6 py-4 border-t border-border shrink-0">
+            <FormActions
+              onCancel={onClose}
+              onSubmit={handleSave}
+              submitLabel={creating ? "Agregar" : "Guardar"}
+              busy={saving}
+              extra={
+                metric && (
+                  <Button
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => {
+                      setDeleteRecordsToo(false);
+                      setConfirmDelete(true);
+                    }}
+                  >
+                    <Trash2 size={13} className="mr-1.5" aria-hidden="true" /> Eliminar
+                  </Button>
+                )
+              }
+            />
+          </div>
         </SheetContent>
       </Sheet>
 

@@ -303,24 +303,20 @@ export default function Metrics() {
                     <LayoutGrid size={12} strokeWidth={1.5} aria-hidden="true" /> Mensual
                   </button>
                 </div>
-                {is_owner && (
-                  <Button variant="outline" onClick={() => setPageMode("manage")}>
-                    <Settings2 size={14} className="mr-1" /> Administrar métricas
-                  </Button>
-                )}
+                <Button variant="outline" onClick={() => setPageMode("manage")}>
+                  <Settings2 size={14} className="mr-1" /> Administrar métricas
+                </Button>
               </>
             ) : (
-              is_owner && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setPageMode("data");
-                    if (metricId) navigate("/metrics");
-                  }}
-                >
-                  <LayoutGrid size={14} className="mr-1" /> Cargar datos
-                </Button>
-              )
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPageMode("data");
+                  if (metricId) navigate("/metrics");
+                }}
+              >
+                <LayoutGrid size={14} className="mr-1" /> Cargar datos
+              </Button>
             )
           }
         />
@@ -361,17 +357,13 @@ export default function Metrics() {
                   icon={BarChart3}
                   title="No hay métricas activas en esta categoría."
                   description="Las métricas disponibles dependen de tu modelo de negocio."
-                  action={
-                    is_owner
-                      ? {
-                          label: "Agregar métrica",
-                          onClick: () => {
-                            setPageMode("manage");
-                            setCreatingNew(true);
-                          },
-                        }
-                      : undefined
-                  }
+                  action={{
+                    label: "Agregar métrica",
+                    onClick: () => {
+                      setPageMode("manage");
+                      setCreatingNew(true);
+                    },
+                  }}
                   secondaryAction={{ label: "Ver reportes", onClick: () => navigate("/reporting") }}
                 />
               ) : (
@@ -450,7 +442,6 @@ export default function Metrics() {
           ) : (
             <MetricsManager
               metrics={financial.metrics}
-              isOwner={is_owner}
               categories={financialCategoryTabs}
               onSelect={(m) => {
                 setCreatingNew(false);
@@ -465,14 +456,10 @@ export default function Metrics() {
         metric={pageMode === "data" ? openInfo : null}
         onClose={() => setOpenInfo(null)}
         history={infoHistory}
-        onEdit={
-          is_owner
-            ? (m) => {
-                setOpenInfo(null);
-                navigate(`/metrics/${m.id}`);
-              }
-            : undefined
-        }
+        onEdit={(m) => {
+          setOpenInfo(null);
+          navigate(`/metrics/${m.id}`);
+        }}
       />
 
       {pageMode === "manage" && (
