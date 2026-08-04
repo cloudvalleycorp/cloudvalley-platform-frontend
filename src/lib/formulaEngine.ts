@@ -6,9 +6,10 @@
 import { Parser, SUPPORTED_FORMULAS } from "hot-formula-parser";
 import type { InputsMap, PeriodInputs } from "@/lib/metrics";
 import {
-  QUERY_RAW_FIELD_URL,
-  type QueryRawFieldRequest,
-  type QueryRawFieldResponse,
+  QUERY_RAW_FIELDS_URL,
+  type QueryRawFieldsRequest,
+  type QueryRawFieldsRequestItem,
+  type QueryRawFieldsResponse,
   type RawFieldFilter,
 } from "@/lib/sheetsIntegration";
 
@@ -257,7 +258,7 @@ export function extractRawFieldQueries(expression: string): RawFieldQuery[] {
   return queries;
 }
 
-const AGGREGATION_BY_FUNCTION: Record<RawFieldFunctionName, QueryRawFieldRequest["aggregation"]> = {
+const AGGREGATION_BY_FUNCTION: Record<RawFieldFunctionName, QueryRawFieldsRequestItem["aggregation"]> = {
   FIELDSUM: "sum",
   FIELDCOUNT: "count",
   FIELDCOUNTD: "count_distinct",
@@ -265,46 +266,62 @@ const AGGREGATION_BY_FUNCTION: Record<RawFieldFunctionName, QueryRawFieldRequest
 };
 
 /**
- * Resuelve, en paralelo y deduplicadas por key, todas las queries que haga
- * falta para evaluar una o varias fórmulas — llamar UNA vez por período con
- * la unión de extractRawFieldQueries(...) de todas las fórmulas en pantalla
- * (no una vez por fórmula), para no repetir la misma consulta varias veces.
- * Un fallo de red en una query puntual la deja en `null` (mismo criterio que
- * "sin datos" de SUMLAST/AVGLAST/YTD), no tira el resto.
+ * Resuelve, en un solo request batcheado, todas las queries que haga falta
+ * para evaluar una o varias fórmulas en uno o varios períodos — la unión de
+ * extractRawFieldQueries(...) de todas las fórmulas en pantalla (no una
+ * llamada por fórmula ni una por período), para no repetir consultas.
+ * Devuelve { [period]: { [queryKey]: value } }. Un fallo de red deja todo en
+ * `null` (mismo criterio que "sin datos" de SUMLAST/AVGLAST/YTD), no rompe.
+ * `results[i]` de la respuesta corresponde a `queries[i]` del request por
+ * orden — la respuesta no repite filters/distinct_field_key, así que el
+ * orden es la única forma de emparejar cuando dos queries comparten
+ * field_key+aggregation+period con filtros distintos.
  */
 export async function resolveRawFieldQueries(
   queries: RawFieldQuery[],
   companyId: string,
-  period: string
-): Promise<Record<string, number | null>> {
+  periods: string[]
+): Promise<Record<string, Record<string, number | null>>> {
   const unique = new Map<string, RawFieldQuery>();
   for (const q of queries) unique.set(q.key, q);
-  const entries = await Promise.all(
-    Array.from(unique.values()).map(async ({ key, fn, field, filters }): Promise<[string, number | null]> => {
-      const body: QueryRawFieldRequest = {
-        company_id: companyId,
+  const uniqueList = Array.from(unique.values());
+
+  const result: Record<string, Record<string, number | null>> = {};
+  for (const period of periods) result[period] = {};
+  if (uniqueList.length === 0 || periods.length === 0) return result;
+
+  const requestQueries: QueryRawFieldsRequestItem[] = [];
+  const requestMeta: { period: string; key: string }[] = [];
+  for (const period of periods) {
+    for (const { key, fn, field, filters } of uniqueList) {
+      requestQueries.push({
         period,
         field_key: field,
         aggregation: AGGREGATION_BY_FUNCTION[fn],
         ...(fn === "FIELDCOUNTD" ? { distinct_field_key: field } : {}),
         ...(filters.length > 0 ? { filters } : {}),
-      };
-      try {
-        const res = await fetch(QUERY_RAW_FIELD_URL, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) return [key, null];
-        const data = (await res.json()) as QueryRawFieldResponse;
-        return [key, data.value];
-      } catch {
-        return [key, null];
-      }
-    })
-  );
-  return Object.fromEntries(entries);
+      });
+      requestMeta.push({ period, key });
+    }
+  }
+
+  try {
+    const res = await fetch(QUERY_RAW_FIELDS_URL, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company_id: companyId, queries: requestQueries } as QueryRawFieldsRequest),
+    });
+    if (!res.ok) return result;
+    const data = (await res.json()) as QueryRawFieldsResponse;
+    data.results.forEach((r, i) => {
+      const meta = requestMeta[i];
+      if (meta) result[meta.period][meta.key] = r.value;
+    });
+  } catch {
+    // deja todo en null (ya inicializado arriba)
+  }
+  return result;
 }
 
 function registerRawFieldFunctions(parser: Parser, resolved: Record<string, number | null>) {

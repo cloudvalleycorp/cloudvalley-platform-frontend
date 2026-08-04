@@ -10,9 +10,9 @@ import { extractRawFieldQueries, resolveRawFieldQueries } from "@/lib/formulaEng
  * repetidas para la misma fórmula+período.
  *
  * `periods` puede tener varios elementos (ej. los 12 meses de un año para
- * AnnualGrid/MetricInfoSheet) — se resuelven todos en paralelo, uno por
- * período, cada uno con la unión deduplicada de queries que necesiten las
- * `formulas` pasadas.
+ * AnnualGrid/MetricInfoSheet) — se resuelven todos en un solo request
+ * batcheado (query-raw-fields), con la unión deduplicada de queries que
+ * necesiten las `formulas` pasadas.
  */
 export function useRawFieldValues(
   companyId: string | null,
@@ -40,11 +40,9 @@ export function useRawFieldValues(
     }
     let cancelled = false;
     setLoading(true);
-    Promise.all(
-      periodList.map(async (period) => [period, await resolveRawFieldQueries(queries, companyId, period)] as const)
-    )
-      .then((entries) => {
-        if (!cancelled) setValuesByPeriod(Object.fromEntries(entries));
+    resolveRawFieldQueries(queries, companyId, periodList)
+      .then((byPeriod) => {
+        if (!cancelled) setValuesByPeriod(byPeriod);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

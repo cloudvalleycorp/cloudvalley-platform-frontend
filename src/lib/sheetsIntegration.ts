@@ -14,7 +14,12 @@ export const DISCONNECT_SHEETS_URL = `${API_BASE_URL}/disconnect-sheets`;
 // consulta agregada bajo demanda — reemplazan el modelo viejo de
 // agregación/filtros configurados en la conexión, ver formulaEngine.ts.
 export const LIST_RAW_FIELDS_URL = `${API_BASE_URL}/list-raw-fields`;
-export const QUERY_RAW_FIELD_URL = `${API_BASE_URL}/query-raw-field`;
+// Batch: una query por FIELDSUM/FIELDCOUNT/etc. referenciado, para todos los
+// períodos que hagan falta, en un solo request. results[i] corresponde a
+// queries[i] por orden (la respuesta no repite filters/distinct_field_key,
+// así que no hay otra forma de emparejar cuando dos queries comparten
+// field_key+aggregation+period con filtros distintos).
+export const QUERY_RAW_FIELDS_URL = `${API_BASE_URL}/query-raw-fields`;
 
 // A company can have several Google accounts connected (each its own OAuth
 // grant) — replaces the old singular get-sheets-status.
@@ -123,13 +128,24 @@ export type RawFieldAggregation = "sum" | "count" | "count_distinct" | "average"
 // query-raw-field en vez de en el mapeo de la conexión.
 export type RawFieldFilter = { field_key: string; values: string[] };
 
-export type QueryRawFieldRequest = {
-  company_id: string;
+export type QueryRawFieldsRequestItem = {
   period: string; // "YYYY-MM"
   field_key: string;
   aggregation: RawFieldAggregation;
-  distinct_field_key?: string; // solo cuando aggregation === "count_distinct"
+  distinct_field_key?: string;
   filters?: RawFieldFilter[];
 };
 
-export type QueryRawFieldResponse = { value: number | null };
+export type QueryRawFieldsRequest = {
+  company_id: string;
+  queries: QueryRawFieldsRequestItem[];
+};
+
+export type QueryRawFieldsResponseItem = {
+  field_key: string;
+  aggregation: RawFieldAggregation;
+  period: string;
+  value: number | null;
+};
+
+export type QueryRawFieldsResponse = { results: QueryRawFieldsResponseItem[] };

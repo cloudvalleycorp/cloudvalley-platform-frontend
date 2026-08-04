@@ -15,17 +15,20 @@ import {
 import { toMetricDef, type MetricDef } from "@/lib/metrics";
 import { periodKey, buildEntriesFromRecords } from "@/lib/metricPeriod";
 
+type PeriodRange = { from: string; to: string };
+
 type FinancialData = {
   metrics: MetricDef[];
   entries: Record<string, Record<string, number>>;
   privacy: Record<string, boolean>;
 };
 
-async function fetchFinancialData(companyId: string): Promise<FinancialData> {
+async function fetchFinancialData(companyId: string, range: PeriodRange): Promise<FinancialData> {
   const qs = `?company_id=${encodeURIComponent(companyId)}`;
+  const recordsQs = `${qs}&from=${range.from}&to=${range.to}`;
   const [defsRes, recordsRes, privacyRes] = await Promise.all([
     fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
-    fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}`, { credentials: "include" }),
+    fetch(`${LIST_FINANCIAL_RECORDS_URL}${recordsQs}`, { credentials: "include" }),
     fetch(`${LIST_FINANCIAL_METRIC_PRIVACY_URL}${qs}`, { credentials: "include" }),
   ]);
 
@@ -68,14 +71,14 @@ async function fetchImportLog(companyId: string): Promise<ImportLogEntry[]> {
  * data module. Drives InputsPanel/CalculatedMetricsGrid/AnnualGrid/
  * MetricInfoSheet.
  */
-export function useFinancialMetrics(companyId: string | null) {
+export function useFinancialMetrics(companyId: string | null, range: PeriodRange) {
   const queryClient = useQueryClient();
   const [notEnabled, setNotEnabled] = useState(false);
 
-  const dataQueryKey = ["financial-metrics", companyId] as const;
+  const dataQueryKey = ["financial-metrics", companyId, range.from, range.to] as const;
   const { data, isLoading: loading } = useQuery({
     queryKey: dataQueryKey,
-    queryFn: () => fetchFinancialData(companyId!),
+    queryFn: () => fetchFinancialData(companyId!, range),
     enabled: !!companyId,
   });
   const metrics = data?.metrics ?? [];

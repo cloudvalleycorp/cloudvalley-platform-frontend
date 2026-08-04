@@ -17,6 +17,24 @@ export function parsePeriodString(period: string): { y: number; m: number } {
 }
 
 /**
+ * The {from, to} bound (YYYY-MM strings, for list-records' optional from/to
+ * params) covering `monthsBack` months before `period` through `period`
+ * itself — the window a caller needs to safely evaluate SUMLAST/AVGLAST/YTD
+ * for whatever period is currently in view, without fetching a company's
+ * entire history on every load.
+ */
+export function periodRange(period: { month: number; year: number }, monthsBack: number): { from: string; to: string } {
+  let m = period.month;
+  let y = period.year;
+  for (let i = 0; i < monthsBack; i++) {
+    const p = prevMonth(m, y);
+    m = p.m;
+    y = p.y;
+  }
+  return { from: toPeriodString(m, y), to: toPeriodString(period.month, period.year) };
+}
+
+/**
  * Shared by useFinancialMetrics, useConnectedCompanyMetrics, and the report
  * preview: turns list-records' flat { period, ...fields } rows into the
  * { metric_id: { "y-m": value } } shape every metrics view indexes against.

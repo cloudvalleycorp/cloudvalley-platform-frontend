@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { LayoutGrid, Table2, Settings2, BarChart3 } from "lucide-react";
 import { type MetricDef, type RawField, sourceLabel } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
-import { periodKey, prevMonth, toPeriodString } from "@/lib/metricPeriod";
+import { periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
 import { RAW_INPUT_KEYS } from "@/lib/financialReports";
 import { LIST_RAW_FIELDS_URL } from "@/lib/sheetsIntegration";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
@@ -85,7 +85,17 @@ export default function Metrics() {
 
   // ---- Todas las categorías (Revenue, Cash & Efficiency, Acquisition,
   // Retention, y cualquier custom) salen de acá, GCP-backed. ----
-  const financial = useFinancialMetrics(company_id);
+  // Rango acotado en vez de traer todo el histórico: en vista anual cubre
+  // los 12 meses de `year` (referencia = diciembre), en vista mensual el
+  // período elegido — en ambos casos con 24 meses de margen hacia atrás
+  // para que SUMLAST/AVGLAST/YTD sigan calculando en cualquier mes visible.
+  // Cambiar de año o de período recalcula el rango y refetchea (useMemo lo
+  // mantiene estable entre renders si no cambió nada relevante).
+  const financialRange = useMemo(
+    () => periodRange(view === "annual" ? { month: 12, year } : period, 24),
+    [view, year, period]
+  );
+  const financial = useFinancialMetrics(company_id, financialRange);
 
   const selectedMetric = metricId ? (financial.metrics.find((m) => m.id === metricId) ?? null) : null;
 
