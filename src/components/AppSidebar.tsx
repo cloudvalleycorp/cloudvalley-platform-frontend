@@ -178,6 +178,7 @@ export function AppSidebar() {
                   <NavItem to="/admin/users" end icon={Users} label="Usuarios" />
                   <NavItem to="/admin/funds" end icon={Landmark} label="Fondos" />
                   <NavItem to="/admin/financial-data" end icon={DollarSign} label="Datos financieros" />
+                  <NavItem to="/admin/roadmap" end icon={Map} label="Catálogo Roadmap" />
                 </>
               )}
             </SidebarMenu>
