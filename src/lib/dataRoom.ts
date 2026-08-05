@@ -8,7 +8,6 @@ export const DELETE_DOCUMENT_URL = `${API_BASE_URL}/delete-document`;
 export const UPDATE_DOCUMENT_PRIVACY_URL = `${API_BASE_URL}/update-document-privacy`;
 export const LINK_DOCUMENT_TASK_URL = `${API_BASE_URL}/link-document-task`;
 export const SET_DOCUMENT_VERIFIED_URL = `${API_BASE_URL}/set-document-verified`;
-export const LIST_DATA_ROOM_TASKS_URL = `${API_BASE_URL}/list-data-room-tasks`;
 export const LIST_SHARED_DOCUMENTS_URL = `${API_BASE_URL}/list-shared-documents`;
 
 export type DocumentCategory =
@@ -69,3 +68,13 @@ export const CATEGORY_TO_ROADMAP_PILLARS: Partial<Record<DocumentCategory, strin
   contracts_hr: ["Data Room"],
   pitch: ["Pitch & Narrativa"],
 };
+
+// Reverso del mapeo de arriba — para cuando Roadmap sube un documento y
+// necesita inferir en qué categoría de Data Room cae, a partir del pilar de
+// la tarea (mismo camino de upload que Data Room, ver create-document).
+export function categoryForPillarName(pillarName: string): DocumentCategory | null {
+  for (const [category, pillars] of Object.entries(CATEGORY_TO_ROADMAP_PILLARS) as [DocumentCategory, string[]][]) {
+    if (pillars.includes(pillarName)) return category;
+  }
+  return null;
+}

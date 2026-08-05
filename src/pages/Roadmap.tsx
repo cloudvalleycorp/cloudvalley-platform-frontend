@@ -1,102 +1,82 @@
-import { useEffect, useMemo, useState } from "react";
-import { Info, Upload, ChevronDown, Map } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { Info, Upload, RefreshCw, ChevronDown, Map, FileBarChart, Plus } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { SkeletonSection } from "@/components/SkeletonSection";
 import { EmptyState } from "@/components/EmptyState";
+import { FormDialog } from "@/components/FormDialog";
+import { FormField } from "@/components/FormField";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
-import { supabase } from "@/integrations/supabase/client";
-import { calculateReadinessScore } from "@/lib/score";
+import { useRoadmap } from "@/hooks/useRoadmap";
+import { useDocuments } from "@/hooks/useDocuments";
+import { useRoadmapCatalogMutations } from "@/hooks/useRoadmapCatalogMutations";
+import { categoryForPillarName } from "@/lib/dataRoom";
+import { CRITICALITY_LABELS, type Criticality, type RoadmapTask } from "@/lib/roadmap";
+import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { StageBadge } from "@/components/StageBadge";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
-type Pillar = { id: string; name: string; weight: number; order_index: number };
-type Task = {
-  id: string;
-  task_id: string;
-  status: string;
-  doc_url: string | null;
-  pillar_id: string;
-  title: string;
-  description: string | null;
-  why_it_matters: string | null;
-  how_to_do_it: string | null;
-  criticality: string;
-  requires_doc: boolean;
-};
+type OwnTaskDraft = { pillar_id: string; title: string; criticality: Criticality; requires_doc: boolean; requires_report: boolean };
+function emptyOwnTaskDraft(pillarId: string): OwnTaskDraft {
+  return { pillar_id: pillarId, title: "", criticality: "recommended", requires_doc: false, requires_report: false };
+}
 
 export default function Roadmap() {
-  const { startup, refetch } = useStartup();
-  const [pillars, setPillars] = useState<Pillar[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const { company_id } = useAuth();
+  const { startup } = useStartup();
+  const { pillars, tasks, readinessScore, loading: loadingRoadmap, toggleStatus, reload } = useRoadmap(company_id);
+  const { createAndUpload, uploadFile } = useDocuments(company_id);
+  const { upsertTask } = useRoadmapCatalogMutations();
+
   const [activePillar, setActivePillar] = useState<string>("all");
-  const [openTask, setOpenTask] = useState<Task | null>(null);
-  const [score, setScore] = useState(0);
+  const [openTask, setOpenTask] = useState<RoadmapTask | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [loadingRoadmap, setLoadingRoadmap] = useState(true);
+  const [ownTaskDraft, setOwnTaskDraft] = useState<OwnTaskDraft | null>(null);
+  const [savingOwnTask, setSavingOwnTask] = useState(false);
 
-  const load = async () => {
-    if (!startup) return;
-    // TODO: migrar a backend propio
-    const { data: p } = await supabase.from("roadmap_pillars").select("*").order("order_index");
-    setPillars((p ?? []) as Pillar[]);
-
-    const { data: st } = await supabase
-      .from("startup_tasks")
-      .select("id, status, doc_url, task_id, roadmap_tasks(*)")
-      .eq("startup_id", startup.id);
-
-    const flattened: Task[] = (st ?? []).map((row: any) => ({
-      id: row.id,
-      task_id: row.task_id,
-      status: row.status,
-      doc_url: row.doc_url,
-      pillar_id: row.roadmap_tasks.pillar_id,
-      title: row.roadmap_tasks.title,
-      description: row.roadmap_tasks.description,
-      why_it_matters: row.roadmap_tasks.why_it_matters,
-      how_to_do_it: row.roadmap_tasks.how_to_do_it,
-      criticality: row.roadmap_tasks.criticality,
-      requires_doc: row.roadmap_tasks.requires_doc,
-    }));
-    setTasks(flattened);
-
-    setScore(startup.readiness_score);
-    setLoadingRoadmap(false);
-  };
-
-  useEffect(() => { load(); }, [startup?.id]);
-
-  const toggle = async (task: Task) => {
-    const newStatus = task.status === "done" ? "pending" : "done";
-    // TODO: migrar a backend propio
-    await supabase.from("startup_tasks").update({
-      status: newStatus,
-      completed_at: newStatus === "done" ? new Date().toISOString() : null,
-    }).eq("id", task.id);
-    setTasks(tasks.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t)));
-    if (startup) {
-      const { total } = await calculateReadinessScore(startup.id);
-      setScore(total);
-      await refetch();
+  const saveOwnTask = async () => {
+    if (!ownTaskDraft) return;
+    if (!ownTaskDraft.title.trim() || !ownTaskDraft.pillar_id) {
+      toast.error("Título y pilar son obligatorios");
+      return;
+    }
+    setSavingOwnTask(true);
+    const ok = await upsertTask({
+      pillar_id: ownTaskDraft.pillar_id,
+      title: ownTaskDraft.title.trim(),
+      criticality: ownTaskDraft.criticality,
+      requires_doc: ownTaskDraft.requires_doc,
+      requires_report: ownTaskDraft.requires_report,
+      order_index: tasks.filter((t) => t.pillar_id === ownTaskDraft.pillar_id).length,
+    });
+    setSavingOwnTask(false);
+    if (ok) {
+      setOwnTaskDraft(null);
+      reload();
     }
   };
 
-  const handleUpload = async (task: Task, file: File) => {
-    if (!startup) return;
-    const path = `${startup.id}/roadmap/${task.task_id}-${file.name}`;
-    const { error } = await supabase.storage.from("documents").upload(path, file, { upsert: true });
-    if (error) { toast.error(error.message); return; }
-    const { data: urlData } = supabase.storage.from("documents").createSignedUrl ?
-      await supabase.storage.from("documents").createSignedUrl(path, 60 * 60 * 24 * 365) :
-      { data: { signedUrl: path } } as any;
-    // TODO: migrar a backend propio
-    await supabase.from("startup_tasks").update({ doc_url: urlData?.signedUrl ?? path }).eq("id", task.id);
-    toast.success("Documento subido");
-    load();
+  const handleUpload = async (task: RoadmapTask, file: File) => {
+    let ok: boolean;
+    if (task.document_id) {
+      ok = await uploadFile(task.document_id, file);
+    } else {
+      const pillarName = pillars.find((p) => p.id === task.pillar_id)?.name ?? "";
+      const category = categoryForPillarName(pillarName);
+      if (!category) {
+        toast.error("No se pudo determinar la categoría del documento para esta tarea");
+        return;
+      }
+      ok = await createAndUpload(category, task.title, file, task.task_id, true);
+    }
+    if (ok) reload();
   };
 
   const grouped = useMemo(() => {
@@ -117,8 +97,15 @@ export default function Roadmap() {
           subtitle={
             <span className="inline-flex items-center gap-2">
               <StageBadge stage={startup?.stage} />
-              <span>Readiness {score}/100</span>
+              <span>Readiness {readinessScore}/100</span>
             </span>
+          }
+          action={
+            pillars.length > 0 && (
+              <Button variant="outline" onClick={() => setOwnTaskDraft(emptyOwnTaskDraft(activePillar !== "all" ? activePillar : pillars[0].id))}>
+                <Plus size={14} strokeWidth={1.5} className="mr-2" /> Agregar tarea propia
+              </Button>
+            )
           }
         />
 
@@ -166,9 +153,12 @@ export default function Roadmap() {
                 <button
                   className="w-full px-6 py-4 flex items-center justify-between text-left"
                   onClick={() => {
-                    const next = new Set(collapsed);
-                    next.has(p.id) ? next.delete(p.id) : next.add(p.id);
-                    setCollapsed(next);
+                    setCollapsed((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(p.id)) next.delete(p.id);
+                      else next.add(p.id);
+                      return next;
+                    });
                   }}
                 >
                   <div className="flex-1 min-w-0">
@@ -188,16 +178,31 @@ export default function Roadmap() {
                 {!isCollapsed && (
                   <ul className="border-t border-border">
                     {p.items.map((t) => (
-                      <li key={t.id} className="flex items-center gap-3 px-6 py-3 border-b border-border/50 last:border-0 group">
-                        <Checkbox checked={t.status === "done"} onCheckedChange={() => toggle(t)} />
+                      <li key={t.startup_task_id} className="flex items-center gap-3 px-6 py-3 border-b border-border/50 last:border-0 group">
+                        <Checkbox
+                          checked={t.status === "done"}
+                          onCheckedChange={() => toggleStatus(t.startup_task_id, t.status === "done" ? "pending" : "done")}
+                        />
                         <span className={cn("flex-1 text-sm", t.status === "done" && "text-tertiary line-through")}>{t.title}</span>
                         <span className={cn(
                           "text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border",
                           t.criticality === "critical" ? "border-foreground text-foreground" : "border-border text-muted-foreground"
                         )}>{t.criticality}</span>
+                        {t.requires_report && (
+                          <Link
+                            to="/reporting"
+                            title="Se completa creando y compartiendo un reporte"
+                            className="text-muted-foreground hover:text-foreground transition-all"
+                          >
+                            <FileBarChart size={14} strokeWidth={1.5} />
+                          </Link>
+                        )}
                         {t.requires_doc && (
-                          <label className="cursor-pointer text-muted-foreground hover:text-foreground transition-all" title="Subir documento">
-                            <Upload size={14} strokeWidth={1.5} />
+                          <label
+                            className="cursor-pointer text-muted-foreground hover:text-foreground transition-all"
+                            title={t.document_id ? "Reemplazar documento" : "Subir documento"}
+                          >
+                            {t.document_id ? <RefreshCw size={14} strokeWidth={1.5} /> : <Upload size={14} strokeWidth={1.5} />}
                             <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && handleUpload(t, e.target.files[0])} />
                           </label>
                         )}
@@ -244,6 +249,74 @@ export default function Roadmap() {
           )}
         </SheetContent>
       </Sheet>
+
+      <FormDialog
+        open={!!ownTaskDraft}
+        onOpenChange={(o) => !o && setOwnTaskDraft(null)}
+        title="Agregar tarea propia"
+        description="Solo la ves vos (y CloudValley) — no cuenta para el readiness score, que se calcula solo con el catálogo estándar."
+        onSubmit={saveOwnTask}
+        submitLabel="Agregar"
+        busy={savingOwnTask}
+      >
+        {ownTaskDraft && (
+          <>
+            <FormField label="Pilar">
+              <Select
+                value={ownTaskDraft.pillar_id}
+                onValueChange={(v) => setOwnTaskDraft({ ...ownTaskDraft, pillar_id: v })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {pillars.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Título">
+              <Input
+                autoFocus
+                value={ownTaskDraft.title}
+                onChange={(e) => setOwnTaskDraft({ ...ownTaskDraft, title: e.target.value })}
+                placeholder="Ej: Firmar acuerdo de confidencialidad con proveedor X"
+              />
+            </FormField>
+            <FormField label="Criticidad">
+              <Select
+                value={ownTaskDraft.criticality}
+                onValueChange={(v: Criticality) => setOwnTaskDraft({ ...ownTaskDraft, criticality: v })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(CRITICALITY_LABELS) as Criticality[]).map((c) => (
+                    <SelectItem key={c} value={c}>{CRITICALITY_LABELS[c]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Se completa con">
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={ownTaskDraft.requires_doc}
+                    onCheckedChange={(c) => setOwnTaskDraft({ ...ownTaskDraft, requires_doc: c === true })}
+                  />
+                  Subir un documento (Data Room)
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={ownTaskDraft.requires_report}
+                    onCheckedChange={(c) => setOwnTaskDraft({ ...ownTaskDraft, requires_report: c === true })}
+                  />
+                  Crear y compartir un reporte (Reporting)
+                </label>
+                <p className="text-xs text-muted-foreground">Si no marcás ninguna, se completa solo con el checkbox manual.</p>
+              </div>
+            </FormField>
+          </>
+        )}
+      </FormDialog>
     </AppLayout>
   );
 }
