@@ -1,0 +1,14 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "launchOptions": {
+      "headless": true
+    },
+    "contextOptions": {
+      "baseURL": "http://localhost:8080",
+      "storageState": "./playwright/.auth/storageState.json",
+      "viewport": { "width": 1440, "height": 900 }
+    }
+  },
+  "outputDir": "./playwright/.output"
+}

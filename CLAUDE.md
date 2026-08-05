@@ -151,11 +151,28 @@ redundantes con lo que ya existe.
 
 ## Verificación
 
-No hay navegador conectado a este entorno — todo cambio se valida con:
+Todo cambio se valida con:
 ```
 npx tsc --noEmit
 npm run build     # revisá que no aparezca "chunks larger than 500kB" de nuevo
 npx vitest run
 ```
-Un cambio visual (contraste, spacing, layout) que no se pueda verificar así
-debe decirse explícitamente como no verificado, no darse por bueno.
+
+Además hay un navegador real conectado vía Playwright MCP (`.mcp.json`,
+`playwright/`, ver `playwright/README.md`) que reutiliza una sesión logueada
+existente sin tocar el flujo de Magic Link. Después de cualquier cambio de UI
+no trivial (nuevo componente, layout, formulario, estado vacío/error, o
+retoque de estilos):
+1. Asegurate de que `npm run dev` esté corriendo (levantalo en background si
+   no) y navegá a las rutas afectadas (`src/App.tsx` tiene la lista).
+2. Interactuá con el flujo real (clicks, forms, distintos anchos de viewport
+   para responsive) y sacá capturas.
+3. Revisá `browser_console_messages` (sin errores nuevos) y
+   `browser_network_requests` (sin 4xx/5xx inesperados).
+4. Contrastá contra las secciones de este archivo (Accesibilidad, Responsive,
+   Design tokens, UX writing) y corregí lo que encuentres antes de dar el
+   cambio por terminado — no lo dejes para "una pasada después".
+
+Si algo no se puede verificar así (requiere datos que no existen en la sesión
+de prueba, un rol al que no tenés acceso, o es un juicio estético subjetivo),
+decilo explícitamente como no verificado en vez de darlo por bueno.
