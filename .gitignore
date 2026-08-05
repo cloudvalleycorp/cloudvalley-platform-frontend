@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Playwright MCP: storageState.json contiene la cookie de sesión real
+# (HttpOnly, viva) capturada por scripts/playwright/login.mjs — nunca se commitea.
+playwright/.auth/
+playwright/.output/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
