@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "playwright:install": "playwright install chromium",
+    "playwright:install-mcp-browser": "npx @playwright/mcp@0.0.78 install-browser chromium",
     "playwright:login": "node scripts/playwright/login.mjs"
   },
   "dependencies": {

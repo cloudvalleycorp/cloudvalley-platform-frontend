@@ -176,3 +176,17 @@ retoque de estilos):
 Si algo no se puede verificar así (requiere datos que no existen en la sesión
 de prueba, un rol al que no tenés acceso, o es un juicio estético subjetivo),
 decilo explícitamente como no verificado en vez de darlo por bueno.
+
+**Limitación conocida (parcialmente resuelta):** `https://api.cloudvalley.vc`
+no manda headers CORS (`Access-Control-Allow-Origin`/`-Credentials`) para
+requests desde `localhost:8080` en todos sus endpoints. `get-session` ya los
+manda (confirmado: la sesión se reutiliza bien y las pantallas autenticadas
+cargan), pero otros endpoints (confirmado con `list-import-log`, probablemente
+más) todavía no — esas requests puntuales siguen bloqueadas y van a aparecer
+como error de CORS en `browser_console_messages`/`browser_network_requests`,
+aunque el resto de la pantalla funcione. No es un problema de esta config ni
+algo para arreglar acá (requiere que el backend termine de agregar el origin
+a su allowlist de CORS en el resto de los endpoints). Antes de asumir que un
+error nuevo es un bug del cambio que estás verificando, confirmá si es este
+mismo problema de CORS conocido (mirá el endpoint en el mensaje de error).
+Ver detalle y lista de qué se probó en `playwright/README.md`.
