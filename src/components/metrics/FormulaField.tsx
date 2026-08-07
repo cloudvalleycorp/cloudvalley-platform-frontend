@@ -391,7 +391,7 @@ export function FormulaField({
             />
             <div className="flex items-center gap-2">
               <Button type="button" size="sm" onClick={handleGenerate} disabled={!description.trim() || generating}>
-                <Sparkles size={12} aria-hidden="true" className="mr-1.5" />
+                <Sparkles size={12} aria-hidden="true" className={cn("mr-1.5", generating && "animate-spin")} />
                 {generating ? "Generando…" : "Generar fórmula"}
               </Button>
               <Button type="button" variant="ghost" size="sm" onClick={() => setMode("advanced")}>

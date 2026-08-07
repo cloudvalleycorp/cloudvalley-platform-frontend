@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pencil, Sparkles } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { formatMetricValue, type MetricDef } from "@/lib/metrics";
 import { MONTH_LABELS } from "@/lib/metricPeriod";
 import { MetricHistoryChart, type MetricHistoryPoint } from "@/components/metrics/MetricHistoryChart";
@@ -72,7 +73,7 @@ export function MetricInfoSheet({ metric, onClose, history, onEdit, companyId = 
               <div className="flex items-center gap-1">
                 {companyId && period && (
                   <Button size="sm" variant="ghost" onClick={handleExplain} disabled={explaining}>
-                    <Sparkles size={12} className="mr-1" aria-hidden="true" />
+                    <Sparkles size={12} className={cn("mr-1", explaining && "animate-spin")} aria-hidden="true" />
                     {explaining ? "Explicando…" : "Explicar"}
                   </Button>
                 )}

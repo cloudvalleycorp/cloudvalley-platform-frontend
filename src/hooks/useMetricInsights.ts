@@ -12,6 +12,7 @@ import {
   type ExplainMetricResponse,
   type AskMetricsQuestionResponse,
   type VisibleMetric,
+  type ConversationTurn,
   type AnalyzeTransactionalSheetResponse,
   type SuggestMetricsResponse,
 } from "@/lib/aiInsights";
@@ -112,7 +113,8 @@ export function useMetricInsights(companyId: string | null) {
   const askQuestion = async (
     question: string,
     period?: string,
-    visibleMetrics?: VisibleMetric[]
+    visibleMetrics?: VisibleMetric[],
+    conversationHistory?: ConversationTurn[]
   ): Promise<string | null> => {
     if (!companyId || !question.trim()) return null;
     setAsking(true);
@@ -126,6 +128,13 @@ export function useMetricInsights(companyId: string | null) {
           question: question.trim(),
           period,
           ...(visibleMetrics && visibleMetrics.length > 0 ? { visible_metrics: visibleMetrics.slice(0, 30) } : {}),
+          // Recortado a los últimos 20 acá, no solo confiado al caller — el
+          // límite lo impone el backend (400 si se pasa), esta es la única
+          // función que arma el request, así que es el lugar correcto para
+          // la garantía.
+          ...(conversationHistory && conversationHistory.length > 0
+            ? { conversation_history: conversationHistory.slice(-20) }
+            : {}),
         }),
       });
       if (!res.ok) {

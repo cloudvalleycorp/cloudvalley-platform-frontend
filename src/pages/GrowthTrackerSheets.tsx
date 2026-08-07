@@ -1180,7 +1180,7 @@ export default function GrowthTrackerSheets() {
                   !loadingHeaders &&
                   headers.length > 0 && (
                     <Button variant="outline" size="sm" onClick={handleAnalyzeWithAi} disabled={analyzingSheet}>
-                      <Sparkles size={13} className="mr-1.5" aria-hidden="true" />
+                      <Sparkles size={13} className={cn("mr-1.5", analyzingSheet && "animate-spin")} aria-hidden="true" />
                       {analyzingSheet ? "Analizando…" : "Analizar con IA"}
                     </Button>
                   )

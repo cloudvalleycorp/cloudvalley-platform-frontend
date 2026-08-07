@@ -417,7 +417,22 @@ function evaluateInternal(
   const missing = identifiers.filter(
     (id) => resolveIdentifier(id, inputs, history, calcDefs, visiting, cache, rawFieldValues) === null
   );
-  if (missing.length > 0) return { value: null, error: null, missing };
+
+  // FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG resuelven contra datos crudos
+  // (ver resolveRawFieldQueries más arriba) — si la query todavía no llegó
+  // (undefined: nunca se resolvió, a diferencia de null = backend confirmó
+  // que no hay dato para ese período), es lo mismo que "falta cargar" un
+  // input: no es un error de sintaxis, es un dato que todavía no está. Sin
+  // este chequeo, la función de abajo devuelve null, el resultado final no
+  // es un número, y cae en "la fórmula no da como resultado un número" —
+  // engañoso, da a entender que la fórmula está mal escrita cuando en
+  // realidad el dato crudo no llegó (red caída, o el campo no existe).
+  const missingRawFields = Array.from(
+    new Set(extractRawFieldQueries(expression).filter((q) => rawFieldValues[q.key] === undefined).map((q) => q.field))
+  );
+  if (missing.length > 0 || missingRawFields.length > 0) {
+    return { value: null, error: null, missing: [...missing, ...missingRawFields] };
+  }
 
   try {
     const parser = new Parser();
