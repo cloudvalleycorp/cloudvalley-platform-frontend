@@ -101,6 +101,12 @@ export type SheetsApiError = {
   sourceDisabled: boolean;
   message: string | null;
   missingHeaders?: string[];
+  // save-sheet-mapping, 400: un field_key del mapeo ya está en uso por OTRA
+  // conexión activa de la misma company — { field_key: [connection_id, …] }.
+  // Antes esto se guardaba silencioso y los valores de las dos conexiones se
+  // sumaban entre sí sin que nadie lo supiera (bug real, no solo validación
+  // nueva) — ver GrowthTrackerSheets.tsx handleSaveMapping.
+  duplicateFieldKeys?: Record<string, string[]>;
 };
 
 export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
@@ -111,6 +117,10 @@ export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
       sourceDisabled: data?.source_disabled === true,
       message: typeof data?.error === "string" ? data.error : null,
       missingHeaders: Array.isArray(data?.missing_headers) ? data.missing_headers : undefined,
+      duplicateFieldKeys:
+        data?.duplicate_field_keys_across_connections && typeof data.duplicate_field_keys_across_connections === "object"
+          ? data.duplicate_field_keys_across_connections
+          : undefined,
     };
   } catch {
     return { reconnectRequired: false, sourceDisabled: false, message: null };

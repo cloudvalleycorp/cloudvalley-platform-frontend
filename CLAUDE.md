@@ -181,8 +181,8 @@ decilo explícitamente como no verificado en vez de darlo por bueno.
 no manda headers CORS (`Access-Control-Allow-Origin`/`-Credentials`) para
 requests desde `localhost:8080` en todos sus endpoints. `get-session` ya los
 manda (confirmado: la sesión se reutiliza bien y las pantallas autenticadas
-cargan), pero otros endpoints (confirmado con `list-import-log`, probablemente
-más) todavía no — esas requests puntuales siguen bloqueadas y van a aparecer
+cargan), pero otros endpoints (confirmado con `list-import-log` y
+`query-raw-fields`, probablemente más) todavía no — esas requests puntuales siguen bloqueadas y van a aparecer
 como error de CORS en `browser_console_messages`/`browser_network_requests`,
 aunque el resto de la pantalla funcione. No es un problema de esta config ni
 algo para arreglar acá (requiere que el backend termine de agregar el origin

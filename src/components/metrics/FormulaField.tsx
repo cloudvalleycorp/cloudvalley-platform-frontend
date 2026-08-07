@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,7 +14,10 @@ import {
   findEnclosingCall,
   RECOMMENDED_FUNCTIONS,
   FUNCTION_SIGNATURES,
+  FORMULA_SYNTAX,
 } from "@/lib/formulaEngine";
+import { useMetricInsights } from "@/hooks/useMetricInsights";
+import type { GenerateFormulaResponse } from "@/lib/aiInsights";
 
 type Suggestion =
   | { kind: "function"; name: string }
@@ -111,14 +114,31 @@ type Props = {
   // preview muestra "Calculando…" en vez de un resultado potencialmente
   // desactualizado.
   rawFieldValuesLoading?: boolean;
+  // Para "Generar fórmula" con IA (POST /generate-formula) — sin esto, el
+  // modo simple/generar queda oculto y el editor abre directo en modo
+  // avanzado, como antes.
+  companyId?: string | null;
+  // Solo cuando se está creando una métrica nueva desde cero: generate-formula
+  // devuelve el formulario ENTERO (nombre/categoría/descripción/por qué
+  // importa/unidad), no solo la fórmula — este callback le pasa esos campos
+  // extra al panel padre para prellenar el resto del draft. Si no se pasa
+  // (editando una métrica que ya existe, botón "Generar con IA" en modo
+  // avanzado), solo se aplica la fórmula — nunca se toca nombre/categoría de
+  // algo que ya estaba definido.
+  onGenerated?: (extras: { name: string; category: string; description: string; why_it_matters: string; unit: string }) => void;
 };
 
 /**
- * Sheets/AppSheet-style formula editor: a searchable "Insertar variable"
- * picker, live-as-you-type autocomplete (functions + fields + reusable
- * metrics, filtered by the identifier being typed), auto-closing ()/""
- * pairs, a parameter-hint bar while inside a function call, and a live
- * preview against the real current-period data.
+ * Sheets/AppSheet-style formula editor. Dos modos:
+ * - "simple" (default para una fórmula nueva/vacía): un campo de lenguaje
+ *   natural + "Generar fórmula" con IA — nada de sintaxis técnica visible
+ *   hasta que hace falta. Ver rediseño en el plan: la IA tiene que bajar la
+ *   carga cognitiva, no sumarle una pantalla más al editor de siempre.
+ * - "advanced" (el editor de toda la vida — picker "Insertar variable",
+ *   autocomplete, hint de parámetros, preview en vivo): se abre directo si
+ *   ya había una fórmula (venís a ajustar algo puntual, no a arrancar de
+ *   cero), o si elegís "Prefiero escribirla yo" / "Ajustar a mano" desde el
+ *   modo simple.
  */
 export function FormulaField({
   value,
@@ -131,7 +151,14 @@ export function FormulaField({
   rawFields = [],
   rawFieldValues = {},
   rawFieldValuesLoading = false,
+  companyId = null,
+  onGenerated,
 }: Props) {
+  const [mode, setMode] = useState<"simple" | "advanced">(value.trim() ? "advanced" : "simple");
+  const [description, setDescription] = useState("");
+  const [generatedResult, setGeneratedResult] = useState<GenerateFormulaResponse | null>(null);
+  const { generateFormula, generating } = useMetricInsights(companyId);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [autoOpen, setAutoOpen] = useState(false);
@@ -328,24 +355,145 @@ export function FormulaField({
     }
   };
 
+  const handleGenerate = async () => {
+    const result = await generateFormula(description, FORMULA_SYNTAX);
+    if (result) setGeneratedResult(result);
+  };
+
+  const acceptGenerated = () => {
+    if (!generatedResult) return;
+    onChange(generatedResult.formula_expression);
+    if (onGenerated) {
+      onGenerated({
+        name: generatedResult.name,
+        category: generatedResult.category,
+        description: generatedResult.description,
+        why_it_matters: generatedResult.why_it_matters,
+        unit: generatedResult.unit,
+      });
+    }
+    setGeneratedResult(null);
+    setMode("advanced");
+  };
+
+  if (mode === "simple") {
+    return (
+      <div>
+        <Label className="text-xs">Fórmula</Label>
+        {!generatedResult ? (
+          <div className="mt-1.5 space-y-2">
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder='Describí qué querés calcular. Ej: "suma el monto de las ventas marcadas como Nueva en el período actual"'
+              aria-label="Describí qué querés calcular"
+            />
+            <div className="flex items-center gap-2">
+              <Button type="button" size="sm" onClick={handleGenerate} disabled={!description.trim() || generating}>
+                <Sparkles size={12} aria-hidden="true" className="mr-1.5" />
+                {generating ? "Generando…" : "Generar fórmula"}
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setMode("advanced")}>
+                Prefiero escribirla yo
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-1.5 rounded-md border border-success/40 bg-success/5 p-3 space-y-2" aria-live="polite">
+            {onGenerated && <p className="text-sm font-medium text-foreground">{generatedResult.name}</p>}
+            <p className="text-sm text-foreground">{generatedResult.description}</p>
+            {onGenerated && generatedResult.why_it_matters && (
+              <p className="text-xs text-muted-foreground">{generatedResult.why_it_matters}</p>
+            )}
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer select-none">Ver fórmula técnica</summary>
+              <code className="block mt-1.5 font-mono bg-surface rounded px-2 py-1.5">
+                {generatedResult.formula_expression}
+              </code>
+            </details>
+            <div className="flex items-center gap-2 pt-1">
+              <Button type="button" size="sm" onClick={acceptGenerated}>
+                {onGenerated ? "Usar esta propuesta" : "Usar esta fórmula"}
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setGeneratedResult(null)}>
+                Volver a describir
+              </Button>
+            </div>
+            {onGenerated && (
+              <p className="text-[11px] text-muted-foreground pt-0.5">
+                También completa nombre, categoría, descripción y unidad arriba — revisalos antes de guardar.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
         <Label className="text-xs">Fórmula</Label>
-        <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-          <PopoverTrigger asChild>
-            <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1">
-              <Plus size={12} aria-hidden="true" /> Insertar variable
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80 p-0" align="end">
-            <Command>
-              <CommandInput placeholder="Buscar campo, métrica o función…" />
-              <CommandList>
-                <CommandEmpty>Sin resultados.</CommandEmpty>
-                {fields.length > 0 && (
-                  <CommandGroup heading="Campos">
-                    {fields.map((s) => (
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => setMode("simple")}>
+            <Sparkles size={12} aria-hidden="true" /> Generar con IA
+          </Button>
+          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1">
+                <Plus size={12} aria-hidden="true" /> Insertar variable
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-0" align="end">
+              <Command>
+                <CommandInput placeholder="Buscar campo, métrica o función…" />
+                <CommandList>
+                  <CommandEmpty>Sin resultados.</CommandEmpty>
+                  {fields.length > 0 && (
+                    <CommandGroup heading="Campos">
+                      {fields.map((s) => (
+                        <CommandItem
+                          key={suggestionId(s)}
+                          value={suggestionSearchValue(s)}
+                          onSelect={() => insertFromPicker(s)}
+                          className="flex items-center justify-between gap-3"
+                        >
+                          <SuggestionRow s={s} />
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                  {metricSuggestions.length > 0 && (
+                    <CommandGroup heading="Métricas">
+                      {metricSuggestions.map((s) => (
+                        <CommandItem
+                          key={suggestionId(s)}
+                          value={suggestionSearchValue(s)}
+                          onSelect={() => insertFromPicker(s)}
+                          className="flex items-center justify-between gap-3"
+                        >
+                          <SuggestionRow s={s} />
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                  {rawFieldSuggestions.length > 0 && (
+                    <CommandGroup heading="Campos crudos">
+                      {rawFieldSuggestions.map((s) => (
+                        <CommandItem
+                          key={suggestionId(s)}
+                          value={suggestionSearchValue(s)}
+                          onSelect={() => insertFromPicker(s)}
+                          className="flex items-center justify-between gap-3"
+                        >
+                          <SuggestionRow s={s} />
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                  <CommandGroup heading="Funciones">
+                    {functionSuggestions.map((s) => (
                       <CommandItem
                         key={suggestionId(s)}
                         value={suggestionSearchValue(s)}
@@ -356,51 +504,11 @@ export function FormulaField({
                       </CommandItem>
                     ))}
                   </CommandGroup>
-                )}
-                {metricSuggestions.length > 0 && (
-                  <CommandGroup heading="Métricas">
-                    {metricSuggestions.map((s) => (
-                      <CommandItem
-                        key={suggestionId(s)}
-                        value={suggestionSearchValue(s)}
-                        onSelect={() => insertFromPicker(s)}
-                        className="flex items-center justify-between gap-3"
-                      >
-                        <SuggestionRow s={s} />
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-                {rawFieldSuggestions.length > 0 && (
-                  <CommandGroup heading="Campos crudos">
-                    {rawFieldSuggestions.map((s) => (
-                      <CommandItem
-                        key={suggestionId(s)}
-                        value={suggestionSearchValue(s)}
-                        onSelect={() => insertFromPicker(s)}
-                        className="flex items-center justify-between gap-3"
-                      >
-                        <SuggestionRow s={s} />
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-                <CommandGroup heading="Funciones">
-                  {functionSuggestions.map((s) => (
-                    <CommandItem
-                      key={suggestionId(s)}
-                      value={suggestionSearchValue(s)}
-                      onSelect={() => insertFromPicker(s)}
-                      className="flex items-center justify-between gap-3"
-                    >
-                      <SuggestionRow s={s} />
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       <div className="relative mt-1.5">

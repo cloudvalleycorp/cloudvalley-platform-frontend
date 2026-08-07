@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { DollarSign, Hash, Percent, Plus, Search as SearchIcon } from "lucide-react";
+import { DollarSign, Hash, Percent, Plus, Search as SearchIcon, Sparkles } from "lucide-react";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { DataTableToolbar } from "@/components/DataTableToolbar";
 import { EmptyState } from "@/components/EmptyState";
@@ -23,13 +23,17 @@ type Props = {
   categories: { id: string; label: string }[];
   onSelect: (m: MetricDef) => void;
   onCreateNew: () => void;
+  // "✨ Sugerir métricas" (POST /suggest-metrics) — opcional porque solo
+  // tiene sentido cuando ya hay company_id, ver Metrics.tsx.
+  onSuggest?: () => void;
+  suggesting?: boolean;
 };
 
 // La vista de lista del editor estilo AppSheet: buscar/filtrar, click en una
 // fila abre el panel de esa métrica (MetricPropertyPanel, renderizado por el
 // caller). Los mismos datos que ya lee list-metrics en modo "data" — esto es
 // una forma nueva de navegarlos, no una superficie de datos nueva.
-export function MetricsManager({ metrics, categories, onSelect, onCreateNew }: Props) {
+export function MetricsManager({ metrics, categories, onSelect, onCreateNew, onSuggest, suggesting }: Props) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [originFilter, setOriginFilter] = useState<string>("all");
@@ -123,9 +127,17 @@ export function MetricsManager({ metrics, categories, onSelect, onCreateNew }: P
           </>
         }
         actions={
-          <Button onClick={onCreateNew}>
-            <Plus size={14} className="mr-1.5" /> Agregar métrica
-          </Button>
+          <>
+            {onSuggest && (
+              <Button variant="outline" onClick={onSuggest} disabled={suggesting}>
+                <Sparkles size={14} className="mr-1.5" aria-hidden="true" />
+                {suggesting ? "Sugiriendo…" : "Sugerir métricas"}
+              </Button>
+            )}
+            <Button onClick={onCreateNew}>
+              <Plus size={14} className="mr-1.5" /> Agregar métrica
+            </Button>
+          </>
         }
       />
 

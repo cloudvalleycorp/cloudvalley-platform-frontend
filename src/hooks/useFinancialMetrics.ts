@@ -66,6 +66,11 @@ async function fetchImportLog(companyId: string): Promise<ImportLogEntry[]> {
 }
 
 /**
+ * CAPA: Services / API Layer del Growth Tracker — habla con el catálogo real
+ * (lib/financialData.ts) y expone acciones (submitValues, togglePrivacy) a la
+ * Presentation Layer. Mismo patrón que useConnectedCompanyMetrics.ts,
+ * useSharedFinancialReports.ts, useRawFieldValues.ts, useMetricReportData.ts.
+ *
  * Data layer for all Growth Tracker categories (Revenue, Cash & Efficiency,
  * Acquisition, Retention, and any custom ones), backed by the GCP financial
  * data module. Drives InputsPanel/CalculatedMetricsGrid/AnnualGrid/

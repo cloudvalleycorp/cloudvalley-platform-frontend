@@ -1,3 +1,9 @@
+// CAPA: Calculation Engine / Formula Engine del Growth Tracker. Funciones
+// puras, cero imports de React — corre igual en el browser, en un script de
+// Node o (a futuro) desde un servicio de IA. No tocar la UI desde acá; la
+// Presentation Layer (src/components/metrics/*, src/pages/Metrics.tsx) es la
+// única que decide cómo se ve un resultado.
+//
 // Split out of lib/metrics.ts on purpose: hot-formula-parser (~formulajs)
 // is a real dependency weight, and lib/metrics.ts's lightweight exports
 // (types, formatMetricValue) are imported by chunks — like MetricInfoSheet —
@@ -104,6 +110,19 @@ export const FUNCTION_SIGNATURES: Record<string, FunctionSignature> = {
 };
 
 export const RECOMMENDED_FUNCTIONS: string[] = Object.keys(FUNCTION_SIGNATURES).sort();
+
+export type FormulaSyntaxEntry = { name: string; args: string; description: string };
+
+// Lo que generate-formula/analyze-transactional-sheet/suggest-metrics piden
+// como `formula_syntax` en cada request (ver aiInsights.ts) — backend arma
+// el prompt y valida la fórmula generada CONTRA esto, así que se deriva de
+// FUNCTION_SIGNATURES en vez de mantenerse a mano: nunca puede quedar
+// desactualizado respecto a lo que este motor realmente soporta.
+export const FORMULA_SYNTAX: FormulaSyntaxEntry[] = Object.entries(FUNCTION_SIGNATURES).map(([name, sig]) => ({
+  name,
+  args: sig.params.join(", "),
+  description: sig.description,
+}));
 
 /**
  * Walks `text` up to `cursor` tracking a stack of open "(" and, for each,

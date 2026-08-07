@@ -16,6 +16,7 @@ export type Draft = {
   category: string;
   unit: string;
   description: string;
+  why_it_matters: string;
   metric_type: "input" | "calculated";
   input_key: string;
   value_type: ValueType;
@@ -48,6 +49,7 @@ function emptyDraft(defaultCategory: string): Draft {
     category: defaultCategory,
     unit: "",
     description: "",
+    why_it_matters: "",
     metric_type: "calculated",
     input_key: "",
     value_type: "count",
@@ -61,6 +63,7 @@ function draftFromMetric(m: MetricDef): Draft {
     category: m.category,
     unit: m.unit ?? "",
     description: m.description ?? "",
+    why_it_matters: m.why_it_matters ?? "",
     metric_type: m.metric_type,
     input_key: m.input_key ?? "",
     value_type: m.value_type ?? "count",
@@ -130,6 +133,18 @@ export function useMetricPropertyForm({
 
   const setField = (key: string, value: string | boolean) => setDraft((prev) => ({ ...prev, [key]: value }));
 
+  // POST /generate-formula pre-llena el formulario ENTERO cuando se está
+  // creando una métrica desde cero (ver FormulaField.tsx modo simple) — se
+  // aplica sin chequear "si ya estaba lleno" a propósito: es exactamente lo
+  // que ese botón promete (arrancar de una descripción, no de un formulario
+  // vacío), y category puede venir como una sugerencia nueva que el usuario
+  // ve y edita después, no algo para preservar a medias. No toca `formula`:
+  // eso ya lo aplica FormulaField vía onChange (mismo camino que "solo
+  // regenerar la fórmula" en una métrica existente).
+  const applyGeneratedDraft = (extras: { name: string; category: string; description: string; why_it_matters: string; unit: string }) => {
+    setDraft((prev) => ({ ...prev, ...extras }));
+  };
+
   const handleSave = async () => {
     if (!companyId) return;
     const category = normalizeCategory(draft.category, categories);
@@ -183,6 +198,7 @@ export function useMetricPropertyForm({
       body.formula_expression = draft.formula.trim();
     }
     if (draft.description.trim()) body.description = draft.description.trim();
+    if (draft.why_it_matters.trim()) body.why_it_matters = draft.why_it_matters.trim();
 
     setSaving(true);
     try {
@@ -248,6 +264,7 @@ export function useMetricPropertyForm({
   return {
     draft,
     setField,
+    applyGeneratedDraft,
     saving,
     confirmDelete,
     setConfirmDelete,
