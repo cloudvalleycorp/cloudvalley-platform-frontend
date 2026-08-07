@@ -5,6 +5,7 @@ import { DataTableToolbar } from "@/components/DataTableToolbar";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { sourceLabel, type MetricDef } from "@/lib/metrics";
 
 const TYPE_LABELS: Record<MetricDef["metric_type"], string> = {
@@ -130,7 +131,7 @@ export function MetricsManager({ metrics, categories, onSelect, onCreateNew, onS
           <>
             {onSuggest && (
               <Button variant="outline" onClick={onSuggest} disabled={suggesting}>
-                <Sparkles size={14} className="mr-1.5" aria-hidden="true" />
+                <Sparkles size={14} className={cn("mr-1.5", suggesting && "animate-spin")} aria-hidden="true" />
                 {suggesting ? "Sugiriendo…" : "Sugerir métricas"}
               </Button>
             )}

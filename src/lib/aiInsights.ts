@@ -66,6 +66,7 @@ export type ExplainMetricResponse = {
 };
 
 export type VisibleMetric = { metric_id: string; period: string; value: number };
+export type ConversationTurn = { role: "user" | "assistant"; content: string };
 export type AskMetricsQuestionRequest = {
   company_id: string;
   question: string;
@@ -74,6 +75,11 @@ export type AskMetricsQuestionRequest = {
   // mejora mucho la respuesta para métricas calculadas, que el backend no
   // puede calcular solo. Opcional.
   visible_metrics?: VisibleMetric[];
+  // De más antiguo a más nuevo, hasta 20 elementos (~10 idas y vueltas) —
+  // el backend no guarda nada de una llamada a otra (no hay conversation_id),
+  // así que el frontend tiene que mandar el historial completo en cada
+  // pregunta nueva. Ver MetricsAssistant.tsx.
+  conversation_history?: ConversationTurn[];
 };
 export type AskMetricsQuestionResponse = { answer: string };
 
