@@ -1,3 +1,7 @@
+// CAPA: Metrics Registry / Domain del Growth Tracker — el modelo de una
+// métrica (tipos, formatters) independiente de dónde se guarda. El catálogo
+// real vive en backend (list-metrics/upsert-metric-definition, ver
+// lib/financialData.ts); esto es la forma en que el frontend lo entiende.
 import type { FinancialMetricDef } from "@/lib/financialData";
 
 export type MetricType = "input" | "calculated";
@@ -126,18 +130,42 @@ export function percentChange(current: number | null, prev: number | null): numb
   return ((current - prev) / Math.abs(prev)) * 100;
 }
 
+// Miles/millones/miles de millones/billones, en ese orden de magnitud —
+// antes se cortaba en "M" (millones), así que 12.345.678.910 se mostraba
+// "$12345.7M" en vez de "$12.3B". `i > 0` en el chequeo de borde evita
+// mostrar "1000.0M" cuando el redondeo a 1 decimal cruza al tier de arriba
+// (ej. 999.999.999.999 → "1000.0B" en vez de "1.0T").
+const SCALE_TIERS = [
+  { divisor: 1_000_000_000_000, suffix: "T" },
+  { divisor: 1_000_000_000, suffix: "B" },
+  { divisor: 1_000_000, suffix: "M" },
+  { divisor: 1_000, suffix: "k" },
+] as const;
+
+function abbreviateScale(value: number): string {
+  for (let i = 0; i < SCALE_TIERS.length; i++) {
+    const { divisor, suffix } = SCALE_TIERS[i];
+    if (Math.abs(value) < divisor) continue;
+    const scaled = value / divisor;
+    if (Math.abs(scaled) >= 999.95 && i > 0) {
+      const up = SCALE_TIERS[i - 1];
+      return `${(value / up.divisor).toFixed(1)}${up.suffix}`;
+    }
+    return `${scaled.toFixed(1)}${suffix}`;
+  }
+  return value.toFixed(0);
+}
+
 export function formatMetricValue(value: number | null, unit: string | null): string {
   if (value === null || value === undefined) return "—";
   const abs = Math.abs(value);
   if (unit === "USD") {
-    if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-    if (abs >= 1_000) return `$${(value / 1_000).toFixed(1)}k`;
+    if (abs >= 1_000) return `$${abbreviateScale(value)}`;
     return `$${value.toFixed(0)}`;
   }
   if (unit === "%") return `${value.toFixed(1)}%`;
   if (unit === "x") return `${value.toFixed(2)}x`;
   if (unit === "meses") return `${value.toFixed(1)} meses`;
-  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  if (abs >= 1_000) return abbreviateScale(value);
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }

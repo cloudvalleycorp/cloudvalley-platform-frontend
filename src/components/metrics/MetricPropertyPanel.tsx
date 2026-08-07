@@ -79,6 +79,7 @@ export function MetricPropertyPanel({
   const {
     draft,
     setField,
+    applyGeneratedDraft,
     saving,
     confirmDelete,
     setConfirmDelete,
@@ -124,6 +125,7 @@ export function MetricPropertyPanel({
     },
     { key: "unit", label: "Unidad", type: "text", placeholder: "USD, %, x, meses…" },
     { key: "description", label: "Descripción", type: "textarea", placeholder: "Qué es esta métrica" },
+    { key: "why_it_matters", label: "Por qué importa", type: "textarea", placeholder: "Opcional: por qué vale la pena mirar esta métrica" },
   ];
 
   const typeFields: PropertyFieldDef[] = [
@@ -227,7 +229,19 @@ export function MetricPropertyPanel({
                         nunca se configura desde la métrica (ver el plan). */}
                     <FormField label="Origen">
                       {!syncedFrom ? (
-                        <p className="text-sm">Se carga a mano.</p>
+                        <>
+                          <p className="text-sm">Se carga a mano.</p>
+                          <p className="text-xs text-muted-foreground mt-1.5">
+                            No se puede reasignar esta carga a una integración desde acá. Para traer este dato
+                            automáticamente: cambiá el Tipo (arriba) a "Calculada" y escribí una fórmula que use{" "}
+                            <code className="font-mono">FIELDSUM</code>/<code className="font-mono">FIELDCOUNT</code>{" "}
+                            sobre un campo ya mapeado en{" "}
+                            <a href="/growth-tracker/sheets" className="text-primary hover:underline">
+                              Integraciones → Google Sheets
+                            </a>
+                            .
+                          </p>
+                        </>
                       ) : settingsPath ? (
                         <a href={settingsPath} className="text-sm text-primary hover:underline">
                           Se sincroniza desde {syncedFrom} → ver conexión
@@ -255,6 +269,8 @@ export function MetricPropertyPanel({
                       rawFields={rawFields}
                       rawFieldValues={draftRawFieldValues}
                       rawFieldValuesLoading={draftRawFieldValuesLoading}
+                      companyId={companyId}
+                      onGenerated={creating ? applyGeneratedDraft : undefined}
                     />
                   </AccordionContent>
                 </AccordionItem>

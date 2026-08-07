@@ -82,8 +82,8 @@ en ningún endpoint. Eso se reportó al backend y ya se corrigió para
 `get-session`: confirmado con Playwright MCP, la sesión se reutiliza bien y
 las pantallas autenticadas cargan con datos reales (ej. `/dashboard`).
 
-Sigue faltando en otros endpoints — confirmado con `list-import-log`, es
-esperable que afecte a más ya que todos comparten el mismo patrón de fetch
+Sigue faltando en otros endpoints — confirmado con `list-import-log` y
+`query-raw-fields`, es esperable que afecte a más ya que todos comparten el mismo patrón de fetch
 (`credentials: "include"` contra el mismo host). Esas requests puntuales van
 a seguir apareciendo como error de CORS en `browser_console_messages` /
 `browser_network_requests` aunque el resto de la pantalla funcione — no lo

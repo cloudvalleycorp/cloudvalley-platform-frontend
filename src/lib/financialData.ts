@@ -1,3 +1,7 @@
+// CAPA: Metrics Registry (DTOs) — el shape que devuelve el catálogo real de
+// backend (list-metrics/upsert-metric-definition). lib/metrics.ts mapea esto
+// al modelo de dominio del frontend (toMetricDef); esta capa no lo hace, solo
+// tipa lo que viaja por la red.
 import { API_BASE_URL } from "@/lib/apiConfig";
 
 export const ASSIGN_FINANCIAL_SOURCE_URL = `${API_BASE_URL}/assign-source`;

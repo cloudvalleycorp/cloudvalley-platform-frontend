@@ -11,6 +11,7 @@ import {
   ChevronsUpDown,
   Plus,
   Trash2,
+  Sparkles,
 } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -31,10 +32,14 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
+import { useMetricInsights } from "@/hooks/useMetricInsights";
 import { handleMembershipError } from "@/lib/membership";
 import { periodRange } from "@/lib/metricPeriod";
 import { groupRowErrors } from "@/lib/financialData";
 import { cn } from "@/lib/utils";
+import type { SuggestedMetric } from "@/lib/aiInsights";
+import { FORMULA_SYNTAX } from "@/lib/formulaEngine";
+import { SuggestedMetricsReview } from "@/components/metrics/SuggestedMetricsReview";
 import {
   LIST_GOOGLE_ACCOUNTS_URL,
   CONNECT_SHEETS_URL,
@@ -173,6 +178,10 @@ export default function GrowthTrackerSheets() {
   const [tabSearch, setTabSearch] = useState("");
   const [selectedSheetName, setSelectedSheetName] = useState<string | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
+  // Hasta 15 filas de muestra, tal cual las devuelve get-sheet-headers — se
+  // le pasan directo a analyze-transactional-sheet (✨ Analizar con IA),
+  // nunca se le pide nada nuevo a Sheets para eso.
+  const [sampleRows, setSampleRows] = useState<string[][]>([]);
   const [loadingHeaders, setLoadingHeaders] = useState(false);
   const [periodColumn, setPeriodColumn] = useState<string | null>(null);
   // Keyed por columna — cada columna de la hoja se usa (con su field_key +
@@ -181,8 +190,27 @@ export default function GrowthTrackerSheets() {
   // Métricas ahora.
   const [fieldMappings, setFieldMappings] = useState<Record<string, DraftFieldMapping>>({});
   const [staleHeaders, setStaleHeaders] = useState<string[]>([]);
+  // save-sheet-mapping, 400: field_key ya usado por OTRA conexión activa —
+  // solo se sabe después de intentar guardar (a diferencia de
+  // duplicateFieldKeys de abajo, que es local a este mapeo). Se limpia solo
+  // en cuanto el usuario toca el mapeo de nuevo, ver el useEffect más abajo.
+  const [crossConnectionDuplicateKeys, setCrossConnectionDuplicateKeys] = useState<string[]>([]);
+  useEffect(() => {
+    setCrossConnectionDuplicateKeys([]);
+  }, [fieldMappings]);
   const [savingMapping, setSavingMapping] = useState(false);
   const [loadingEditConnection, setLoadingEditConnection] = useState(false);
+
+  // ✨ Analizar con IA: alternativa al mapeo columna-por-columna de abajo, no
+  // lo reemplaza. Los campos sugeridos se aplican directo sobre
+  // fieldMappings (mismo estado que ya edita FieldMappingRow) — la revisión
+  // es la lista de checkboxes que ya existe, no hace falta una pantalla
+  // nueva para eso. Las métricas sugeridas sí son un concepto nuevo (crean
+  // una métrica calculada entera, no solo un campo crudo) y usan
+  // SuggestedMetricsReview para aprobar/editar antes de guardar.
+  const { analyzeTransactionalSheet, analyzingSheet } = useMetricInsights(company_id);
+  const [suggestedMetrics, setSuggestedMetrics] = useState<SuggestedMetric[]>([]);
+  const [showMetricsReview, setShowMetricsReview] = useState(false);
 
   // Per-connection sync state — each connection card syncs/tests
   // independently, and "Sincronizar todo" fills several of these at once.
@@ -204,6 +232,18 @@ export default function GrowthTrackerSheets() {
   const allMappingsValid = Object.values(fieldMappings).every((m) => m.field_key.trim().length > 0);
   const canSaveMapping =
     !!periodColumn && usedColumnsCount > 0 && allMappingsValid && duplicateFieldKeys.length === 0;
+
+  // Para SuggestedMetricsReview: las categorías (tabs) que ya existen en el
+  // catálogo real de la company, así una métrica sugerida por IA cae en un
+  // tab existente por default en vez de inventar uno nuevo.
+  const metricCategories = useMemo(() => {
+    const seen = new Set<string>();
+    for (const m of financial.metrics) seen.add(m.category);
+    return Array.from(seen).map((id) => ({
+      id,
+      label: id.charAt(0).toUpperCase() + id.slice(1).replace(/_/g, " "),
+    }));
+  }, [financial.metrics]);
 
   const wizardAccount = accounts.find((a) => a.account_id === wizardAccountId) ?? null;
   const connectionsByAccount = useMemo(() => {
@@ -366,6 +406,7 @@ export default function GrowthTrackerSheets() {
       const data = await res.json();
       const hs: string[] = Array.isArray(data?.headers) ? data.headers : [];
       setHeaders(hs);
+      setSampleRows(Array.isArray(data?.sample_rows) ? data.sample_rows : []);
       if (seed) {
         const missing: string[] = [];
         const seededPeriod = hs.includes(seed.period_column) ? seed.period_column : null;
@@ -394,6 +435,41 @@ export default function GrowthTrackerSheets() {
     }
   };
 
+  const handleAnalyzeWithAi = async () => {
+    if (!wizardAccountId || !selectedSpreadsheetId || !selectedSheetName) return;
+    const result = await analyzeTransactionalSheet({
+      accountId: wizardAccountId,
+      spreadsheetId: selectedSpreadsheetId,
+      sheetName: selectedSheetName,
+      headers,
+      sampleRows,
+      formulaSyntax: FORMULA_SYNTAX,
+    });
+    if (!result) return;
+
+    const suggestedCount = result.suggested_fields.filter((f) => f.column !== periodColumn).length;
+    if (suggestedCount > 0) {
+      setFieldMappings((prev) => {
+        const next = { ...prev };
+        for (const f of result.suggested_fields) {
+          if (f.column === periodColumn) continue;
+          next[f.column] = { column: f.column, field_key: f.field_key, value_type: f.value_type };
+        }
+        return next;
+      });
+      toast.success(
+        `${suggestedCount} columna${suggestedCount === 1 ? "" : "s"} mapeada${suggestedCount === 1 ? "" : "s"} por IA. Revisá los nombres abajo antes de guardar.`
+      );
+    }
+
+    if (result.suggested_metrics.length > 0) {
+      setSuggestedMetrics(result.suggested_metrics);
+      setShowMetricsReview(true);
+    } else if (suggestedCount === 0) {
+      toast("La IA no encontró campos ni métricas para sugerir en esta hoja.");
+    }
+  };
+
   // loadTabs/loadHeaders are deliberately called directly from the click
   // (or from openEditConnection) instead of a useEffect keyed off the
   // selected spreadsheet/sheet: picking the same one twice in a row (e.g.
@@ -409,9 +485,11 @@ export default function GrowthTrackerSheets() {
     setTabs([]);
     setSelectedSheetName(null);
     setHeaders([]);
+    setSampleRows([]);
     setPeriodColumn(null);
     setFieldMappings({});
     setStaleHeaders([]);
+    setCrossConnectionDuplicateKeys([]);
     setSheetSearch("");
     setTabSearch("");
   };
@@ -560,6 +638,11 @@ export default function GrowthTrackerSheets() {
         if (err.missingHeaders?.length) {
           setStaleHeaders(err.missingHeaders);
           toast.error("Algunas columnas del mapeo ya no existen en la hoja. Revisalas abajo.");
+          return;
+        }
+        if (err.duplicateFieldKeys && Object.keys(err.duplicateFieldKeys).length > 0) {
+          setCrossConnectionDuplicateKeys(Object.keys(err.duplicateFieldKeys));
+          toast.error("Algunos nombres de campo ya se usan en otra hoja conectada. Elegí otro nombre para poder guardar.");
           return;
         }
         toast.error(err.message ?? "No se pudo guardar el mapeo");
@@ -1093,6 +1176,15 @@ export default function GrowthTrackerSheets() {
                     ? `${selectedSpreadsheetName} · ${selectedSheetName} · ${usedColumnsCount} de ${headers.length} columnas usadas`
                     : `${selectedSpreadsheetName} · ${selectedSheetName}`
                 }
+                action={
+                  !loadingHeaders &&
+                  headers.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={handleAnalyzeWithAi} disabled={analyzingSheet}>
+                      <Sparkles size={13} className="mr-1.5" aria-hidden="true" />
+                      {analyzingSheet ? "Analizando…" : "Analizar con IA"}
+                    </Button>
+                  )
+                }
               >
                 {!loadingHeaders && headers.length > 0 && (
                   <p className="text-xs text-muted-foreground mb-3">
@@ -1111,6 +1203,18 @@ export default function GrowthTrackerSheets() {
                   <div className="border border-destructive/40 bg-destructive/5 rounded-md p-3 mb-4 text-xs" aria-live="polite">
                     <p className="font-medium text-destructive">Hay nombres de campo repetidos: {duplicateFieldKeys.join(", ")}</p>
                     <p className="text-muted-foreground mt-0.5">Cada campo tiene que tener un nombre único.</p>
+                  </div>
+                )}
+                {crossConnectionDuplicateKeys.length > 0 && (
+                  <div className="border border-destructive/40 bg-destructive/5 rounded-md p-3 mb-4 text-xs" aria-live="polite">
+                    <p className="font-medium text-destructive">
+                      Ya se usa{crossConnectionDuplicateKeys.length === 1 ? "" : "n"} en otra hoja conectada:{" "}
+                      {crossConnectionDuplicateKeys.join(", ")}
+                    </p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Elegí un nombre distinto para ese campo acá (ej. "{crossConnectionDuplicateKeys[0]}_ventas") para
+                      poder guardar. Si tuvieran el mismo nombre, sus valores se sumarían entre sí sin que nadie lo note.
+                    </p>
                   </div>
                 )}
                 {loadingHeaders ? (
@@ -1238,6 +1342,17 @@ export default function GrowthTrackerSheets() {
         variant="destructive"
         busy={!!removingConnectionId}
         onConfirm={handleRemoveConnection}
+      />
+
+      <SuggestedMetricsReview
+        open={showMetricsReview}
+        onOpenChange={setShowMetricsReview}
+        suggestions={suggestedMetrics}
+        companyId={company_id}
+        allMetrics={financial.metrics}
+        categories={metricCategories}
+        defaultCategory={metricCategories[0]?.id ?? "revenue"}
+        onSaved={financial.reload}
       />
     </AppLayout>
   );
