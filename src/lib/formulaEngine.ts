@@ -88,24 +88,40 @@ export const FUNCTION_SIGNATURES: Record<string, FunctionSignature> = {
   UPPER: { params: ["texto"], description: "Pasa el texto a mayúsculas." },
   LOWER: { params: ["texto"], description: "Pasa el texto a minúsculas." },
   SUBSTITUTE: { params: ["texto", "texto_buscado", "texto_nuevo", "[instancia]"], description: "Reemplaza una parte del texto por otra." },
-  SUMLAST: { params: ['"campo" (entre comillas)', "n_meses"], description: "Suma el campo en los últimos N meses, incluido el actual." },
-  AVGLAST: { params: ['"campo" (entre comillas)', "n_meses"], description: "Promedia el campo en los últimos N meses, incluido el actual." },
-  YTD: { params: ['"campo" (entre comillas)'], description: "Acumulado del campo desde enero del año en curso." },
+  SUMLAST: {
+    params: ['"campo" (entre comillas)', "n_meses"],
+    description:
+      'Suma el campo en los últimos N meses, incluido el actual. "campo" es un input_key o metric_id que ya existe en el catálogo de la company (no un campo crudo de una integración — para eso usá FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG).',
+  },
+  AVGLAST: {
+    params: ['"campo" (entre comillas)', "n_meses"],
+    description:
+      'Promedia el campo en los últimos N meses, incluido el actual. "campo" es un input_key o metric_id que ya existe en el catálogo de la company (no un campo crudo de una integración — para eso usá FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG).',
+  },
+  YTD: {
+    params: ['"campo" (entre comillas)'],
+    description:
+      'Acumulado del campo desde enero del año en curso. "campo" es un input_key o metric_id que ya existe en el catálogo de la company (no un campo crudo de una integración — para eso usá FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG).',
+  },
   FIELDSUM: {
     params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
-    description: "Suma un campo crudo de una integración sobre el período actual. Opcional: filtrar por otro campo (varios valores separados por coma = OR).",
+    description:
+      'Suma un campo crudo de una integración sobre el período actual. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo — varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDSUM("monto", "evento", "New,Renewal") suma "monto" donde "evento" es "New" o "Renewal".',
   },
   FIELDCOUNT: {
     params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
-    description: "Cuenta filas del período actual donde el campo tiene valor. Mismos filtros opcionales que FIELDSUM.",
+    description:
+      'Cuenta filas del período actual donde el campo tiene valor. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo — varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDCOUNT("customer_id", "type", "New") cuenta filas donde "type" es "New".',
   },
   FIELDCOUNTD: {
     params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
-    description: "Cuenta valores únicos de un campo crudo en el período actual. Mismos filtros opcionales que FIELDSUM.",
+    description:
+      'Cuenta valores únicos de un campo crudo en el período actual. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo — varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDCOUNTD("customer_id", "type", "New,Renewal") cuenta clientes únicos donde "type" es "New" o "Renewal".',
   },
   FIELDAVG: {
     params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
-    description: "Promedia un campo crudo sobre el período actual. Mismos filtros opcionales que FIELDSUM.",
+    description:
+      'Promedia un campo crudo sobre el período actual. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo — varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDAVG("monto", "evento", "New,Renewal") promedia "monto" donde "evento" es "New" o "Renewal".',
   },
 };
 
