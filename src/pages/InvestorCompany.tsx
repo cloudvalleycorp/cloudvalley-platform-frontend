@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import { BackLink } from "@/components/BackLink";
@@ -14,6 +15,8 @@ import { FileText } from "lucide-react";
 import { ReportSectionView } from "@/components/metrics/ReportSectionView";
 import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
+import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -25,7 +28,7 @@ import { Accordion } from "@/components/ui/accordion";
 import { CategoryAccordion } from "@/components/dataRoom/CategoryAccordion";
 import { DocumentRow } from "@/components/dataRoom/DocumentRow";
 import { type MetricDef } from "@/lib/metrics";
-import { evalFormula } from "@/lib/formulaEngine";
+import { evalFormula, FORMULA_SYNTAX } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
@@ -90,6 +93,7 @@ export default function InvestorCompany() {
 
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   // 24 meses de margen sobre el período elegido para que SUMLAST/AVGLAST/YTD
   // sigan calculando — se recalcula (y refetchea) al cambiar de período.
   const metricsRange = useMemo(() => periodRange(period, 24), [period]);
@@ -191,6 +195,11 @@ export default function InvestorCompany() {
                     )}
                     {profile.industry && <span>{profile.industry}</span>}
                   </div>
+                }
+                action={
+                  <Button variant="outline" onClick={() => setAssistantOpen(true)}>
+                    <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
+                  </Button>
                 }
               />
               <dl className="grid grid-cols-2 gap-x-4 gap-y-4 text-sm mt-8">
@@ -334,6 +343,20 @@ export default function InvestorCompany() {
       </div>
 
       <MetricInfoSheet metric={openInfo} onClose={() => setOpenInfo(null)} history={infoHistory} />
+
+      <PlatformAgentPanel
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        companyId={company_id ?? null}
+        surface="investor_company"
+        uiContext={{
+          selectedMetricId: openInfo?.id ?? null,
+          selectedCategoryId: null,
+          selectedReportId: shared.selectedId ?? null,
+          currentPeriodId: toPeriodString(period.month, period.year),
+        }}
+        formulaSyntax={FORMULA_SYNTAX}
+      />
     </AppLayout>
   );
 }

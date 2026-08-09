@@ -11,7 +11,6 @@ import {
   ChevronsUpDown,
   Plus,
   Trash2,
-  Sparkles,
 } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -178,10 +177,6 @@ export default function GrowthTrackerSheets() {
   const [tabSearch, setTabSearch] = useState("");
   const [selectedSheetName, setSelectedSheetName] = useState<string | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
-  // Hasta 15 filas de muestra, tal cual las devuelve get-sheet-headers — se
-  // le pasan directo a analyze-transactional-sheet (✨ Analizar con IA),
-  // nunca se le pide nada nuevo a Sheets para eso.
-  const [sampleRows, setSampleRows] = useState<string[][]>([]);
   const [loadingHeaders, setLoadingHeaders] = useState(false);
   const [periodColumn, setPeriodColumn] = useState<string | null>(null);
   // Keyed por columna — cada columna de la hoja se usa (con su field_key +
@@ -390,6 +385,13 @@ export default function GrowthTrackerSheets() {
   ) => {
     if (!company_id) return;
     setLoadingHeaders(true);
+    // Solo para una conexión NUEVA (!seed): dispara el auto-mapeo por IA
+    // encima del seed local de autoMapHeaders, sin bloquear el render de las
+    // columnas (headers/loadingHeaders ya se resolvieron antes de esto —
+    // corre en segundo plano, ver analyzingSheet más abajo para el indicador
+    // inline). Nunca al editar una conexión existente, para no pisarle en
+    // silencio los nombres de campo ya guardados.
+    let autoMapped: { hs: string[]; periodColumn: string | null; sampleRows: string[][] } | null = null;
     try {
       const qs = `?company_id=${encodeURIComponent(company_id)}&account_id=${encodeURIComponent(accountId)}&spreadsheet_id=${encodeURIComponent(spreadsheetId)}&sheet_name=${encodeURIComponent(sheetName)}`;
       const res = await fetch(`${GET_SHEET_HEADERS_URL}${qs}`, { credentials: "include" });
@@ -405,8 +407,8 @@ export default function GrowthTrackerSheets() {
       if (await handleMembershipError(res)) return;
       const data = await res.json();
       const hs: string[] = Array.isArray(data?.headers) ? data.headers : [];
+      const sampleRowsData: string[][] = Array.isArray(data?.sample_rows) ? data.sample_rows : [];
       setHeaders(hs);
-      setSampleRows(Array.isArray(data?.sample_rows) ? data.sample_rows : []);
       if (seed) {
         const missing: string[] = [];
         const seededPeriod = hs.includes(seed.period_column) ? seed.period_column : null;
@@ -427,46 +429,42 @@ export default function GrowthTrackerSheets() {
         setPeriodColumn(auto.periodColumn);
         setFieldMappings(auto.fieldMappings);
         setStaleHeaders([]);
+        autoMapped = { hs, periodColumn: auto.periodColumn, sampleRows: sampleRowsData };
       }
     } catch {
       toast.error("No se pudieron leer las columnas de la hoja");
     } finally {
       setLoadingHeaders(false);
     }
-  };
 
-  const handleAnalyzeWithAi = async () => {
-    if (!wizardAccountId || !selectedSpreadsheetId || !selectedSheetName) return;
-    const result = await analyzeTransactionalSheet({
-      accountId: wizardAccountId,
-      spreadsheetId: selectedSpreadsheetId,
-      sheetName: selectedSheetName,
-      headers,
-      sampleRows,
+    if (!autoMapped) return;
+    const analysis = await analyzeTransactionalSheet({
+      accountId,
+      spreadsheetId,
+      sheetName,
+      headers: autoMapped.hs,
+      sampleRows: autoMapped.sampleRows,
       formulaSyntax: FORMULA_SYNTAX,
     });
-    if (!result) return;
+    if (!analysis) return;
 
-    const suggestedCount = result.suggested_fields.filter((f) => f.column !== periodColumn).length;
+    const suggestedCount = analysis.suggested_fields.filter((f) => f.column !== autoMapped!.periodColumn).length;
     if (suggestedCount > 0) {
       setFieldMappings((prev) => {
         const next = { ...prev };
-        for (const f of result.suggested_fields) {
-          if (f.column === periodColumn) continue;
+        for (const f of analysis.suggested_fields) {
+          if (f.column === autoMapped!.periodColumn) continue;
           next[f.column] = { column: f.column, field_key: f.field_key, value_type: f.value_type };
         }
         return next;
       });
       toast.success(
-        `${suggestedCount} columna${suggestedCount === 1 ? "" : "s"} mapeada${suggestedCount === 1 ? "" : "s"} por IA. Revisá los nombres abajo antes de guardar.`
+        `IA mapeó ${suggestedCount} columna${suggestedCount === 1 ? "" : "s"}. Revisá los nombres abajo antes de guardar.`
       );
     }
-
-    if (result.suggested_metrics.length > 0) {
-      setSuggestedMetrics(result.suggested_metrics);
+    if (analysis.suggested_metrics.length > 0) {
+      setSuggestedMetrics(analysis.suggested_metrics);
       setShowMetricsReview(true);
-    } else if (suggestedCount === 0) {
-      toast("La IA no encontró campos ni métricas para sugerir en esta hoja.");
     }
   };
 
@@ -485,7 +483,6 @@ export default function GrowthTrackerSheets() {
     setTabs([]);
     setSelectedSheetName(null);
     setHeaders([]);
-    setSampleRows([]);
     setPeriodColumn(null);
     setFieldMappings({});
     setStaleHeaders([]);
@@ -1176,15 +1173,6 @@ export default function GrowthTrackerSheets() {
                     ? `${selectedSpreadsheetName} · ${selectedSheetName} · ${usedColumnsCount} de ${headers.length} columnas usadas`
                     : `${selectedSpreadsheetName} · ${selectedSheetName}`
                 }
-                action={
-                  !loadingHeaders &&
-                  headers.length > 0 && (
-                    <Button variant="outline" size="sm" onClick={handleAnalyzeWithAi} disabled={analyzingSheet}>
-                      <Sparkles size={13} className={cn("mr-1.5", analyzingSheet && "animate-spin")} aria-hidden="true" />
-                      {analyzingSheet ? "Analizando…" : "Analizar con IA"}
-                    </Button>
-                  )
-                }
               >
                 {!loadingHeaders && headers.length > 0 && (
                   <p className="text-xs text-muted-foreground mb-3">
@@ -1192,6 +1180,13 @@ export default function GrowthTrackerSheets() {
                     solo lectura de datos acá, nada de sumar ni filtrar: eso se define después con fórmulas en la
                     sección de Métricas (por ejemplo <code className="font-mono">FIELDSUM("monto")</code>).
                   </p>
+                )}
+                {analyzingSheet && (
+                  <LoadingState
+                    variant="inline"
+                    label="Analizando la hoja con IA para sugerir el mapeo de columnas…"
+                    className="mb-3"
+                  />
                 )}
                 {staleHeaders.length > 0 && (
                   <div className="border border-warning/40 bg-warning/10 rounded-md p-3 mb-4 text-xs" aria-live="polite">

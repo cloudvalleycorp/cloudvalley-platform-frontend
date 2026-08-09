@@ -9,12 +9,10 @@ import { toast } from "sonner";
 import { InputsPanel } from "@/components/metrics/InputsPanel";
 import { CalculatedMetricsGrid } from "@/components/metrics/CalculatedMetricsGrid";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
-import { MetricsAssistant } from "@/components/metrics/MetricsAssistant";
-import { SuggestedMetricsReview } from "@/components/metrics/SuggestedMetricsReview";
+import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { AnnualGrid } from "@/components/metrics/AnnualGrid";
 import { MetricsManager } from "@/components/metrics/MetricsManager";
 import { MetricPropertyPanel } from "@/components/metrics/MetricPropertyPanel";
-import { useMetricInsights } from "@/hooks/useMetricInsights";
 import { ImportLogTable } from "@/components/financial/ImportLogTable";
 import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { LoadingState } from "@/components/LoadingState";
@@ -29,7 +27,6 @@ import { LIST_RAW_FIELDS_URL } from "@/lib/sheetsIntegration";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { handleMembershipError } from "@/lib/membership";
-import type { SuggestedMetric } from "@/lib/aiInsights";
 
 // Los tabs son 100% dinámicos: cualquier category que devuelva list-metrics
 // se vuelve un tab (así una métrica custom con category nueva, o el catálogo
@@ -72,9 +69,6 @@ export default function Metrics() {
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const [suggestedMetrics, setSuggestedMetrics] = useState<SuggestedMetric[]>([]);
-  const [showSuggestedMetrics, setShowSuggestedMetrics] = useState(false);
-  const { suggestMetrics, suggestingMetrics } = useMetricInsights(company_id);
 
   useEffect(() => {
     localStorage.setItem(VIEW_KEY, view);
@@ -168,17 +162,6 @@ export default function Metrics() {
     })();
   }, [company_id]);
 
-  const handleSuggestMetrics = async () => {
-    const result = await suggestMetrics(FORMULA_SYNTAX);
-    if (!result) return;
-    if (result.suggested_metrics.length === 0) {
-      toast("La IA no encontró indicadores nuevos para sugerir por ahora.");
-      return;
-    }
-    setSuggestedMetrics(result.suggested_metrics);
-    setShowSuggestedMetrics(true);
-  };
-
   const financialSaveInput = async (inputKey: string, value: number | null) => {
     if (value === null) {
       toast.error("Todavía no se puede vaciar un campo ya cargado. Solo se puede corregir con un valor nuevo.");
@@ -269,26 +252,6 @@ export default function Metrics() {
   }, [year, baseRawFieldPeriods]);
   const { valuesByPeriod: rawFieldValuesByPeriod } = useRawFieldValues(company_id, rawFieldPeriods, allFormulas);
 
-  // Lo que el usuario tiene EN PANTALLA para el período actual (hasta 30
-  // items) — se le manda a ask-metrics-question (MetricsAssistant.tsx) para
-  // que pueda responder sobre una métrica calculada, que el backend nunca
-  // evalúa solo.
-  const visibleMetricsForAi = useMemo(() => {
-    const currentPeriodStr = toPeriodString(period.month, period.year);
-    const out: { metric_id: string; period: string; value: number }[] = [];
-    for (const m of financial.metrics) {
-      if (out.length >= 30) break;
-      let v: number | null = null;
-      if (m.metric_type === "input" && m.input_key) {
-        v = currentInputs[m.input_key] ?? null;
-      } else if (m.metric_type === "calculated" && m.formula_expression) {
-        v = evalFormula(m.formula_expression, currentInputs, formulaHistory, allCalcDefs, rawFieldValuesByPeriod[currentPeriodStr] ?? {});
-      }
-      if (v !== null && v !== undefined) out.push({ metric_id: m.id, period: currentPeriodStr, value: v });
-    }
-    return out;
-  }, [financial.metrics, currentInputs, formulaHistory, allCalcDefs, rawFieldValuesByPeriod, period.month, period.year]);
-
   const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
     if (!openInfo) return [];
     const out: MetricHistoryPoint[] = [];
@@ -353,7 +316,7 @@ export default function Metrics() {
                   </button>
                 </div>
                 <Button variant="outline" onClick={() => setAssistantOpen(true)}>
-                  <Sparkles size={14} className="mr-1" aria-hidden="true" /> Preguntar
+                  <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
                 </Button>
                 <Button variant="outline" onClick={() => setPageMode("manage")}>
                   <Settings2 size={14} className="mr-1" /> Administrar métricas
@@ -500,8 +463,6 @@ export default function Metrics() {
                 navigate(`/metrics/${m.id}`);
               }}
               onCreateNew={() => setCreatingNew(true)}
-              onSuggest={handleSuggestMetrics}
-              suggesting={suggestingMetrics}
             />
           ))}
       </div>
@@ -514,27 +475,22 @@ export default function Metrics() {
           setOpenInfo(null);
           navigate(`/metrics/${m.id}`);
         }}
-        companyId={company_id}
-        period={toPeriodString(period.month, period.year)}
+        onOpenAssistant={() => setAssistantOpen(true)}
       />
 
-      <MetricsAssistant
+      <PlatformAgentPanel
         open={assistantOpen}
         onOpenChange={setAssistantOpen}
         companyId={company_id}
-        period={toPeriodString(period.month, period.year)}
-        visibleMetrics={visibleMetricsForAi}
-      />
-
-      <SuggestedMetricsReview
-        open={showSuggestedMetrics}
-        onOpenChange={setShowSuggestedMetrics}
-        suggestions={suggestedMetrics}
-        companyId={company_id}
-        allMetrics={financial.metrics}
-        categories={financialCategoryTabs}
-        defaultCategory={activeCat}
-        onSaved={financial.reload}
+        surface="metrics"
+        uiContext={{
+          selectedMetricId: openInfo?.id ?? null,
+          selectedCategoryId: activeCat,
+          selectedReportId: null,
+          currentPeriodId: toPeriodString(period.month, period.year),
+        }}
+        formulaSyntax={FORMULA_SYNTAX}
+        onAgentWrote={financial.reload}
       />
 
       {pageMode === "manage" && (
@@ -566,6 +522,7 @@ export default function Metrics() {
             financial.reload();
             navigate("/metrics");
           }}
+          onAgentWrote={financial.reload}
         />
       )}
     </AppLayout>

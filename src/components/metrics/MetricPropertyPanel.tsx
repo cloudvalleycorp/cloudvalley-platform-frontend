@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Link2, Trash2 } from "lucide-react";
+import { Link2, Sparkles, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
@@ -10,6 +10,7 @@ import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PropertyField, type PropertyFieldDef } from "@/components/metrics/PropertyField";
 import { FormulaField } from "@/components/metrics/FormulaField";
+import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import {
   type MetricDef,
   type InputsMap,
@@ -45,6 +46,10 @@ type Props = {
   onClose: () => void;
   onSaved: (id: string, isNew: boolean) => void;
   onDeleted: () => void;
+  // El Asistente puede escribir una métrica server-side (confirm_write) sin
+  // pasar por handleSave de este panel — sin esto el catálogo en pantalla
+  // queda desactualizado hasta refrescar a mano.
+  onAgentWrote?: () => void;
 };
 
 // El panel lateral estilo AppSheet: secciones agrupadas en un Accordion.
@@ -75,11 +80,13 @@ export function MetricPropertyPanel({
   onClose,
   onSaved,
   onDeleted,
+  onAgentWrote,
 }: Props) {
+  const [assistantOpen, setAssistantOpen] = useState(false);
+
   const {
     draft,
     setField,
-    applyGeneratedDraft,
     saving,
     confirmDelete,
     setConfirmDelete,
@@ -180,11 +187,16 @@ export function MetricPropertyPanel({
           <SheetHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0 text-left">
             <div className="flex items-center justify-between gap-2">
               <SheetTitle>{creating ? "Agregar métrica" : metric?.name}</SheetTitle>
-              {metric && (
-                <Button variant="ghost" size="sm" onClick={copyLink} aria-label="Copiar link a esta métrica">
-                  <Link2 size={13} className="mr-1.5" aria-hidden="true" /> Copiar link
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={() => setAssistantOpen(true)}>
+                  <Sparkles size={13} className="mr-1.5" aria-hidden="true" /> Asistente
                 </Button>
-              )}
+                {metric && (
+                  <Button variant="ghost" size="sm" onClick={copyLink} aria-label="Copiar link a esta métrica">
+                    <Link2 size={13} className="mr-1.5" aria-hidden="true" /> Copiar link
+                  </Button>
+                )}
+              </div>
             </div>
             <SheetDescription>
               {creating ? "Se agrega solo para tu startup, no afecta a las demás." : "Los cambios aplican solo para tu startup."}
@@ -269,8 +281,6 @@ export function MetricPropertyPanel({
                       rawFields={rawFields}
                       rawFieldValues={draftRawFieldValues}
                       rawFieldValuesLoading={draftRawFieldValuesLoading}
-                      companyId={companyId}
-                      onGenerated={creating ? applyGeneratedDraft : undefined}
                     />
                   </AccordionContent>
                 </AccordionItem>
@@ -354,6 +364,32 @@ export function MetricPropertyPanel({
         variant="destructive"
         busy={deleting}
         onConfirm={confirmDeleteMetric}
+      />
+
+      <PlatformAgentPanel
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        companyId={companyId}
+        surface="metric_property_panel"
+        uiContext={{
+          selectedMetricId: metric?.id ?? null,
+          selectedCategoryId: draft.category || null,
+          selectedReportId: null,
+          currentPeriodId: null,
+        }}
+        metricFields={{
+          metric_id: metric?.id,
+          name: draft.name,
+          category: draft.category,
+          metric_type: draft.metric_type,
+          input_key: draft.input_key,
+          value_type: draft.value_type,
+          formula_expression: draft.formula,
+          unit: draft.unit,
+          description: draft.description,
+          why_it_matters: draft.why_it_matters,
+        }}
+        onAgentWrote={onAgentWrote}
       />
     </>
   );

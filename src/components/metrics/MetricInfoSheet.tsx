@@ -1,13 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Pencil, Sparkles } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { formatMetricValue, type MetricDef } from "@/lib/metrics";
 import { MONTH_LABELS } from "@/lib/metricPeriod";
 import { MetricHistoryChart, type MetricHistoryPoint } from "@/components/metrics/MetricHistoryChart";
-import { useMetricInsights } from "@/hooks/useMetricInsights";
-import type { ExplainMetricResponse } from "@/lib/aiInsights";
 
 export type { MetricHistoryPoint };
 
@@ -19,13 +16,12 @@ type Props = {
   // Metrics.tsx) — eliminar vive exclusivamente ahí, un solo punto de
   // entrada para una acción destructiva en vez de repetirla en dos sheets.
   onEdit?: (m: MetricDef) => void;
-  // Para "✨ Explicar" (POST /explain-metric) — sin estos dos, el botón
-  // simplemente no aparece.
-  companyId?: string | null;
-  period?: string; // "YYYY-MM"
+  // Abre el PlatformAgentPanel (ver Metrics.tsx) con esta métrica ya
+  // seteada en uiContext.selectedMetricId — reemplaza al viejo "Explicar".
+  onOpenAssistant?: () => void;
 };
 
-export function MetricInfoSheet({ metric, onClose, history, onEdit, companyId = null, period }: Props) {
+export function MetricInfoSheet({ metric, onClose, history, onEdit, onOpenAssistant }: Props) {
   const sorted = useMemo(
     () =>
       (history ?? [])
@@ -33,27 +29,6 @@ export function MetricInfoSheet({ metric, onClose, history, onEdit, companyId = 
         .sort((a, b) => (a.year === b.year ? a.month - b.month : a.year - b.year)),
     [history]
   );
-
-  const { explainMetric, explaining } = useMetricInsights(companyId);
-  const [explanation, setExplanation] = useState<ExplainMetricResponse | null>(null);
-
-  // Cambió la métrica abierta (o se cerró el sheet) — no arrastrar la
-  // explicación de la anterior.
-  useEffect(() => {
-    setExplanation(null);
-  }, [metric?.id]);
-
-  const handleExplain = async () => {
-    if (!metric || !period) return;
-    // El backend NUNCA evalúa formula_expression para una métrica calculada
-    // — sin esto no tiene forma de saber el valor. sorted viene cronológico
-    // terminando en el período actual (ver MetricHistoryChart/Metrics.tsx),
-    // así que el último punto es el actual y el anterior es el previo.
-    const current = sorted[sorted.length - 1];
-    const prior = sorted[sorted.length - 2];
-    const result = await explainMetric(metric.id, period, current?.value, prior?.value);
-    if (result) setExplanation(result);
-  };
 
   return (
     <Sheet open={!!metric} onOpenChange={(o) => !o && onClose()}>
@@ -71,10 +46,9 @@ export function MetricInfoSheet({ metric, onClose, history, onEdit, companyId = 
                 {metric.unit && <span className="text-muted-foreground">{metric.unit}</span>}
               </div>
               <div className="flex items-center gap-1">
-                {companyId && period && (
-                  <Button size="sm" variant="ghost" onClick={handleExplain} disabled={explaining}>
-                    <Sparkles size={12} className={cn("mr-1", explaining && "animate-spin")} aria-hidden="true" />
-                    {explaining ? "Explicando…" : "Explicar"}
+                {onOpenAssistant && (
+                  <Button size="sm" variant="ghost" onClick={onOpenAssistant}>
+                    <Sparkles size={12} className="mr-1" aria-hidden="true" /> Asistente
                   </Button>
                 )}
                 {onEdit && (
@@ -84,20 +58,6 @@ export function MetricInfoSheet({ metric, onClose, history, onEdit, companyId = 
                 )}
               </div>
             </div>
-
-            {explanation && (
-              <div className="text-sm bg-success/5 border border-success/40 rounded-md p-3 space-y-1" aria-live="polite">
-                <p>{explanation.explanation}</p>
-                {explanation.value_source === "client_supplied" && (
-                  <p className="text-xs text-muted-foreground">
-                    Usa el valor calculado en tu navegador, sin verificar contra los datos guardados.
-                  </p>
-                )}
-                {explanation.value_source === "unavailable" && (
-                  <p className="text-xs text-muted-foreground">Explicación cualitativa: no hay un valor numérico disponible.</p>
-                )}
-              </div>
-            )}
 
             {sorted.length >= 2 && <MetricHistoryChart key={metric.id} metric={metric} history={history} size="sm" />}
 
