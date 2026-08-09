@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
-import { DollarSign, Hash, Percent, Plus, Search as SearchIcon, Sparkles } from "lucide-react";
+import { DollarSign, Hash, Percent, Plus, Search as SearchIcon } from "lucide-react";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { DataTableToolbar } from "@/components/DataTableToolbar";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { sourceLabel, type MetricDef } from "@/lib/metrics";
 
 const TYPE_LABELS: Record<MetricDef["metric_type"], string> = {
@@ -24,17 +23,13 @@ type Props = {
   categories: { id: string; label: string }[];
   onSelect: (m: MetricDef) => void;
   onCreateNew: () => void;
-  // "✨ Sugerir métricas" (POST /suggest-metrics) — opcional porque solo
-  // tiene sentido cuando ya hay company_id, ver Metrics.tsx.
-  onSuggest?: () => void;
-  suggesting?: boolean;
 };
 
 // La vista de lista del editor estilo AppSheet: buscar/filtrar, click en una
 // fila abre el panel de esa métrica (MetricPropertyPanel, renderizado por el
 // caller). Los mismos datos que ya lee list-metrics en modo "data" — esto es
 // una forma nueva de navegarlos, no una superficie de datos nueva.
-export function MetricsManager({ metrics, categories, onSelect, onCreateNew, onSuggest, suggesting }: Props) {
+export function MetricsManager({ metrics, categories, onSelect, onCreateNew }: Props) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [originFilter, setOriginFilter] = useState<string>("all");
@@ -128,17 +123,9 @@ export function MetricsManager({ metrics, categories, onSelect, onCreateNew, onS
           </>
         }
         actions={
-          <>
-            {onSuggest && (
-              <Button variant="outline" onClick={onSuggest} disabled={suggesting}>
-                <Sparkles size={14} className={cn("mr-1.5", suggesting && "animate-spin")} aria-hidden="true" />
-                {suggesting ? "Sugiriendo…" : "Sugerir métricas"}
-              </Button>
-            )}
-            <Button onClick={onCreateNew}>
-              <Plus size={14} className="mr-1.5" /> Agregar métrica
-            </Button>
-          </>
+          <Button onClick={onCreateNew}>
+            <Plus size={14} className="mr-1.5" /> Agregar métrica
+          </Button>
         }
       />
 

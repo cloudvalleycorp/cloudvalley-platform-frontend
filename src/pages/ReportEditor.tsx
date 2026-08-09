@@ -21,13 +21,14 @@ import { Switch } from "@/components/ui/switch";
 import { ReportSectionView } from "@/components/metrics/ReportSectionView";
 import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
+import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { cn } from "@/lib/utils";
 import { handleMembershipError } from "@/lib/membership";
 import { LIST_FINANCIAL_METRICS_URL, LIST_FINANCIAL_RECORDS_URL } from "@/lib/financialData";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
 import { buildEntriesFromRecords, periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
 import { toMetricDef, type MetricDef } from "@/lib/metrics";
-import { evalFormula } from "@/lib/formulaEngine";
+import { evalFormula, FORMULA_SYNTAX } from "@/lib/formulaEngine";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
 import {
@@ -40,7 +41,7 @@ import {
   type ReportShare,
 } from "@/lib/financialReports";
 import { toast } from "sonner";
-import { ChevronUp, ChevronDown, X, Plus, Save, GripVertical, Eye, Pencil, Share2, FileText } from "lucide-react";
+import { ChevronUp, ChevronDown, X, Plus, Save, GripVertical, Eye, Pencil, Share2, FileText, Sparkles } from "lucide-react";
 
 const now = new Date();
 
@@ -56,6 +57,7 @@ export default function ReportEditor() {
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [saving, setSaving] = useState(false);
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   const [metrics, setMetrics] = useState<MetricDef[]>([]);
   const [entries, setEntries] = useState<Record<string, Record<string, number>>>({});
@@ -70,56 +72,59 @@ export default function ReportEditor() {
   // SUMLAST/AVGLAST/YTD sigan calculando — cambiar de período refetchea.
   const recordsRange = useMemo(() => periodRange(period, 24), [period]);
 
-  useEffect(() => {
+  const loadReport = async (opts: { showLoading: boolean }) => {
     if (!reportId || !company_id) return;
-    setLoadingReport(true);
-    (async () => {
-      try {
-        const qs = `?company_id=${encodeURIComponent(company_id)}`;
-        const [reportRes, metricsRes, recordsRes, connectionsRes, sharesRes] = await Promise.all([
-          fetch(`${GET_FINANCIAL_REPORT_URL}?report_id=${encodeURIComponent(reportId)}`, { credentials: "include" }),
-          fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
-          fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}&from=${recordsRange.from}&to=${recordsRange.to}`, { credentials: "include" }),
-          fetch(LIST_CONNECTIONS_URL, { credentials: "include" }),
-          fetch(`${LIST_FINANCIAL_REPORT_SHARES_URL}${qs}`, { credentials: "include" }),
-        ]);
-        if (reportRes.status === 404) {
-          setNotFound(true);
-          return;
-        }
-        if (reportRes.ok) {
-          const data = await reportRes.json();
-          setName(data.name ?? "");
-          setSections(Array.isArray(data.sections) ? data.sections : []);
-        } else {
-          setNotFound(true);
-        }
-        let mappedMetrics: MetricDef[] = [];
-        if (metricsRes.ok) {
-          const data = await metricsRes.json();
-          mappedMetrics = (Array.isArray(data?.metrics) ? data.metrics : []).map(toMetricDef);
-          setMetrics(mappedMetrics);
-        }
-        if (recordsRes.ok) {
-          const data = await recordsRes.json();
-          const records: Record<string, unknown>[] = Array.isArray(data?.records) ? data.records : [];
-          setEntries(buildEntriesFromRecords(mappedMetrics, records));
-        }
-        if (connectionsRes.ok) {
-          const data = await connectionsRes.json();
-          const list: Connection[] = Array.isArray(data?.connections) ? data.connections : [];
-          setConnections(list.filter((c) => c.status === "connected"));
-        }
-        if (sharesRes.ok) {
-          const data = await sharesRes.json();
-          setShares(Array.isArray(data?.shares) ? data.shares : []);
-        }
-      } catch {
+    if (opts.showLoading) setLoadingReport(true);
+    try {
+      const qs = `?company_id=${encodeURIComponent(company_id)}`;
+      const [reportRes, metricsRes, recordsRes, connectionsRes, sharesRes] = await Promise.all([
+        fetch(`${GET_FINANCIAL_REPORT_URL}?report_id=${encodeURIComponent(reportId)}`, { credentials: "include" }),
+        fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
+        fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}&from=${recordsRange.from}&to=${recordsRange.to}`, { credentials: "include" }),
+        fetch(LIST_CONNECTIONS_URL, { credentials: "include" }),
+        fetch(`${LIST_FINANCIAL_REPORT_SHARES_URL}${qs}`, { credentials: "include" }),
+      ]);
+      if (reportRes.status === 404) {
         setNotFound(true);
-      } finally {
-        setLoadingReport(false);
+        return;
       }
-    })();
+      if (reportRes.ok) {
+        const data = await reportRes.json();
+        setName(data.name ?? "");
+        setSections(Array.isArray(data.sections) ? data.sections : []);
+      } else {
+        setNotFound(true);
+      }
+      let mappedMetrics: MetricDef[] = [];
+      if (metricsRes.ok) {
+        const data = await metricsRes.json();
+        mappedMetrics = (Array.isArray(data?.metrics) ? data.metrics : []).map(toMetricDef);
+        setMetrics(mappedMetrics);
+      }
+      if (recordsRes.ok) {
+        const data = await recordsRes.json();
+        const records: Record<string, unknown>[] = Array.isArray(data?.records) ? data.records : [];
+        setEntries(buildEntriesFromRecords(mappedMetrics, records));
+      }
+      if (connectionsRes.ok) {
+        const data = await connectionsRes.json();
+        const list: Connection[] = Array.isArray(data?.connections) ? data.connections : [];
+        setConnections(list.filter((c) => c.status === "connected"));
+      }
+      if (sharesRes.ok) {
+        const data = await sharesRes.json();
+        setShares(Array.isArray(data?.shares) ? data.shares : []);
+      }
+    } catch {
+      setNotFound(true);
+    } finally {
+      if (opts.showLoading) setLoadingReport(false);
+    }
+  };
+
+  useEffect(() => {
+    loadReport({ showLoading: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportId, company_id, recordsRange.from, recordsRange.to]);
 
   // ---- Preview data (mismo cálculo que InvestorCompany.tsx) ----
@@ -296,6 +301,9 @@ export default function ReportEditor() {
                     </div>
                   )}
                   {mode === "preview" && <PeriodSelect period={period} onChange={setPeriod} />}
+                  <Button variant="outline" onClick={() => setAssistantOpen(true)}>
+                    <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
+                  </Button>
                   {is_owner && mode === "edit" && (
                     <Button onClick={save} disabled={saving}>
                       <Save size={14} className="mr-1" /> {saving ? "Guardando…" : "Guardar"}
@@ -482,6 +490,21 @@ export default function ReportEditor() {
       </div>
 
       <MetricInfoSheet metric={openInfo} onClose={() => setOpenInfo(null)} history={infoHistory} />
+
+      <PlatformAgentPanel
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        companyId={company_id}
+        surface="report_editor"
+        uiContext={{
+          selectedMetricId: openInfo?.id ?? null,
+          selectedCategoryId: null,
+          selectedReportId: reportId ?? null,
+          currentPeriodId: toPeriodString(period.month, period.year),
+        }}
+        formulaSyntax={FORMULA_SYNTAX}
+        onAgentWrote={() => loadReport({ showLoading: false })}
+      />
     </AppLayout>
   );
 }

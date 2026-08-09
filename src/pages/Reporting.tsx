@@ -11,7 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormDialog } from "@/components/FormDialog";
+import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { handleMembershipError } from "@/lib/membership";
+import { FORMULA_SYNTAX } from "@/lib/formulaEngine";
 import {
   CREATE_FINANCIAL_REPORT_URL,
   LIST_FINANCIAL_REPORTS_URL,
@@ -21,13 +23,14 @@ import {
   type ReportShare,
 } from "@/lib/financialReports";
 import { toast } from "sonner";
-import { Plus, FileText, Pencil, Trash2, Share2 } from "lucide-react";
+import { Plus, FileText, Pencil, Trash2, Share2, Sparkles } from "lucide-react";
 
 export default function Reporting() {
   const { user, loading, role, company_id, email, is_owner } = useAuth();
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(false);
   const [reopen, setReopen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [loadingReports, setLoadingReports] = useState(true);
@@ -171,11 +174,16 @@ export default function Reporting() {
           title="Reporting"
           subtitle="Armá un reporte con las métricas que quieras y compartilo con un fondo puntual."
           action={
-            is_owner && (
-              <Button onClick={() => setCreateOpen(true)}>
-                <Plus size={14} className="mr-1" /> Nuevo reporte
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setAssistantOpen(true)}>
+                <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
               </Button>
-            )
+              {is_owner && (
+                <Button onClick={() => setCreateOpen(true)}>
+                  <Plus size={14} className="mr-1" /> Nuevo reporte
+                </Button>
+              )}
+            </div>
           }
         />
 
@@ -287,6 +295,21 @@ export default function Reporting() {
         variant="destructive"
         busy={deleting}
         onConfirm={deleteReport}
+      />
+
+      <PlatformAgentPanel
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        companyId={company_id}
+        surface="reporting_list"
+        uiContext={{
+          selectedMetricId: null,
+          selectedCategoryId: null,
+          selectedReportId: null,
+          currentPeriodId: null,
+        }}
+        formulaSyntax={FORMULA_SYNTAX}
+        onAgentWrote={loadReports}
       />
     </AppLayout>
   );

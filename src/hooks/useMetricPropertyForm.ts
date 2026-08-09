@@ -133,18 +133,6 @@ export function useMetricPropertyForm({
 
   const setField = (key: string, value: string | boolean) => setDraft((prev) => ({ ...prev, [key]: value }));
 
-  // POST /generate-formula pre-llena el formulario ENTERO cuando se está
-  // creando una métrica desde cero (ver FormulaField.tsx modo simple) — se
-  // aplica sin chequear "si ya estaba lleno" a propósito: es exactamente lo
-  // que ese botón promete (arrancar de una descripción, no de un formulario
-  // vacío), y category puede venir como una sugerencia nueva que el usuario
-  // ve y edita después, no algo para preservar a medias. No toca `formula`:
-  // eso ya lo aplica FormulaField vía onChange (mismo camino que "solo
-  // regenerar la fórmula" en una métrica existente).
-  const applyGeneratedDraft = (extras: { name: string; category: string; description: string; why_it_matters: string; unit: string }) => {
-    setDraft((prev) => ({ ...prev, ...extras }));
-  };
-
   const handleSave = async () => {
     if (!companyId) return;
     const category = normalizeCategory(draft.category, categories);
@@ -264,7 +252,6 @@ export function useMetricPropertyForm({
   return {
     draft,
     setField,
-    applyGeneratedDraft,
     saving,
     confirmDelete,
     setConfirmDelete,
