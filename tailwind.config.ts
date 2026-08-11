@@ -25,10 +25,25 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          dark: "hsl(var(--primary-dark))",
+          light: "hsl(var(--primary-light))",
+          lighter: "hsl(var(--primary-lighter))",
+          subtle: "hsl(var(--primary-subtle))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
+        },
+        // Acento turquesa de producto/datos/automatización (brief de marca
+        // 2026-08-11) — token separado de `secondary` a propósito: ese ya es
+        // estructural de shadcn (tracks, hovers genéricos), pintarlo de
+        // teal habría afectado componentes que no son acentos de marca.
+        teal: {
+          DEFAULT: "hsl(var(--teal))",
+          foreground: "hsl(var(--teal-foreground))",
+          dark: "hsl(var(--teal-dark))",
+          light: "hsl(var(--teal-light))",
+          subtle: "hsl(var(--teal-subtle))",
         },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",

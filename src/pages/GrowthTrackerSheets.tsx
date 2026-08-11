@@ -1508,7 +1508,7 @@ function FieldMappingRow({
           <Input
             value={mapping.description}
             onChange={(e) => onChange({ ...mapping, description: e.target.value })}
-            placeholder="Qué significa este campo — se genera automáticamente al guardar si lo dejás vacío"
+            placeholder="Qué significa este campo: se genera automáticamente al guardar si lo dejás vacío"
             aria-label={`Descripción del campo para la columna ${header}`}
             className="h-7 text-xs flex-1 min-w-0"
           />

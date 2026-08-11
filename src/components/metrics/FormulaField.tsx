@@ -516,7 +516,7 @@ export function FormulaField({
         Para promediar o sumar meses anteriores usá <code>SUMLAST("revenue", 3)</code>, <code>AVGLAST("revenue", 3)</code> o{" "}
         <code>YTD("revenue")</code>. Para traer datos crudos de una integración usá{" "}
         <code>FIELDSUM("campo")</code>, <code>FIELDCOUNT("campo")</code>, <code>FIELDCOUNTD("campo")</code> o{" "}
-        <code>FIELDAVG("campo")</code> — opcionalmente con un filtro:{" "}
+        <code>FIELDAVG("campo")</code>, opcionalmente con un filtro:{" "}
         <code>FIELDSUM("monto", "evento", "New,Renewal")</code> suma "monto" solo en las filas donde "evento" es "New"
         o "Renewal". El nombre del campo (y los filtros) van siempre entre comillas.
       </p>

@@ -27,7 +27,7 @@ export function RawFieldPicker({ value, onChange, rawFields, placeholder = "Eleg
   const [open, setOpen] = useState(false);
   const selected = rawFields.find((f) => f.field_key === value);
   const selectedTitle = selected
-    ? [selected.connection_label, selected.description].filter(Boolean).join(" — ") || undefined
+    ? [selected.connection_label, selected.description].filter(Boolean).join(": ") || undefined
     : undefined;
   return (
     <Popover open={open} onOpenChange={setOpen}>

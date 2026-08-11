@@ -209,13 +209,13 @@ export default function InvestorCompany() {
               <PageHeader
                 title={profile.name}
                 subtitle={
-                  <div className="flex items-center gap-3 mt-1">
+                  <span className="inline-flex items-center gap-3 mt-1">
                     <StageBadge stage={profile.stage} />
                     {profile.business_model && (
                       <span className="capitalize">{profile.business_model.replace("_", " ")}</span>
                     )}
                     {profile.industry && <span>{profile.industry}</span>}
-                  </div>
+                  </span>
                 }
                 action={
                   <Button variant="outline" onClick={() => setAssistantOpen(true)}>
@@ -412,7 +412,7 @@ export default function InvestorCompany() {
           pillars={roadmapPillars}
           defaultPillarId={roadmapPillars[0]?.id ?? ""}
           title={`Agregar requisito para ${profile.name}`}
-          description="Se suma al roadmap de esta startup — no cuenta para su readiness score, que se calcula solo con el catálogo estándar."
+          description="Se suma al roadmap de esta startup, no cuenta para su readiness score, que se calcula solo con el catálogo estándar."
           onSaved={() => queryClient.invalidateQueries({ queryKey: ["shared-roadmap", company_id] })}
           companies={company_id ? [{ id: company_id, name: profile.name }] : []}
           hideTargetPicker
