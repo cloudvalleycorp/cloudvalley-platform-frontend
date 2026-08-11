@@ -7,10 +7,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles } from "lucide-react";
-import { handleMembershipError } from "@/lib/membership";
-import { UPSERT_FINANCIAL_METRIC_DEFINITION_URL } from "@/lib/financialReports";
-import { slugify } from "@/hooks/useMetricPropertyForm";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Sparkles, Copy, AlertTriangle } from "lucide-react";
 import type { SuggestedMetric } from "@/lib/aiInsights";
 import type { MetricDef } from "@/lib/metrics";
 
@@ -33,20 +32,17 @@ type Props = {
 // Revisión compartida para las dos formas de llegar a una lista de
 // SuggestedMetric: el paso "Analizar con IA" del wizard de Sheets
 // (GrowthTrackerSheets.tsx) y el botón "Sugerir métricas" en Administrar
-// métricas (Metrics.tsx). Nada se guarda solo: cada sugerencia arranca
-// tildada pero editable, y el usuario puede destildarla antes de confirmar.
-export function SuggestedMetricsReview({
-  open,
-  onOpenChange,
-  suggestions,
-  companyId,
-  allMetrics,
-  categories,
-  defaultCategory,
-  onSaved,
-}: Props) {
+// métricas (Metrics.tsx). BLOQUEADO desde el cambio de contrato 2026-08-10:
+// analyze-transactional-sheet (endpoint que arma esta lista) sigue
+// devolviendo formula_expression en texto libre, pero upsert-metric-
+// definition ya no acepta ese campo para escrituras nuevas — confirmar acá
+// garantizaría un 400 en cada fila. No se intenta convertir el texto a
+// QuerySpec (frágil): el submit queda deshabilitado hasta que backend
+// actualice analyze-transactional-sheet para devolver query también. La
+// lista sigue visible/editable como referencia, con un botón para copiar
+// cada fórmula y reconstruirla a mano con el query builder.
+export function SuggestedMetricsReview({ open, onOpenChange, suggestions, categories, defaultCategory }: Props) {
   const [rows, setRows] = useState<ReviewRow[]>([]);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) setRows(suggestions.map((s) => ({ ...s, approved: true, category: s.category?.trim() || defaultCategory })));
@@ -55,75 +51,9 @@ export function SuggestedMetricsReview({
   const setRow = (i: number, patch: Partial<ReviewRow>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-  const approvedCount = rows.filter((r) => r.approved).length;
-
-  const handleConfirm = async () => {
-    if (!companyId) return;
-    const approved = rows.filter((r) => r.approved);
-    if (approved.length === 0) {
-      onOpenChange(false);
-      return;
-    }
-    setSaving(true);
-    const existingIds = new Set(allMetrics.map((m) => m.id));
-    let successCount = 0;
-    let failCount = 0;
-    for (const r of approved) {
-      if (!r.name.trim() || !r.formula_expression.trim()) {
-        failCount++;
-        continue;
-      }
-      const base = slugify(r.name);
-      let slug = base;
-      let suffix = 2;
-      while (existingIds.has(slug)) {
-        slug = `${base}_${suffix}`;
-        suffix++;
-      }
-      existingIds.add(slug);
-      const category = r.category.trim() || defaultCategory;
-      const displayOrder =
-        Math.max(0, ...allMetrics.filter((m) => m.category === category).map((m) => m.order_index)) + 1;
-      try {
-        const res = await fetch(UPSERT_FINANCIAL_METRIC_DEFINITION_URL, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            company_id: companyId,
-            metric_id: slug,
-            name: r.name.trim(),
-            category,
-            metric_type: "calculated",
-            unit: r.unit?.trim() || null,
-            display_order: displayOrder,
-            formula_expression: r.formula_expression.trim(),
-            description: r.description.trim() || undefined,
-            why_it_matters: r.why_it_matters?.trim() || undefined,
-          }),
-        });
-        if (await handleMembershipError(res)) {
-          failCount++;
-          continue;
-        }
-        if (!res.ok) {
-          failCount++;
-          continue;
-        }
-        successCount++;
-      } catch {
-        failCount++;
-      }
-    }
-    setSaving(false);
-    if (successCount > 0) {
-      toast.success(`${successCount} métrica${successCount === 1 ? "" : "s"} agregada${successCount === 1 ? "" : "s"}`);
-      onSaved();
-    }
-    if (failCount > 0) {
-      toast.error(`${failCount} métrica${failCount === 1 ? "" : "s"} no se pudo${failCount === 1 ? "" : "ieron"} guardar`);
-    }
-    if (failCount === 0) onOpenChange(false);
+  const copyFormula = (formula: string) => {
+    navigator.clipboard.writeText(formula);
+    toast.success("Fórmula copiada");
   };
 
   return (
@@ -131,12 +61,19 @@ export function SuggestedMetricsReview({
       open={open}
       onOpenChange={onOpenChange}
       title="Revisá las métricas sugeridas"
-      description="La IA propuso esto a partir de tus datos. Nada se crea todavía: destildá lo que no quieras, ajustá lo que haga falta y confirmá."
+      description="La IA propuso esto a partir de tus datos. Nada se crea todavía."
       contentClassName="sm:max-w-2xl"
-      onSubmit={handleConfirm}
-      submitLabel={saving ? "Guardando…" : `Agregar ${approvedCount > 0 ? approvedCount : ""}`.trim()}
-      busy={saving || approvedCount === 0}
+      submitLabel="No disponible"
+      busy
     >
+      <Alert variant="destructive">
+        <AlertTriangle size={16} aria-hidden="true" />
+        <AlertDescription className="text-xs">
+          Este flujo todavía genera fórmulas de texto libre, que el backend ya no acepta para crear métricas nuevas.
+          No se puede confirmar acá hasta que se actualice el análisis de la hoja — copiá los datos de abajo y armá
+          la métrica a mano con "Agregar métrica".
+        </AlertDescription>
+      </Alert>
       {rows.length === 0 ? (
         <EmptyState bordered={false} icon={Sparkles} title="La IA no encontró métricas nuevas para proponer." />
       ) : (
@@ -201,11 +138,23 @@ export function SuggestedMetricsReview({
                     </FormField>
                   )}
                   <FormField label="Fórmula">
-                    <Input
-                      value={row.formula_expression}
-                      onChange={(e) => setRow(i, { formula_expression: e.target.value })}
-                      className="font-mono text-xs"
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        value={row.formula_expression}
+                        onChange={(e) => setRow(i, { formula_expression: e.target.value })}
+                        className="font-mono text-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 shrink-0"
+                        onClick={() => copyFormula(row.formula_expression)}
+                        aria-label="Copiar fórmula"
+                      >
+                        <Copy size={13} aria-hidden="true" />
+                      </Button>
+                    </div>
                   </FormField>
                   {row.fields_used.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">

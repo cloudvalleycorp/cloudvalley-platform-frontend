@@ -31,7 +31,10 @@ async function fetchConnectedCompanyMetrics(companyId: string, range: PeriodRang
     const data = await defsRes.json();
     defs = Array.isArray(data?.metrics) ? data.metrics : [];
   }
-  const mapped = defs.map(toMetricDef);
+  // list-metrics no filtra las métricas soft-deleted (active: false) — bug
+  // de backend reportado 2026-08-09, se filtra acá para no mostrarle al
+  // inversor una métrica que el founder ya eliminó.
+  const mapped = defs.filter((d) => d.active !== false).map(toMetricDef);
 
   // Métricas no compartidas vienen ausentes del objeto (undefined), no
   // null — buildEntriesFromRecords ya filtra ambos casos por igual.

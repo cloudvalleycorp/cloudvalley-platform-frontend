@@ -3,6 +3,7 @@
 // al modelo de dominio del frontend (toMetricDef); esta capa no lo hace, solo
 // tipa lo que viaja por la red.
 import { API_BASE_URL } from "@/lib/apiConfig";
+import type { QuerySpec } from "@/lib/querySpec";
 
 export const ASSIGN_FINANCIAL_SOURCE_URL = `${API_BASE_URL}/assign-source`;
 export const LIST_FINANCIAL_SOURCES_URL = `${API_BASE_URL}/list-sources`;
@@ -13,6 +14,13 @@ export const LIST_FINANCIAL_RECORDS_URL = `${API_BASE_URL}/list-records`;
 export const LIST_FINANCIAL_METRICS_URL = `${API_BASE_URL}/list-metrics`;
 export const LIST_FINANCIAL_METRIC_PRIVACY_URL = `${API_BASE_URL}/list-metric-privacy`;
 export const UPDATE_FINANCIAL_METRIC_PRIVACY_URL = `${API_BASE_URL}/update-metric-privacy`;
+// Lectura de valores ya calculados para métricas `query`-based (contrato
+// 2026-08-11, ver src/hooks/useEvaluatedMetrics.ts) — reemplaza a
+// formulaEngine.ts + query-raw-fields del lado de lectura para estas.
+// Bulk, sin IA, evalúa el mismo árbol recursivo que usa el agente.
+export const EVALUATE_METRICS_URL = `${API_BASE_URL}/evaluate-metrics`;
+export const EVALUATE_METRICS_MAX_IDS = 30;
+export const EVALUATE_METRICS_MAX_PERIODS = 12;
 
 export type FinancialSourceType = "manual_form" | "sheet" | "stripe";
 export type ReportStatus = "reportado" | "pendiente" | "con_errores";
@@ -105,12 +113,28 @@ export type FinancialMetricDef = {
   // Which sheet connection (of possibly several) is mapping this field right
   // now — only set when source === "sheet".
   source_connection_id: string | null;
+  // Legacy — texto libre, ya no se acepta para escrituras nuevas (ver
+  // query abajo). Sigue viniendo en list-metrics para métricas viejas que
+  // todavía no se editaron con el query builder.
   formula_expression: string | null;
+  // Reemplaza a formula_expression para métricas calculadas nuevas — árbol
+  // estructurado (agregación/referencia a métrica/constante/aritmética), lo
+  // calcula el backend, el frontend nunca lo interpreta. Coexiste con
+  // formula_expression: una métrica vieja sin editar tiene formula_expression
+  // y query:null; una nueva tiene query y formula_expression:null.
+  query?: QuerySpec | null;
   unit: string | null;
   display_order: number;
   description: string | null;
   why_it_matters: string | null;
   benchmark: string | null;
+  // Soft-delete flag — delete-metric-definition lo pone en false en vez de
+  // borrar la fila. list-metrics NO lo filtra (bug de backend reportado
+  // 2026-08-09), así que cada caller filtra esto él mismo antes de mapear a
+  // MetricDef — ver los usos de LIST_FINANCIAL_METRICS_URL. Ausente en
+  // respuestas viejas, por eso siempre opcional y se trata undefined como
+  // activo (nunca ocultar de más por falta del campo).
+  active?: boolean;
 };
 
 // Shape returned by GET /list-records — one row per period. Values are
@@ -121,3 +145,20 @@ export type FinancialMetricDef = {
 export type FinancialRecordRow = { period: string } & Record<string, number | null>;
 
 export type FinancialMetricPrivacyEntry = { metric_id: string; is_public: boolean };
+
+// ---- evaluate-metrics (lectura de valores calculados, ver arriba) ----
+
+export type EvaluateMetricsPeriodSpec = { period: string } | { period_from: string; period_to: string };
+
+// Un metric_id pedido que NO aparece en `values` — nunca desaparece en
+// silencio, siempre trae por qué (metric_type input, sin query todavía, etc.).
+export type EvaluateMetricsSkipped = { metric_id: string; reason: string };
+
+export type EvaluateMetricsResponse = {
+  // metric_id -> período ("YYYY-MM") -> valor. null = sin datos suficientes
+  // ese período (nunca un 0 inventado) — distinto de "ausente" (nunca pedido
+  // o el metric_id vino en `skipped`).
+  values: Record<string, Record<string, number | null>>;
+  periods: string[];
+  skipped: EvaluateMetricsSkipped[];
+};

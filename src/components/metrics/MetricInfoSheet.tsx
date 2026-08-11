@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { formatMetricValue, type MetricDef } from "@/lib/metrics";
 import { MONTH_LABELS } from "@/lib/metricPeriod";
 import { MetricHistoryChart, type MetricHistoryPoint } from "@/components/metrics/MetricHistoryChart";
+import { QuerySummary } from "@/components/metrics/query-builder/QuerySummary";
 
 export type { MetricHistoryPoint };
 
@@ -72,6 +73,14 @@ export function MetricInfoSheet({ metric, onClose, history, onEdit, onOpenAssist
               <div>
                 <h4 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Fórmula</h4>
                 <p className="text-sm font-mono bg-surface p-3 rounded-md">{metric.formula}</p>
+              </div>
+            )}
+            {!metric.formula && metric.query && (
+              <div>
+                <h4 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Definición</h4>
+                <div className="bg-surface p-3 rounded-md">
+                  <QuerySummary query={metric.query} className="text-sm" />
+                </div>
               </div>
             )}
             {metric.description && (

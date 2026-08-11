@@ -24,7 +24,7 @@ import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/M
 import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { cn } from "@/lib/utils";
 import { handleMembershipError } from "@/lib/membership";
-import { LIST_FINANCIAL_METRICS_URL, LIST_FINANCIAL_RECORDS_URL } from "@/lib/financialData";
+import { LIST_FINANCIAL_METRICS_URL, LIST_FINANCIAL_RECORDS_URL, type FinancialMetricDef } from "@/lib/financialData";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
 import { buildEntriesFromRecords, periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
 import { toMetricDef, type MetricDef } from "@/lib/metrics";
@@ -98,7 +98,11 @@ export default function ReportEditor() {
       let mappedMetrics: MetricDef[] = [];
       if (metricsRes.ok) {
         const data = await metricsRes.json();
-        mappedMetrics = (Array.isArray(data?.metrics) ? data.metrics : []).map(toMetricDef);
+        const defs: FinancialMetricDef[] = Array.isArray(data?.metrics) ? data.metrics : [];
+        // list-metrics no filtra las métricas soft-deleted (active: false) —
+        // bug de backend reportado 2026-08-09, se filtra acá para que no
+        // aparezcan como opción para agregar a una sección.
+        mappedMetrics = defs.filter((d) => d.active !== false).map(toMetricDef);
         setMetrics(mappedMetrics);
       }
       if (recordsRes.ok) {
@@ -335,6 +339,8 @@ export default function ReportEditor() {
                       calcDefs={allCalcDefs}
                       rawFieldValues={rawFieldValuesByPeriod[toPeriodString(period.month, period.year)] ?? {}}
                       prevRawFieldValues={rawFieldValuesByPeriod[toPeriodString(prev.m, prev.y)] ?? {}}
+                      companyId={company_id}
+                      period={period}
                       onInfo={setOpenInfo}
                     />
                   ))}

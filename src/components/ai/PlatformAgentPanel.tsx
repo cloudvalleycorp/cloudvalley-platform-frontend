@@ -1,20 +1,21 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, Send } from "lucide-react";
+import { Sparkles, Send, RotateCcw } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { InfoRow } from "@/components/InfoRow";
+import { QuerySummary } from "@/components/metrics/query-builder/QuerySummary";
 import { usePlatformAgent } from "@/hooks/usePlatformAgent";
 import { slugify } from "@/hooks/useMetricPropertyForm";
+import { isQuerySpec, type QuerySpec } from "@/lib/querySpec";
 import type {
   PlatformAgentSurface,
   PlatformAgentUiContext,
   PlatformAgentMetricFields,
   PlatformAgentResponse,
   ObservabilityTraceEntry,
-  ConversationTurn,
   FormulaSyntaxEntry,
 } from "@/lib/aiInsights";
 
@@ -32,6 +33,7 @@ const METRIC_FIELD_LABELS: Record<string, string> = {
   category: "Categoría",
   metric_type: "Tipo",
   formula_expression: "Fórmula",
+  query: "Consulta",
   unit: "Unidad",
   description: "Descripción",
   why_it_matters: "Por qué importa",
@@ -113,6 +115,21 @@ function formulaPreviews(trace: ObservabilityTraceEntry[]) {
     // mismo turno — un solo preview por texto de fórmula, no uno por tool.
     .filter((x) => (seen.has(x.formula) ? false : (seen.add(x.formula), true)));
 }
+// Mismo criterio que formulaPreviews pero para el objeto query (cambio de
+// contrato 2026-08-10, reemplaza a formula_expression para métricas
+// calculadas nuevas) — se muestra vía QuerySummary, nunca como <code> crudo.
+function queryPreviews(trace: ObservabilityTraceEntry[]) {
+  const seen = new Set<string>();
+  return trace
+    .map((entry, index) => ({ index, query: entry.result?.query }))
+    .filter((x): x is { index: number; query: QuerySpec } => isQuerySpec(x.query))
+    // propose-query/validate-query/preview-query suelen traer la misma query
+    // en el mismo turno — un solo preview por forma de query, no uno por tool.
+    .filter((x) => {
+      const key = JSON.stringify(x.query);
+      return seen.has(key) ? false : (seen.add(key), true);
+    });
+}
 
 type Props = {
   open: boolean;
@@ -152,28 +169,28 @@ export function PlatformAgentPanel({
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
 
-  const historyFor = (upTo: Exchange[]): ConversationTurn[] =>
-    upTo.flatMap((ex) => [
-      { role: "user" as const, content: ex.question },
-      { role: "assistant" as const, content: ex.response.answer },
-    ]);
-
   const send = async (text: string) => {
     const q = text.trim();
     if (!q) return;
     setQuestion("");
     setPendingQuestion(q);
-    const response = await ask(q, {
-      uiContext,
-      formulaSyntax,
-      conversationHistory: historyFor(exchanges),
-      metricFields,
-    });
+    const response = await ask(q, { uiContext, formulaSyntax, metricFields });
     setPendingQuestion(null);
     if (response) setExchanges((prev) => [...prev, { question: q, response, resolvedTraceIndices: new Set() }]);
   };
 
   const handleAsk = () => send(question);
+
+  // Backend persiste el historial solo (cambio de contrato 2026-08-10) — el
+  // panel ya no le manda conversation_history, así que "vaciar" acá es
+  // puramente visual salvo que además se le pida reset_conversation:true
+  // para que el próximo turno arranque de cero del lado del servidor.
+  const handleNewConversation = () => {
+    setExchanges([]);
+    setQuestion("");
+    setPendingQuestion(null);
+    void ask("", { uiContext, resetConversation: true });
+  };
 
   const handleConfirmWrite = async (exchangeIdx: number, traceIdx: number, proposed: Record<string, unknown>) => {
     setExchanges((prev) =>
@@ -231,10 +248,17 @@ export function PlatformAgentPanel({
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent className="w-full sm:max-w-xl flex flex-col gap-0 p-0">
         <SheetHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0 text-left">
-          <SheetTitle className="flex items-center gap-2">
-            <Sparkles size={16} className="text-primary" aria-hidden="true" />
-            Asistente
-          </SheetTitle>
+          <div className="flex items-center justify-between gap-2">
+            <SheetTitle className="flex items-center gap-2">
+              <Sparkles size={16} className="text-primary" aria-hidden="true" />
+              Asistente
+            </SheetTitle>
+            {exchanges.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={handleNewConversation}>
+                <RotateCcw size={12} className="mr-1.5" aria-hidden="true" /> Nueva conversación
+              </Button>
+            )}
+          </div>
           <SheetDescription>
             Pedile algo en lenguaje natural — puede responder, proponer una métrica o crear un reporte.
           </SheetDescription>
@@ -255,6 +279,7 @@ export function PlatformAgentPanel({
             const unexpectedReports = allCreated.filter((c) => c.reportId && isUnexpectedNewReport(surface, uiContext, c.reportId));
             const created = allCreated.filter((c) => !unexpectedReports.includes(c));
             const previews = formulaPreviews(trace);
+            const queries = queryPreviews(trace);
             return (
               <div key={exchangeIdx} className="space-y-2">
                 <div className="flex justify-end">
@@ -277,15 +302,30 @@ export function PlatformAgentPanel({
                     </div>
                   ))}
 
-                  {pending.map(({ index, proposed }) => (
+                  {queries.map(({ index, query }) => (
+                    <div key={`q-${index}`} className="w-full max-w-[85%] rounded-md bg-surface border border-border p-3">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Consulta propuesta</p>
+                      <QuerySummary query={query} className="text-xs" />
+                    </div>
+                  ))}
+
+                  {pending.map(({ index, proposed }) => {
+                    const proposedQuery = isQuerySpec(proposed.query) ? proposed.query : null;
+                    return (
                     <div
                       key={`p-${index}`}
                       className="w-full max-w-[85%] rounded-md border border-primary/40 bg-primary/5 p-3 space-y-1"
                     >
                       <p className="text-xs font-medium text-primary mb-1">Propuesta — revisá antes de confirmar</p>
+                      {proposedQuery && (
+                        <div className="pb-1.5 mb-1 border-b border-border/60">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Consulta</p>
+                          <QuerySummary query={proposedQuery} className="text-xs" />
+                        </div>
+                      )}
                       <div className="divide-y divide-border/60">
                         {Object.entries(proposed)
-                          .filter(([, v]) => asString(v) !== undefined)
+                          .filter(([k, v]) => k !== "query" && asString(v) !== undefined)
                           .map(([key, v]) => (
                             <InfoRow
                               key={key}
@@ -309,7 +349,8 @@ export function PlatformAgentPanel({
                         </Button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {unexpectedReports.map(({ index, reportId }) => (
                     <div

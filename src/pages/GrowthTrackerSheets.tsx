@@ -72,6 +72,15 @@ type DraftFieldMapping = {
   column: string;
   field_key: string;
   value_type: "number" | "text";
+  // "" = todavía sin descripción (columna nueva, o mapeo viejo de antes de
+  // este campo, 2026-08-11) — el backend la genera con IA al guardar si se
+  // manda vacía/ausente. Si ya tiene contenido y se guarda así, el backend
+  // NUNCA la sobrescribe (ni parcial ni totalmente), la respete el usuario
+  // o no la haya tocado. originalDescription es lo que vino sembrado desde
+  // el mapeo guardado (o "" si es nueva) — compararla contra description
+  // es cómo FieldMappingRow decide si mostrar "Editado" o "Generada".
+  description: string;
+  originalDescription: string;
 };
 
 const DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
@@ -120,7 +129,7 @@ function autoMapHeaders(headers: string[]): { periodColumn: string | null; field
       suffix++;
     }
     usedKeys.add(key);
-    fieldMappings[header] = { column: header, field_key: key, value_type: "number" };
+    fieldMappings[header] = { column: header, field_key: key, value_type: "number", description: "", originalDescription: "" };
   }
   return { periodColumn, fieldMappings };
 }
@@ -419,7 +428,14 @@ export default function GrowthTrackerSheets() {
             missing.push(fm.column);
             continue;
           }
-          seededMappings[fm.column] = { column: fm.column, field_key: fm.field_key, value_type: fm.value_type };
+          const seededDescription = fm.description ?? "";
+          seededMappings[fm.column] = {
+            column: fm.column,
+            field_key: fm.field_key,
+            value_type: fm.value_type,
+            description: seededDescription,
+            originalDescription: seededDescription,
+          };
         }
         setPeriodColumn(seededPeriod);
         setFieldMappings(seededMappings);
@@ -454,7 +470,7 @@ export default function GrowthTrackerSheets() {
         const next = { ...prev };
         for (const f of analysis.suggested_fields) {
           if (f.column === autoMapped!.periodColumn) continue;
-          next[f.column] = { column: f.column, field_key: f.field_key, value_type: f.value_type };
+          next[f.column] = { column: f.column, field_key: f.field_key, value_type: f.value_type, description: "", originalDescription: "" };
         }
         return next;
       });
@@ -610,6 +626,10 @@ export default function GrowthTrackerSheets() {
         column: m.column,
         field_key: m.field_key.trim(),
         value_type: m.value_type,
+        // Ausente cuando está vacía — así el backend la genera con IA. Si
+        // tiene contenido (el usuario la escribió o ya venía de un guardado
+        // anterior), se manda tal cual: el backend nunca la sobrescribe.
+        ...(m.description.trim() ? { description: m.description.trim() } : {}),
       }));
       const res = await fetch(SAVE_SHEET_MAPPING_URL, {
         method: "POST",
@@ -1421,41 +1441,84 @@ function FieldMappingRow({
   onRemove: () => void;
 }) {
   const used = !!mapping;
+  // "Editado": el usuario cambió el texto respecto a lo sembrado (generado
+  // por IA en un guardado anterior, o ya editado antes — el backend no
+  // distingue entre esos dos casos, así que acá tampoco). "Generada": tiene
+  // contenido y coincide con lo sembrado, sin tocar en esta sesión. Vacía:
+  // todavía no existe, se genera con IA al guardar.
+  const descriptionState =
+    used && mapping
+      ? mapping.description.trim() === ""
+        ? "empty"
+        : mapping.description !== mapping.originalDescription
+          ? "edited"
+          : "generated"
+      : "empty";
   return (
-    <div className="flex items-center gap-3 py-1.5 border-b border-border/50 last:border-0">
-      <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
-        <Checkbox
-          checked={used}
-          onCheckedChange={(c) => {
-            if (c === true) onChange({ column: header, field_key: slugifyFieldKey(header), value_type: "number" });
-            else onRemove();
-          }}
-          aria-label={`Usar la columna ${header}`}
-        />
-        <span className="text-sm font-mono truncate">{header}</span>
-      </label>
-      {used && mapping && (
-        <>
-          <Input
-            value={mapping.field_key}
-            onChange={(e) => onChange({ ...mapping, field_key: e.target.value })}
-            placeholder="nombre_del_campo"
-            aria-label={`Nombre del campo para la columna ${header}`}
-            className="h-8 text-xs font-mono w-40 shrink-0"
+    <div className="py-1.5 border-b border-border/50 last:border-0">
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+          <Checkbox
+            checked={used}
+            onCheckedChange={(c) => {
+              if (c === true)
+                onChange({
+                  column: header,
+                  field_key: slugifyFieldKey(header),
+                  value_type: "number",
+                  description: "",
+                  originalDescription: "",
+                });
+              else onRemove();
+            }}
+            aria-label={`Usar la columna ${header}`}
           />
-          <Select
-            value={mapping.value_type}
-            onValueChange={(v: "number" | "text") => onChange({ ...mapping, value_type: v })}
-          >
-            <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label={`Tipo de dato para ${header}`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="number">Número</SelectItem>
-              <SelectItem value="text">Texto</SelectItem>
-            </SelectContent>
-          </Select>
-        </>
+          <span className="text-sm font-mono truncate">{header}</span>
+        </label>
+        {used && mapping && (
+          <>
+            <Input
+              value={mapping.field_key}
+              onChange={(e) => onChange({ ...mapping, field_key: e.target.value })}
+              placeholder="nombre_del_campo"
+              aria-label={`Nombre del campo para la columna ${header}`}
+              className="h-8 text-xs font-mono w-40 shrink-0"
+            />
+            <Select
+              value={mapping.value_type}
+              onValueChange={(v: "number" | "text") => onChange({ ...mapping, value_type: v })}
+            >
+              <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label={`Tipo de dato para ${header}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="number">Número</SelectItem>
+                <SelectItem value="text">Texto</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        )}
+      </div>
+      {used && mapping && (
+        <div className="flex items-center gap-2 mt-1.5 pl-6">
+          <Input
+            value={mapping.description}
+            onChange={(e) => onChange({ ...mapping, description: e.target.value })}
+            placeholder="Qué significa este campo — se genera automáticamente al guardar si lo dejás vacío"
+            aria-label={`Descripción del campo para la columna ${header}`}
+            className="h-7 text-xs flex-1 min-w-0"
+          />
+          {descriptionState === "edited" && (
+            <Badge variant="secondary" className="shrink-0 text-[10px]">
+              Editado
+            </Badge>
+          )}
+          {descriptionState === "generated" && (
+            <Badge variant="outline" className="shrink-0 text-[10px] text-muted-foreground">
+              Generada
+            </Badge>
+          )}
+        </div>
       )}
     </div>
   );

@@ -11,6 +11,7 @@
 import { toast } from "sonner";
 import { API_BASE_URL } from "@/lib/apiConfig";
 import type { FormulaSyntaxEntry } from "@/lib/formulaEngine";
+import type { QuerySpec } from "@/lib/querySpec";
 
 export const PLATFORM_AGENT_URL = `${API_BASE_URL}/platform-agent`;
 export const ANALYZE_TRANSACTIONAL_SHEET_URL = `${API_BASE_URL}/analyze-transactional-sheet`;
@@ -49,8 +50,6 @@ export async function handleAiError(res: Response, fallback: string): Promise<tr
 // FUNCTION_SIGNATURES (formulaEngine.ts).
 export type { FormulaSyntaxEntry };
 
-export type ConversationTurn = { role: "user" | "assistant"; content: string };
-
 // ---- Platform Agent (POST /platform-agent) ----
 
 export type PlatformAgentSurface =
@@ -81,6 +80,12 @@ export type PlatformAgentMetricFields = Partial<{
   metric_type: "input" | "calculated";
   input_key: string;
   value_type: string;
+  // query reemplaza a formula_expression para métricas calculadas nuevas
+  // (cambio de contrato 2026-08-10) — ver src/lib/querySpec.ts.
+  // formula_expression queda como legacy: no se manda más desde el
+  // frontend, pero se deja el tipo por si el agente todavía lo devuelve en
+  // algún trace viejo (no se descarta silenciosamente, ver PlatformAgentPanel.tsx).
+  query: QuerySpec;
   formula_expression: string;
   unit: string;
   description: string;
@@ -94,7 +99,10 @@ export type PlatformAgentRequest = {
   surface: PlatformAgentSurface;
   uiContext: PlatformAgentUiContext;
   question?: string;
-  conversation_history?: ConversationTurn[];
+  // conversation_history YA NO SE MANDA (cambio de contrato 2026-08-10) —
+  // backend persiste el historial solo. reset_conversation:true arranca de
+  // cero (botón "Nueva conversación" en PlatformAgentPanel.tsx).
+  reset_conversation?: boolean;
   formula_syntax?: FormulaSyntaxEntry[];
   confirm_write?: boolean;
   // Solo para confirmar add-metric-to-report (tool nueva, pedida 2026-08-08,
@@ -128,7 +136,10 @@ export type PlatformAgentRequest = {
 // inspeccionar result.status. Se sigue leyendo de forma estructural en
 // PlatformAgentPanel.tsx (¿tiene proposed/proposed_metric? ¿tiene
 // report_id/metric_id?) en vez de matchear por nombre de tool, para no
-// depender de nombres internos.
+// depender de nombres internos. Desde el cambio de contrato 2026-08-10, el
+// objeto propuesto para una métrica calculada trae query (objeto), no
+// formula_expression (string) — PlatformAgentPanel.tsx lo detecta con
+// isQuerySpec y lo muestra vía QuerySummary, no como InfoRow de texto.
 export type ObservabilityTraceEntry = { tool: string; result: Record<string, unknown> };
 
 export type PlatformAgentResponse = {

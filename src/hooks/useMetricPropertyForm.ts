@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { handleMembershipError } from "@/lib/membership";
-import { toPeriodString } from "@/lib/metricPeriod";
-import { useRawFieldValues } from "@/hooks/useRawFieldValues";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   UPSERT_FINANCIAL_METRIC_DEFINITION_URL,
   DELETE_FINANCIAL_METRIC_DEFINITION_URL,
   type DeleteMetricDefinitionResponse,
 } from "@/lib/financialReports";
-import type { MetricDef, PeriodInputs, ValueType } from "@/lib/metrics";
+import { validateQuery, findRangeConflicts, type QuerySpec } from "@/lib/querySpec";
+import type { MetricDef, ValueType } from "@/lib/metrics";
 
 export type Draft = {
   name: string;
@@ -20,7 +18,12 @@ export type Draft = {
   metric_type: "input" | "calculated";
   input_key: string;
   value_type: ValueType;
-  formula: string;
+  // Reemplaza a formula (texto) — árbol estructurado, ver src/lib/querySpec.ts.
+  query: QuerySpec | null;
+  // Solo lectura — una métrica vieja que todavía no se editó con el query
+  // builder. Nunca se manda de vuelta al guardar; no hay conversión
+  // automática a query (mandato de backend, se reconstruye a mano).
+  legacyFormulaExpression: string | null;
 };
 
 const DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
@@ -53,7 +56,8 @@ function emptyDraft(defaultCategory: string): Draft {
     metric_type: "calculated",
     input_key: "",
     value_type: "count",
-    formula: "",
+    query: null,
+    legacyFormulaExpression: null,
   };
 }
 
@@ -67,7 +71,8 @@ function draftFromMetric(m: MetricDef): Draft {
     metric_type: m.metric_type,
     input_key: m.input_key ?? "",
     value_type: m.value_type ?? "count",
-    formula: m.formula_expression ?? "",
+    query: m.query,
+    legacyFormulaExpression: m.query ? null : m.formula_expression,
   };
 }
 
@@ -78,14 +83,13 @@ type Params = {
   allMetrics: MetricDef[];
   categories: { id: string; label: string }[];
   defaultCategory: string;
-  formulaHistory: PeriodInputs[];
   onSaved: (id: string, isNew: boolean) => void;
   onDeleted: () => void;
 };
 
-// Form state, draft-formula live-preview data, and the save/delete mutations
-// for MetricPropertyPanel — split out so the component itself stays a plain
-// presentational consumer of this hook.
+// Form state and the save/delete mutations for MetricPropertyPanel — split
+// out so the component itself stays a plain presentational consumer of
+// this hook.
 export function useMetricPropertyForm({
   metric,
   creating,
@@ -93,7 +97,6 @@ export function useMetricPropertyForm({
   allMetrics,
   categories,
   defaultCategory,
-  formulaHistory,
   onSaved,
   onDeleted,
 }: Params) {
@@ -110,28 +113,8 @@ export function useMetricPropertyForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedKey]);
 
-  // El período actual es siempre el último de formulaHistory (ver Metrics.tsx:
-  // "chronological, ending at the current period"). Se resuelve acá, sobre
-  // draft.formula (lo que se está tipeando, guardado o no), en vez de
-  // reusar los valores ya resueltos a nivel página (esos solo cubren
-  // fórmulas YA guardadas) — así la preview de un FIELDSUM/FIELDCOUNT recién
-  // escrito calcula sin tener que guardar primero.
-  const currentPeriod =
-    formulaHistory.length > 0
-      ? toPeriodString(formulaHistory[formulaHistory.length - 1].month, formulaHistory[formulaHistory.length - 1].year)
-      : null;
-  // Debounced so a formula preview doesn't fire a network request on every
-  // keystroke — FormulaField's own live preview (client-side, cheap) still
-  // updates instantly off draft.formula directly.
-  const debouncedFormula = useDebouncedValue(draft.formula, 400);
-  const { valuesByPeriod: draftRawFieldValuesByPeriod, loading: draftRawFieldValuesLoading } = useRawFieldValues(
-    companyId,
-    currentPeriod ? [currentPeriod] : [],
-    [debouncedFormula]
-  );
-  const draftRawFieldValues = currentPeriod ? draftRawFieldValuesByPeriod[currentPeriod] ?? {} : {};
-
   const setField = (key: string, value: string | boolean) => setDraft((prev) => ({ ...prev, [key]: value }));
+  const setQuery = (query: QuerySpec | null) => setDraft((prev) => ({ ...prev, query }));
 
   const handleSave = async () => {
     if (!companyId) return;
@@ -140,9 +123,19 @@ export function useMetricPropertyForm({
       toast.error("Nombre y categoría son obligatorios");
       return;
     }
-    if (draft.metric_type === "calculated" && !draft.formula.trim()) {
-      toast.error("La fórmula es obligatoria para una métrica calculada");
-      return;
+    if (draft.metric_type === "calculated") {
+      const issues = validateQuery(draft.query, { selfMetricId: metric?.id });
+      if (issues.length > 0) {
+        toast.error(issues[0].message);
+        return;
+      }
+      const conflicts = findRangeConflicts(draft.query);
+      if (conflicts.length > 0) {
+        toast.error(
+          `Filtros incompatibles (${conflicts[0].fields.join(", ")}): Firestore solo permite un campo de rango/desigualdad por consulta.`
+        );
+        return;
+      }
     }
     const inputKeySlug = slugify(draft.input_key);
     if (draft.metric_type === "input" && !inputKeySlug) {
@@ -183,7 +176,7 @@ export function useMetricPropertyForm({
       body.input_key = inputKeySlug;
       body.value_type = draft.value_type;
     } else {
-      body.formula_expression = draft.formula.trim();
+      body.query = draft.query;
     }
     if (draft.description.trim()) body.description = draft.description.trim();
     if (draft.why_it_matters.trim()) body.why_it_matters = draft.why_it_matters.trim();
@@ -252,6 +245,7 @@ export function useMetricPropertyForm({
   return {
     draft,
     setField,
+    setQuery,
     saving,
     confirmDelete,
     setConfirmDelete,
@@ -260,7 +254,5 @@ export function useMetricPropertyForm({
     deleting,
     handleSave,
     confirmDeleteMetric,
-    draftRawFieldValues,
-    draftRawFieldValuesLoading,
   };
 }
