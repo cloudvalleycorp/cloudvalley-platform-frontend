@@ -816,7 +816,7 @@ export default function GrowthTrackerSheets() {
           subtitle="Sincronizá tus métricas automáticamente desde una o más planillas, en vez de cargarlas a mano."
           action={
             !showWizard && !loadingAccounts && accounts.length > 0 ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 {anyConnections && (
                   <Button
                     variant="outline"
@@ -923,7 +923,7 @@ export default function GrowthTrackerSheets() {
                         const busy = syncBusyConnectionId === conn.connection_id;
                         return (
                           <div key={conn.connection_id} className="border border-border rounded-md p-3">
-                            <div className="flex items-start justify-between gap-3">
+                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="text-sm font-medium flex items-center gap-1.5 min-w-0">
                                   <FileSpreadsheet size={13} strokeWidth={1.5} className="text-muted-foreground shrink-0" />
@@ -1200,8 +1200,8 @@ export default function GrowthTrackerSheets() {
               >
                 {!loadingHeaders && headers.length > 0 && (
                   <p className="text-xs text-muted-foreground mb-3">
-                    Elegí qué columna marca el período. Para las demás, decidí cuáles traer y cómo se van a llamar —
-                    solo lectura de datos acá, nada de sumar ni filtrar: eso se define después con fórmulas en la
+                    Elegí qué columna marca el período. Para las demás, decidí cuáles traer y cómo se van a llamar:
+                    solo lectura de datos acá, nada de sumar ni filtrar, eso se define después con fórmulas en la
                     sección de Métricas (por ejemplo <code className="font-mono">FIELDSUM("monto")</code>).
                   </p>
                 )}
@@ -1354,7 +1354,7 @@ export default function GrowthTrackerSheets() {
         title="Quitar hoja conectada"
         description={
           confirmRemoveConnection
-            ? `Se deja de sincronizar "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}". Sus ${confirmRemoveConnection.field_mappings.length} campo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} crudo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} deja${confirmRemoveConnection.field_mappings.length === 1 ? "" : "n"} de estar disponibles — cualquier fórmula que los use (FIELDSUM, etc.) va a dejar de calcular hasta que mapees el campo de nuevo. No afecta la cuenta de Google ni tus otras conexiones.`
+            ? `Se deja de sincronizar "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}". Sus ${confirmRemoveConnection.field_mappings.length} campo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} crudo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} deja${confirmRemoveConnection.field_mappings.length === 1 ? "" : "n"} de estar disponibles: cualquier fórmula que los use (FIELDSUM, etc.) va a dejar de calcular hasta que mapees el campo de nuevo. No afecta la cuenta de Google ni tus otras conexiones.`
             : ""
         }
         confirmLabel="Quitar hoja"

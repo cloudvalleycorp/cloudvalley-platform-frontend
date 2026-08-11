@@ -264,7 +264,7 @@ export function MetricPropertyPanel({
                       <div className="space-y-3">
                         <div className="rounded-md border border-border bg-surface p-3">
                           <p className="text-xs text-muted-foreground mb-1">
-                            Fórmula anterior — de solo lectura, ya no se puede seguir editando en este formato.
+                            Fórmula anterior, de solo lectura: ya no se puede seguir editando en este formato.
                           </p>
                           <code className="block font-mono text-xs break-all">{draft.legacyFormulaExpression}</code>
                         </div>
@@ -272,7 +272,7 @@ export function MetricPropertyPanel({
                           Editar con el nuevo builder
                         </Button>
                         <p className="text-xs text-muted-foreground">
-                          No se convierte automáticamente — hay que reconstruirla desde cero.
+                          No se convierte automáticamente: hay que reconstruirla desde cero.
                         </p>
                       </div>
                     ) : (
