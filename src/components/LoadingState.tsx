@@ -16,10 +16,7 @@ export function LoadingState({
         role="status"
         className={cn("min-h-screen flex items-center justify-center", className)}
       >
-        <div className="flex flex-col items-center gap-3">
-          <Skeleton className="h-5 w-32" />
-          <Skeleton className="h-3 w-48" />
-        </div>
+        <img src="/logo.svg" alt="" className="h-10 w-10 animate-fade-in" />
         <span className="sr-only">{label}</span>
       </div>
     );

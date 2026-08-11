@@ -82,7 +82,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <div className="md:hidden">
                 <SidebarTrigger />
               </div>
-              <Link to="/" className="text-base font-medium tracking-tight text-foreground shrink-0">
+              <Link to="/" className="inline-flex items-center gap-2 text-base font-medium tracking-tight text-foreground shrink-0">
+                <img src="/logo.svg" alt="" className="h-6 w-6 shrink-0" />
                 CloudValley
               </Link>
               {orgLabel && (
