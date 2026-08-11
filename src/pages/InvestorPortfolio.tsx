@@ -131,7 +131,7 @@ function InvestorPortfolioContent({ companies }: { companies: { id: string; name
         pillars={pillars}
         defaultPillarId={pillars[0]?.id ?? ""}
         title="Agregar requisito para el portfolio"
-        description="Se suma al roadmap de las startups elegidas — no cuenta para su readiness score, que se calcula solo con el catálogo estándar."
+        description="Se suma al roadmap de las startups elegidas, no cuenta para su readiness score, que se calcula solo con el catálogo estándar."
         onSaved={() => {}}
         companies={companies}
       />

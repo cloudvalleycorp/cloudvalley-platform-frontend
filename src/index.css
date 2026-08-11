@@ -4,111 +4,166 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CloudValley Design System — Minimalist, Apple/Amie inspired
-   All colors MUST be HSL. */
+/* CloudValley Design System — Brand: coral (#FF6F6A) + teal (#2EC4B6) sobre
+   una base neutra fría (family 240°, "cool gray"). Todo color es HSL.
+   Fondo de página se mantiene blanco (decisión explícita 2026-08-11) — el
+   family Neutral 50 se usa para superficies recesadas (hover, headers de
+   tabla, sidebar), no para el body.
+   Pares de contraste verificados con la fórmula WCAG (relative luminance),
+   no a ojo — ver notas por token. Texto blanco sobre Primary (#FF6F6A) da
+   ~2.72:1, sobre Success (#34C759) ~2.22:1 y sobre Secondary/teal (#2EC4B6)
+   ~2.17:1 — los tres por debajo de AA (4.5:1) e incluso del piso de 3:1
+   para componentes UI grandes, confirmado en vivo (texto "Agregar" apenas
+   legible sobre el coral base). Sin tocar ningún HEX de marca: se usa texto
+   Neutral 900 en vez de blanco sobre estos fondos saturados (~6.3-7.9:1),
+   la misma variación que el dark mode ya usaba para estos mismos tokens
+   ("variaciones calculadas... necesarias para accesibilidad", autorizado
+   explícitamente). Destructive (#FF3B30, ~3.55:1 con blanco) se alinea al
+   mismo criterio por consistencia entre los cuatro colores sólidos de
+   botón/badge — con Neutral 900 da ~4.81:1. */
 
 @layer base {
   :root {
-    /* Surfaces */
-    --background: 0 0% 100%;          /* #FFFFFF pure white */
-    --surface: 60 9% 98%;             /* #F9F9F8 subtle surface */
-    --foreground: 0 0% 4%;            /* #0A0A0A primary text */
+    /* Surfaces — fondo de página blanco a propósito, Neutral 50 para
+       superficies recesadas (hover de fila/sidebar, headers de tabla). */
+    --background: 0 0% 100%;           /* #FFFFFF */
+    --surface: 240 18% 97%;            /* Neutral 50 #F5F5F8 */
+    --foreground: 240 28% 14%;         /* Neutral 900 #1A1A2E */
 
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 4%;
+    --card: 0 0% 100%;                 /* #FFFFFF */
+    --card-foreground: 240 28% 14%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 4%;
+    --popover-foreground: 240 28% 14%;
 
-    /* Single accent: black */
-    --primary: 0 0% 4%;
-    --primary-foreground: 0 0% 100%;
+    /* Primary = marca/acción — Coral. Texto Neutral 900 en vez de blanco:
+       ~6.3:1 vs ~2.72:1 (ver nota de archivo), mismo patrón que dark mode. */
+    --primary: 2 100% 71%;             /* #FF6F6A */
+    --primary-foreground: 240 28% 14%;
 
-    --secondary: 60 9% 98%;
-    --secondary-foreground: 0 0% 4%;
+    /* Secondary queda NEUTRO a propósito — es un token estructural de
+       shadcn (track de slider/progress, hover del botón cerrar de Sheet,
+       badges genéricos), no el "Secondary" de marca del brief (ese es
+       teal, ver --teal-* más abajo). Pintarlo turquesa habría teñido de
+       celeste elementos que no son acentos de marca. */
+    --secondary: 240 15% 92%;          /* Neutral 100 #E8E8EE */
+    --secondary-foreground: 240 17% 29%; /* Neutral 700 #3D3D56 */
 
-    --muted: 60 9% 98%;
-    --muted-foreground: 0 0% 42%;     /* #6B6B6B */
+    --muted: 240 18% 97%;              /* Neutral 50, mismo que surface */
+    --muted-foreground: 240 9% 46%;    /* Neutral 500 #6B6B80 — 5.2:1 vs blanco */
 
-    --tertiary: 0 0% 56%;              /* WCAG: ~3.2:1 vs background */
+    --tertiary: 240 7% 58%;            /* Calculado (no es un stop del brief): ~3.3:1 vs blanco, entre Neutral 500 y 300 — Neutral 300 solo da 2.1:1, muy débil para texto que todavía necesita leerse (ver CLAUDE.md: "usar con moderación"). */
 
-    --accent: 60 9% 96%;
-    --accent-foreground: 0 0% 4%;
+    /* Accent = hover genérico de botones outline/ghost/dropdown — se usa en
+       TODA la app, así que queda neutro (no coral) para no saturar cada
+       hover de color de marca. El coral en hover queda reservado a
+       sidebar-accent, un solo lugar por página. */
+    --accent: 240 18% 97%;             /* Neutral 50 */
+    --accent-foreground: 240 28% 14%;  /* Neutral 900 */
 
-    --destructive: 0 60% 50%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 3 100% 59%;         /* Error #FF3B30 */
+    --destructive-foreground: 240 28% 14%; /* Neutral 900: ~4.81:1 vs ~3.55:1 con blanco */
 
-    --success: 142 45% 32%;
-    --success-foreground: 0 0% 100%;
+    --success: 135 59% 49%;            /* #34C759 */
+    --success-foreground: 240 28% 14%; /* Neutral 900: ~7.69:1 vs ~2.22:1 con blanco */
 
-    --warning: 38 92% 42%;
-    --warning-foreground: 0 0% 4%;    /* WCAG: dark text, ~6.8:1 vs warning */
+    --warning: 39 100% 59%;            /* #FFB830 */
+    --warning-foreground: 240 28% 14%; /* texto oscuro, el amarillo no da contraste suficiente con blanco */
 
-    --border: 60 6% 91%;              /* #E8E8E6 subtle border */
-    --input: 60 6% 91%;
-    --ring: 0 0% 4%;
+    --border: 240 15% 92%;             /* Neutral 100 #E8E8EE */
+    --input: 240 15% 92%;
+    /* Ring = Primary Dark, no Primary base — el foco necesita ser bien
+       visible y Primary Dark da ~3.8:1 vs Primary's ~2.7:1. */
+    --ring: 2 70% 59%;                 /* Primary Dark #E0524D */
 
-    --radius: 0.75rem;                /* 12px cards */
+    --radius: 0.75rem;
 
-    /* Sidebar — same minimal palette */
-    --sidebar-background: 60 9% 98%;
-    --sidebar-foreground: 0 0% 4%;
-    --sidebar-primary: 0 0% 4%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 88%;        /* light gray for active nav item */
-    --sidebar-accent-foreground: 0 0% 4%;
-    --sidebar-border: 60 6% 91%;
-    --sidebar-ring: 0 0% 4%;
+    /* Sidebar — fondo blanco, activo con wash coral sutil (spec sección 11) */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 240 17% 29%; /* Neutral 700 */
+    --sidebar-primary: 2 100% 71%;     /* Coral */
+    --sidebar-primary-foreground: 240 28% 14%;
+    --sidebar-accent: 6 100% 97%;      /* Primary Subtle #FFF0EF — item activo */
+    --sidebar-accent-foreground: 2 70% 59%; /* Primary Dark — ~3.46:1 vs Primary Subtle */
+    --sidebar-border: 240 15% 92%;
+    --sidebar-ring: 2 70% 59%;
+
+    /* Variaciones de marca — disponibles para usos puntuales (tags, pills,
+       backgrounds destacados, badges) que necesiten un tinte de marca sin
+       ser el botón principal. Ver CLAUDE.md sección "Primary variations". */
+    --primary-dark: 2 70% 59%;         /* #E0524D */
+    --primary-light: 2 100% 80%;       /* #FF9E9B */
+    --primary-lighter: 1 100% 91%;     /* #FFD4D3 */
+    --primary-subtle: 6 100% 97%;      /* #FFF0EF */
+
+    --teal: 174 62% 47%;               /* #2EC4B6 */
+    --teal-foreground: 240 28% 14%;    /* Neutral 900: ~7.87:1 vs ~2.17:1 con blanco */
+    --teal-dark: 175 72% 36%;          /* #1A9E92 */
+    --teal-light: 174 59% 68%;         /* #7DDDD3 */
+    --teal-subtle: 175 59% 92%;        /* #E0F7F5 */
   }
 
   .dark {
-    /* Surfaces */
-    --background: 0 0% 7%;
-    --surface: 0 0% 10%;
-    --foreground: 0 0% 95%;
+    /* Neutros oscuros con el mismo family frío (240°) que el light mode —
+       los colores de marca/semánticos se mantienen reconocibles, solo se
+       suben unos puntos de luminosidad para que sigan destacando sobre
+       fondo oscuro (mismo criterio que ya usaba este archivo). */
+    --background: 240 15% 8%;
+    --surface: 240 12% 12%;
+    --foreground: 240 20% 95%;
 
-    --card: 0 0% 9%;
-    --card-foreground: 0 0% 95%;
+    --card: 240 13% 11%;
+    --card-foreground: 240 20% 95%;
 
-    --popover: 0 0% 9%;
-    --popover-foreground: 0 0% 95%;
+    --popover: 240 13% 11%;
+    --popover-foreground: 240 20% 95%;
 
-    /* Single accent inverted: near-white on dark */
-    --primary: 0 0% 95%;
-    --primary-foreground: 0 0% 9%;
+    --primary: 2 100% 74%;
+    --primary-foreground: 240 28% 10%;
 
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 95%;
+    --secondary: 240 12% 18%;
+    --secondary-foreground: 240 15% 90%;
 
-    --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 63%;
+    --muted: 240 12% 14%;
+    --muted-foreground: 240 10% 65%;
 
-    --tertiary: 0 0% 50%;              /* WCAG: ~4.5:1 vs background */
+    --tertiary: 240 8% 50%;
 
-    --accent: 0 0% 16%;
-    --accent-foreground: 0 0% 95%;
+    --accent: 240 12% 16%;
+    --accent-foreground: 240 15% 92%;
 
-    --destructive: 0 62% 55%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 3 90% 64%;
+    --destructive-foreground: 240 28% 10%;
 
-    --success: 142 45% 45%;
-    --success-foreground: 0 0% 9%;
+    --success: 135 55% 52%;
+    --success-foreground: 240 28% 10%;
 
-    --warning: 38 80% 55%;
-    --warning-foreground: 0 0% 9%;
+    --warning: 39 90% 60%;
+    --warning-foreground: 240 28% 10%;
 
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 0 0% 80%;
+    --border: 240 12% 20%;
+    --input: 240 12% 20%;
+    --ring: 2 75% 66%;
 
-    --sidebar-background: 0 0% 9%;
-    --sidebar-foreground: 0 0% 90%;
-    --sidebar-primary: 0 0% 95%;
-    --sidebar-primary-foreground: 0 0% 9%;
-    --sidebar-accent: 0 0% 18%;
-    --sidebar-accent-foreground: 0 0% 95%;
-    --sidebar-border: 0 0% 16%;
-    --sidebar-ring: 0 0% 80%;
+    --sidebar-background: 240 13% 10%;
+    --sidebar-foreground: 240 15% 85%;
+    --sidebar-primary: 2 100% 74%;
+    --sidebar-primary-foreground: 240 28% 10%;
+    --sidebar-accent: 2 40% 18%;
+    --sidebar-accent-foreground: 2 90% 78%;
+    --sidebar-border: 240 12% 20%;
+    --sidebar-ring: 2 75% 66%;
+
+    --primary-dark: 2 75% 65%;
+    --primary-light: 2 90% 55%;
+    --primary-lighter: 2 60% 30%;
+    --primary-subtle: 2 40% 16%;
+
+    --teal: 174 62% 52%;
+    --teal-foreground: 240 28% 10%;
+    --teal-dark: 174 65% 60%;
+    --teal-light: 174 50% 40%;
+    --teal-subtle: 174 40% 14%;
   }
 }
 

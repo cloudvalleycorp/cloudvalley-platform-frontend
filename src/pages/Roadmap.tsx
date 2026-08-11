@@ -90,7 +90,7 @@ export default function Roadmap() {
           pillars={pillars}
           defaultPillarId={pillars[0].id}
           title="Agregar tarea propia"
-          description="Solo la ves vos (y CloudValley) — no cuenta para el readiness score, que se calcula solo con el catálogo estándar."
+          description="Solo la ves vos (y CloudValley), no cuenta para el readiness score, que se calcula solo con el catálogo estándar."
           onSaved={reload}
         />
       )}

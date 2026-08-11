@@ -106,22 +106,22 @@ export const FUNCTION_SIGNATURES: Record<string, FunctionSignature> = {
   FIELDSUM: {
     params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
     description:
-      'Suma un campo crudo de una integración sobre el período actual. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo — varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDSUM("monto", "evento", "New,Renewal") suma "monto" donde "evento" es "New" o "Renewal".',
+      'Suma un campo crudo de una integración sobre el período actual. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo: varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDSUM("monto", "evento", "New,Renewal") suma "monto" donde "evento" es "New" o "Renewal".',
   },
   FIELDCOUNT: {
     params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
     description:
-      'Cuenta filas del período actual donde el campo tiene valor. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo — varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDCOUNT("customer_id", "type", "New") cuenta filas donde "type" es "New".',
+      'Cuenta filas del período actual donde el campo tiene valor. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo: varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDCOUNT("customer_id", "type", "New") cuenta filas donde "type" es "New".',
   },
   FIELDCOUNTD: {
     params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
     description:
-      'Cuenta valores únicos de un campo crudo en el período actual. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo — varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDCOUNTD("customer_id", "type", "New,Renewal") cuenta clientes únicos donde "type" es "New" o "Renewal".',
+      'Cuenta valores únicos de un campo crudo en el período actual. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo: varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDCOUNTD("customer_id", "type", "New,Renewal") cuenta clientes únicos donde "type" es "New" o "Renewal".',
   },
   FIELDAVG: {
     params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
     description:
-      'Promedia un campo crudo sobre el período actual. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo — varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDAVG("monto", "evento", "New,Renewal") promedia "monto" donde "evento" es "New" o "Renewal".',
+      'Promedia un campo crudo sobre el período actual. Para filtrar, agregá pares ("campo_filtro", "valor1,valor2") después del campo: varios valores separados por coma dentro de un par = OR, varios pares seguidos = AND entre pares. Ej: FIELDAVG("monto", "evento", "New,Renewal") promedia "monto" donde "evento" es "New" o "Renewal".',
   },
 };
 
