@@ -23,7 +23,7 @@ import { type MetricDef, type RawField, sourceLabel } from "@/lib/metrics";
 import { evalFormula, FORMULA_SYNTAX } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
 import { RAW_INPUT_KEYS } from "@/lib/financialReports";
-import { LIST_RAW_FIELDS_URL } from "@/lib/sheetsIntegration";
+import { LIST_RAW_FIELDS_URL, LIST_SHEET_CONNECTIONS_URL, type SheetConnection } from "@/lib/sheetsIntegration";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { handleMembershipError } from "@/lib/membership";
@@ -144,18 +144,32 @@ export default function Metrics() {
   // Campos crudos de integraciones (Sheets, a futuro Stripe) — para el
   // autocomplete de fórmulas (FormulaField) y para saber qué queries
   // resolver (una fórmula puede usar FIELDSUM/etc. sin que ese campo
-  // aparezca en ningún otro lado de la company).
+  // aparezca en ningún otro lado de la company). Se cruza con
+  // list-sheet-connections para poder mostrar de qué planilla/hoja viene
+  // cada campo — dos conexiones pueden tener una columna con el mismo
+  // nombre visible ("Monto") mapeada a cosas distintas, y sin este cruce no
+  // hay forma de distinguirlas al armar una consulta.
   const [rawFields, setRawFields] = useState<RawField[]>([]);
   useEffect(() => {
     if (!company_id) return;
     (async () => {
       try {
-        const res = await fetch(`${LIST_RAW_FIELDS_URL}?company_id=${encodeURIComponent(company_id)}`, {
-          credentials: "include",
-        });
-        if (await handleMembershipError(res)) return;
-        const data = await res.json();
-        setRawFields(Array.isArray(data?.fields) ? data.fields : []);
+        const qs = `?company_id=${encodeURIComponent(company_id)}`;
+        const [fieldsRes, connectionsRes] = await Promise.all([
+          fetch(`${LIST_RAW_FIELDS_URL}${qs}`, { credentials: "include" }),
+          fetch(`${LIST_SHEET_CONNECTIONS_URL}${qs}`, { credentials: "include" }),
+        ]);
+        if (await handleMembershipError(fieldsRes)) return;
+        const fieldsData = await fieldsRes.json();
+        const fields: Omit<RawField, "connection_label">[] = Array.isArray(fieldsData?.fields) ? fieldsData.fields : [];
+
+        const connectionLabelById: Record<string, string> = {};
+        if (connectionsRes.ok) {
+          const connectionsData = await connectionsRes.json();
+          const connections: SheetConnection[] = Array.isArray(connectionsData?.connections) ? connectionsData.connections : [];
+          for (const c of connections) connectionLabelById[c.connection_id] = `${c.spreadsheet_name} · ${c.sheet_name}`;
+        }
+        setRawFields(fields.map((f) => ({ ...f, connection_label: connectionLabelById[f.connection_id] ?? null })));
       } catch {
         // silencioso: el editor de fórmulas simplemente no sugiere campos crudos
       }

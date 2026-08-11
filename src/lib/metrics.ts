@@ -93,6 +93,13 @@ export type RawField = {
   // mapeos guardados antes de este campo (2026-08-11) hasta que se
   // vuelvan a guardar. Mostrar sin tooltip cuando es null, no como error.
   description: string | null;
+  // "Nombre de planilla · nombre de hoja" de la conexión dueña de este
+  // campo — lo arma el caller (list-raw-fields no lo manda) cruzando con
+  // list-sheet-connections. Dos conexiones distintas pueden mapear una
+  // columna con el mismo nombre visible ("Monto") a field_keys iguales o
+  // parecidos — sin esto, el query builder no tiene cómo distinguirlas.
+  // null mientras las conexiones todavía no cargaron.
+  connection_label: string | null;
 };
 
 export type InputsMap = Record<string, number>; // input_key -> value
