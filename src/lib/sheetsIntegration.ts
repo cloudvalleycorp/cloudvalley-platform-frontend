@@ -55,6 +55,22 @@ export type FieldMapping = {
   column: string;
   field_key: string;
   value_type: "number" | "text";
+  // Generada por IA a partir de una muestra de la columna, o editada a mano
+  // por el founder (ver SaveSheetMappingResponse) — nunca se sobrescribe una
+  // que ya llegó con contenido, ni parcial ni totalmente. Ausente/vacía en
+  // el request → el backend la genera; si falla (modelo caído, rate limit)
+  // el mapeo se guarda igual, queda null hasta el próximo guardado.
+  description?: string | null;
+};
+
+// save-sheet-mapping ahora también devuelve field_mappings (antes solo
+// {success, connection_id}) — cada uno con su description ya resuelta
+// (generada o la que mandó el founder), para poder mostrarla sin un
+// segundo request. 2026-08-11.
+export type SaveSheetMappingResponse = {
+  success: boolean;
+  connection_id: string;
+  field_mappings: FieldMapping[];
 };
 
 // One spreadsheet+sheet mapped to raw fields, belonging to one Google

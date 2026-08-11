@@ -9,16 +9,10 @@ import { FormActions } from "@/components/FormActions";
 import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PropertyField, type PropertyFieldDef } from "@/components/metrics/PropertyField";
-import { FormulaField } from "@/components/metrics/FormulaField";
+import { QueryBuilder } from "@/components/metrics/query-builder/QueryBuilder";
 import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
-import {
-  type MetricDef,
-  type InputsMap,
-  type PeriodInputs,
-  type RawField,
-  sourceLabel,
-  sourceSettingsPath,
-} from "@/lib/metrics";
+import { type MetricDef, type RawField, sourceLabel, sourceSettingsPath } from "@/lib/metrics";
+import { blankAggregationNode } from "@/lib/querySpec";
 import { useMetricPropertyForm, type Draft } from "@/hooks/useMetricPropertyForm";
 
 type Props = {
@@ -31,15 +25,8 @@ type Props = {
   categories: { id: string; label: string }[];
   inputKeySuggestions: string[];
   defaultCategory: string;
-  currentInputs: InputsMap;
-  formulaHistory: PeriodInputs[];
-  // Campos crudos de integraciones disponibles, para el autocomplete de
-  // FormulaField ("Campos crudos" en el picker) — ver useRawFieldValues.
-  // Los VALORES resueltos (para la preview en vivo) el panel los pide él
-  // mismo más abajo, a partir de la fórmula que se está tipeando ahora
-  // mismo (draft.formula), no de las fórmulas ya guardadas — si no, la
-  // preview de un FIELDSUM/FIELDCOUNT recién escrito siempre da "sin datos"
-  // hasta guardar y volver a abrir el panel.
+  // Campos crudos de integraciones disponibles, para los pickers del query
+  // builder ("Campo" en un nodo de agregación).
   rawFields?: RawField[];
   privacy: Record<string, boolean>;
   onTogglePrivacy: (metricId: string, next: boolean) => Promise<void>;
@@ -72,8 +59,6 @@ export function MetricPropertyPanel({
   categories,
   inputKeySuggestions,
   defaultCategory,
-  currentInputs,
-  formulaHistory,
   rawFields = [],
   privacy,
   onTogglePrivacy,
@@ -87,6 +72,7 @@ export function MetricPropertyPanel({
   const {
     draft,
     setField,
+    setQuery,
     saving,
     confirmDelete,
     setConfirmDelete,
@@ -95,8 +81,6 @@ export function MetricPropertyPanel({
     deleting,
     handleSave,
     confirmDeleteMetric,
-    draftRawFieldValues,
-    draftRawFieldValuesLoading,
   } = useMetricPropertyForm({
     metric,
     creating,
@@ -104,7 +88,6 @@ export function MetricPropertyPanel({
     allMetrics,
     categories,
     defaultCategory,
-    formulaHistory,
     onSaved,
     onDeleted,
   });
@@ -118,6 +101,13 @@ export function MetricPropertyPanel({
   const reusableCalcDefs = useMemo(
     () => allCalcDefs.filter((m) => m.id !== metric?.id),
     [allCalcDefs, metric?.id]
+  );
+  // metric_ref referencia cualquier métrica (input o calculada) por su
+  // metric_id — a diferencia del viejo formula_expression, donde un campo
+  // input se usaba por su input_key suelto en el texto.
+  const metricOptions = useMemo(
+    () => [...reusableCalcDefs, ...allInputDefs].map((m) => ({ id: m.id, name: m.name, unit: m.unit })),
+    [reusableCalcDefs, allInputDefs]
   );
 
   const generalFields: PropertyFieldDef[] = [
@@ -268,20 +258,26 @@ export function MetricPropertyPanel({
 
               {draft.metric_type === "calculated" && (
                 <AccordionItem value="formula">
-                  <AccordionTrigger>Fórmula</AccordionTrigger>
+                  <AccordionTrigger>Consulta</AccordionTrigger>
                   <AccordionContent>
-                    <FormulaField
-                      value={draft.formula}
-                      onChange={(v) => setField("formula", v)}
-                      unit={draft.unit.trim() || null}
-                      inputDefs={allInputDefs}
-                      calcDefs={reusableCalcDefs}
-                      currentInputs={currentInputs}
-                      formulaHistory={formulaHistory}
-                      rawFields={rawFields}
-                      rawFieldValues={draftRawFieldValues}
-                      rawFieldValuesLoading={draftRawFieldValuesLoading}
-                    />
+                    {!draft.query && draft.legacyFormulaExpression ? (
+                      <div className="space-y-3">
+                        <div className="rounded-md border border-border bg-surface p-3">
+                          <p className="text-xs text-muted-foreground mb-1">
+                            Fórmula anterior — de solo lectura, ya no se puede seguir editando en este formato.
+                          </p>
+                          <code className="block font-mono text-xs break-all">{draft.legacyFormulaExpression}</code>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setQuery(blankAggregationNode())}>
+                          Editar con el nuevo builder
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          No se convierte automáticamente — hay que reconstruirla desde cero.
+                        </p>
+                      </div>
+                    ) : (
+                      <QueryBuilder value={draft.query} onChange={setQuery} rawFields={rawFields} metricOptions={metricOptions} />
+                    )}
                   </AccordionContent>
                 </AccordionItem>
               )}
@@ -384,7 +380,7 @@ export function MetricPropertyPanel({
           metric_type: draft.metric_type,
           input_key: draft.input_key,
           value_type: draft.value_type,
-          formula_expression: draft.formula,
+          ...(draft.query ? { query: draft.query } : {}),
           unit: draft.unit,
           description: draft.description,
           why_it_matters: draft.why_it_matters,

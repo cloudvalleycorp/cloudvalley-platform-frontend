@@ -8,6 +8,7 @@ import type { MetricDef, InputsMap } from "@/lib/metrics";
 import { formatMetricValue, formatValueByType, sourceLabel, sourceSettingsPath } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { toPeriodString } from "@/lib/metricPeriod";
+import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -32,6 +33,10 @@ type Props = {
   // columna del año. Sin esto, esas fórmulas dan "—" en todo el grid (no
   // rompen, simplemente no tienen con qué calcular).
   rawFieldValuesByPeriod?: Record<string, Record<string, number | null>>;
+  // Necesario para pedir los valores de las métricas query-based vía
+  // evaluate-metrics (ver useEvaluatedMetrics) — las 12 columnas del año en
+  // un solo request (el máximo permitido por el backend es 12 períodos).
+  companyId: string | null;
 };
 
 const k = (y: number, m: number) => `${y}-${m}`;
@@ -49,6 +54,7 @@ export function AnnualGrid({
   onTogglePrivacy,
   onInfo,
   rawFieldValuesByPeriod = {},
+  companyId,
 }: Props) {
   // pending edits keyed `metric_id|month` -> raw string
   const [pending, setPending] = useState<Record<string, string>>({});
@@ -166,6 +172,19 @@ export function AnnualGrid({
     };
   };
 
+  // Métricas query-based (sin formula_expression) — el cálculo lo hace el
+  // backend, se piden los 12 meses del año en un solo request de
+  // evaluate-metrics (justo el máximo permitido).
+  const queryCalcIds = useMemo(
+    () => calcDefs.filter((d) => d.query && !d.formula_expression).map((d) => d.id),
+    [calcDefs]
+  );
+  const { values: evaluatedValues } = useEvaluatedMetrics(
+    companyId,
+    queryCalcIds,
+    queryCalcIds.length > 0 ? { period_from: toPeriodString(1, year), period_to: toPeriodString(12, year) } : null
+  );
+
   // Precomputed once per relevant-state change instead of re-running
   // calcDefs.length × 12 evalFormula calls on every render (e.g. every
   // keystroke while editing an unrelated input cell, since `draft` is local
@@ -176,15 +195,23 @@ export function AnnualGrid({
     for (const def of calcDefs) {
       const row: (number | null)[] = [];
       for (let month = 1; month <= 12; month++) {
+        if (!def.formula_expression) {
+          // Query-based (cambio de contrato 2026-08-10) — leído de
+          // evaluate-metrics en vez de evaluado acá. Sin dato para ese mes
+          // (o metric_id todavía sin pedir) renderiza "—", igual que un mes
+          // sin cargar.
+          row.push(evaluatedValues[def.id]?.[toPeriodString(month, year)] ?? null);
+          continue;
+        }
         const inputs = inputsForMonth(month);
         const rawFieldValues = rawFieldValuesByPeriod[toPeriodString(month, year)] ?? {};
-        row.push(evalFormula(def.formula_expression!, inputs, [], allCalcDefs, rawFieldValues));
+        row.push(evalFormula(def.formula_expression, inputs, [], allCalcDefs, rawFieldValues));
       }
       table[def.id] = row;
     }
     return table;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calcDefs, allCalcDefs, allInputDefs, entries, pending, year, rawFieldValuesByPeriod]);
+  }, [calcDefs, allCalcDefs, allInputDefs, entries, pending, year, rawFieldValuesByPeriod, evaluatedValues]);
 
   const pendingCount = Object.keys(pending).length;
 

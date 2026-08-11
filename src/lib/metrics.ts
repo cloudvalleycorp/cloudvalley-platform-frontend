@@ -3,6 +3,7 @@
 // real vive en backend (list-metrics/upsert-metric-definition, ver
 // lib/financialData.ts); esto es la forma en que el frontend lo entiende.
 import type { FinancialMetricDef } from "@/lib/financialData";
+import { isQuerySpec, type QuerySpec } from "@/lib/querySpec";
 
 export type MetricType = "input" | "calculated";
 // "text" cubre el caso borde de una métrica que muestra directamente un
@@ -33,7 +34,13 @@ export type MetricDef = {
   // Qué conexión (de posiblemente varias) es responsable — solo se usaba
   // cuando source !== null. Ver nota arriba.
   source_connection_id: string | null;
+  // Legacy (texto libre) — ver query abajo. Coexisten: una métrica sin
+  // editar con el query builder todavía tiene esto, no query.
   formula_expression: string | null;
+  // Árbol estructurado que reemplaza a formula_expression para métricas
+  // calculadas nuevas — ver src/lib/querySpec.ts. null en métricas viejas
+  // sin editar o en métricas de tipo "input".
+  query: QuerySpec | null;
   unit: string | null;
   formula: string | null;
   description: string | null;
@@ -81,6 +88,11 @@ export type RawField = {
   value_type: "number" | "text";
   connection_id: string;
   sample_column: string;
+  // Generada por IA a partir de una muestra de la columna, o editada a mano
+  // por el founder al guardar el mapeo (ver save-sheet-mapping) — null en
+  // mapeos guardados antes de este campo (2026-08-11) hasta que se
+  // vuelvan a guardar. Mostrar sin tooltip cuando es null, no como error.
+  description: string | null;
 };
 
 export type InputsMap = Record<string, number>; // input_key -> value
@@ -114,6 +126,7 @@ export function toMetricDef(d: FinancialMetricDef): MetricDef {
     source: d.source ?? null,
     source_connection_id: d.source_connection_id ?? null,
     formula_expression: d.formula_expression,
+    query: isQuerySpec(d.query) ? d.query : null,
     unit: d.unit,
     formula: d.formula_expression,
     description: d.description ?? null,

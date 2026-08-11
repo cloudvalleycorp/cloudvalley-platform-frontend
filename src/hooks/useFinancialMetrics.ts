@@ -37,7 +37,10 @@ async function fetchFinancialData(companyId: string, range: PeriodRange): Promis
     const data = await defsRes.json();
     defs = Array.isArray(data?.metrics) ? data.metrics : [];
   }
-  const mapped = defs.map(toMetricDef);
+  // list-metrics no filtra las métricas soft-deleted (active: false) — bug
+  // de backend reportado 2026-08-09, se filtra acá para que "Eliminar" no
+  // deje la métrica visible en ningún lado.
+  const mapped = defs.filter((d) => d.active !== false).map(toMetricDef);
 
   let entries: Record<string, Record<string, number>> = {};
   if (recordsRes.ok) {

@@ -6,20 +6,21 @@ import {
   type PlatformAgentSurface,
   type PlatformAgentUiContext,
   type PlatformAgentMetricFields,
-  type ConversationTurn,
   type FormulaSyntaxEntry,
   type PlatformAgentResponse,
 } from "@/lib/aiInsights";
 
 export type AskOptions = {
   uiContext: PlatformAgentUiContext;
-  conversationHistory?: ConversationTurn[];
   formulaSyntax?: FormulaSyntaxEntry[];
   confirmWrite?: boolean;
   metricFields?: PlatformAgentMetricFields;
   // Solo para confirmar add-metric-to-report — el reporte YA existente al
   // que se agrega la métrica (uiContext.selectedReportId en report_editor).
   reportId?: string;
+  // "Nueva conversación" — backend persiste el historial solo (cambio de
+  // contrato 2026-08-10), esto le pide arrancar de cero.
+  resetConversation?: boolean;
 };
 
 /**
@@ -46,11 +47,7 @@ export function usePlatformAgent(companyId: string | null, surface: PlatformAgen
           surface,
           uiContext: opts.uiContext,
           ...(question.trim() ? { question: question.trim() } : {}),
-          // Recortado a los últimos 20 acá, no solo confiado al caller — el
-          // límite lo impone el backend (400 si se pasa).
-          ...(opts.conversationHistory && opts.conversationHistory.length > 0
-            ? { conversation_history: opts.conversationHistory.slice(-20) }
-            : {}),
+          ...(opts.resetConversation ? { reset_conversation: true } : {}),
           ...(opts.formulaSyntax ? { formula_syntax: opts.formulaSyntax } : {}),
           ...(opts.confirmWrite ? { confirm_write: true } : {}),
           ...(opts.reportId ? { report_id: opts.reportId } : {}),

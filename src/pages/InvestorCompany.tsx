@@ -270,6 +270,8 @@ export default function InvestorCompany() {
                         calcDefs={allCalcDefs}
                         rawFieldValues={rawFieldValuesByPeriod[toPeriodString(period.month, period.year)] ?? {}}
                         prevRawFieldValues={rawFieldValuesByPeriod[toPeriodString(prev.m, prev.y)] ?? {}}
+                        companyId={company_id ?? null}
+                        period={period}
                         onInfo={setOpenInfo}
                       />
                     ))}

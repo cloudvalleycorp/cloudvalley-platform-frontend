@@ -395,6 +395,7 @@ export default function Metrics() {
                   onTogglePrivacy={is_owner ? financial.togglePrivacy : undefined}
                   onInfo={setOpenInfo}
                   rawFieldValuesByPeriod={rawFieldValuesByPeriod}
+                  companyId={company_id}
                 />
               )
             ) : (
@@ -421,6 +422,8 @@ export default function Metrics() {
                     calcDefs={allCalcDefs}
                     rawFieldValues={rawFieldValuesByPeriod[toPeriodString(period.month, period.year)] ?? {}}
                     prevRawFieldValues={rawFieldValuesByPeriod[toPeriodString(prev.m, prev.y)] ?? {}}
+                    companyId={company_id}
+                    period={period}
                     onInfo={setOpenInfo}
                     privacy={financial.privacy}
                     onTogglePrivacy={is_owner ? financial.togglePrivacy : undefined}
@@ -504,8 +507,6 @@ export default function Metrics() {
           categories={financialCategoryTabs}
           inputKeySuggestions={inputKeySuggestions}
           defaultCategory={activeCat}
-          currentInputs={currentInputs}
-          formulaHistory={formulaHistory}
           rawFields={rawFields}
           privacy={financial.privacy}
           onTogglePrivacy={financial.togglePrivacy}
