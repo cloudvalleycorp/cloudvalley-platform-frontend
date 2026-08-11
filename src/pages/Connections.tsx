@@ -287,7 +287,7 @@ export default function Connections() {
                 </h3>
                 <div className="space-y-2">
                   {received.map((c) => (
-                    <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex items-start justify-between gap-4">
+                    <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
                           <CounterpartIcon size={16} strokeWidth={1.5} />
@@ -301,7 +301,7 @@ export default function Connections() {
                         </div>
                       </div>
                       {is_owner && (
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-2 sm:shrink-0">
                           <Button
                             size="sm"
                             variant="outline"
@@ -332,7 +332,7 @@ export default function Connections() {
                 </h3>
                 <div className="space-y-2">
                   {sent.map((c) => (
-                    <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex items-start justify-between gap-4">
+                    <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
                           <CounterpartIcon size={16} strokeWidth={1.5} />
@@ -348,6 +348,7 @@ export default function Connections() {
                         <Button
                           size="sm"
                           variant="ghost"
+                          className="self-start sm:self-auto sm:shrink-0"
                           disabled={busyId === c.connection_id}
                           onClick={() => decide(c.connection_id, "cancel", "Solicitud cancelada")}
                         >
@@ -379,7 +380,7 @@ export default function Connections() {
               ) : (
                 <div className="space-y-2">
                   {active.map((c) => (
-                    <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex items-center justify-between gap-4">
+                    <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
                           <CounterpartIcon size={16} strokeWidth={1.5} />

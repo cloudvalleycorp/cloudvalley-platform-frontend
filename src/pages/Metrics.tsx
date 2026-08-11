@@ -352,14 +352,14 @@ export default function Metrics() {
 
         {pageMode === "data" && (
           <>
-            <div className="flex gap-1 border-b border-border mb-8">
+            <div className="flex gap-1 border-b border-border mb-8 overflow-x-auto">
               {financialCategoryTabs.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => setActiveCat(c.id)}
                   aria-pressed={activeCat === c.id}
                   className={cn(
-                    "px-3 py-2 text-sm rounded-md transition-all duration-150",
+                    "px-3 py-2 text-sm rounded-md transition-all duration-150 shrink-0 whitespace-nowrap",
                     activeCat === c.id
                       ? "bg-surface text-foreground font-medium"
                       : "text-muted-foreground hover:text-foreground hover:bg-surface/60"

@@ -260,7 +260,7 @@ export function PlatformAgentPanel({
             )}
           </div>
           <SheetDescription>
-            Pedile algo en lenguaje natural — puede responder, proponer una métrica o crear un reporte.
+            Pedile algo en lenguaje natural: puede responder, proponer una métrica o crear un reporte.
           </SheetDescription>
         </SheetHeader>
 
@@ -316,7 +316,7 @@ export function PlatformAgentPanel({
                       key={`p-${index}`}
                       className="w-full max-w-[85%] rounded-md border border-primary/40 bg-primary/5 p-3 space-y-1"
                     >
-                      <p className="text-xs font-medium text-primary mb-1">Propuesta — revisá antes de confirmar</p>
+                      <p className="text-xs font-medium text-primary mb-1">Propuesta, revisá antes de confirmar</p>
                       {proposedQuery && (
                         <div className="pb-1.5 mb-1 border-b border-border/60">
                           <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Consulta</p>
@@ -358,7 +358,7 @@ export function PlatformAgentPanel({
                       className="w-full max-w-[85%] rounded-md border border-warning/40 bg-warning/10 p-3 space-y-2"
                     >
                       <p className="text-xs text-foreground">
-                        Esto creó un reporte nuevo en vez de agregarlo al que tenías abierto — el asistente todavía
+                        Esto creó un reporte nuevo en vez de agregarlo al que tenías abierto: el asistente todavía
                         no puede editar un reporte existente. Puede que sea un duplicado, revisalo antes de
                         compartirlo. Para agregar una métrica a este reporte usá el selector "Agregar métrica a esta
                         sección" más abajo.

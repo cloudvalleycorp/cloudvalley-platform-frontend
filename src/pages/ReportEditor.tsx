@@ -281,7 +281,7 @@ export default function ReportEditor() {
               title={name || "Reporte"}
               subtitle={mode === "preview" ? "Así lo ve un fondo con este reporte compartido." : "Armá las secciones y compartilo cuando esté listo."}
               action={
-                <div className="flex items-center gap-2">
+                <div className="flex items-center flex-wrap gap-2">
                   {is_owner && (
                     <div className="inline-flex border border-border rounded-md overflow-hidden h-9">
                       <button

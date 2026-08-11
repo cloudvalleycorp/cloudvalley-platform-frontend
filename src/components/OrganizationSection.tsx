@@ -267,7 +267,7 @@ export function OrganizationSection() {
               return (
                 <li
                   key={m.user_id}
-                  className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0"
+                  className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 py-3 border-b border-border/50 last:border-0"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -284,52 +284,54 @@ export function OrganizationSection() {
                       {m.email}
                     </div>
                   </div>
-                  {m.is_owner && (
-                    <Badge className="shrink-0 gap-1 text-[10px] font-medium">
-                      <Crown size={10} strokeWidth={1.5} />
-                      Owner
+                  <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                    {m.is_owner && (
+                      <Badge className="shrink-0 gap-1 text-[10px] font-medium">
+                        <Crown size={10} strokeWidth={1.5} />
+                        Owner
+                      </Badge>
+                    )}
+                    <Badge variant="secondary" className="shrink-0 text-[10px] font-medium">
+                      {roleLabel(m.role)}
                     </Badge>
-                  )}
-                  <Badge variant="secondary" className="shrink-0 text-[10px] font-medium">
-                    {roleLabel(m.role)}
-                  </Badge>
-                  {is_owner && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="shrink-0 text-muted-foreground hover:text-foreground"
-                      disabled={ownerBusyId === m.user_id}
-                      onClick={() => toggleOwner(m, !m.is_owner)}
-                      title={m.is_owner ? "Quitar owner" : "Hacer owner"}
-                      aria-label={m.is_owner ? "Quitar owner" : "Hacer owner"}
-                    >
-                      <Crown size={14} strokeWidth={1.5} fill={m.is_owner ? "currentColor" : "none"} />
-                    </Button>
-                  )}
-                  {!isMe && is_owner && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="shrink-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => setRemoveTarget(m)}
-                      title={`Quitar de la ${role === "investor" ? "organización" : "startup"}`}
-                      aria-label={`Quitar a ${m.full_name || m.email} de la ${role === "investor" ? "organización" : "startup"}`}
-                    >
-                      <UserMinus size={14} strokeWidth={1.5} />
-                    </Button>
-                  )}
-                  {isMe && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="shrink-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => setRemoveTarget(m)}
-                      title={`Salir de ${role === "investor" ? "la organización" : "la startup"}`}
-                      aria-label={`Salir de ${role === "investor" ? "la organización" : "la startup"}`}
-                    >
-                      <LogOut size={14} strokeWidth={1.5} />
-                    </Button>
-                  )}
+                    {is_owner && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                        disabled={ownerBusyId === m.user_id}
+                        onClick={() => toggleOwner(m, !m.is_owner)}
+                        title={m.is_owner ? "Quitar owner" : "Hacer owner"}
+                        aria-label={m.is_owner ? "Quitar owner" : "Hacer owner"}
+                      >
+                        <Crown size={14} strokeWidth={1.5} fill={m.is_owner ? "currentColor" : "none"} />
+                      </Button>
+                    )}
+                    {!isMe && is_owner && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => setRemoveTarget(m)}
+                        title={`Quitar de la ${role === "investor" ? "organización" : "startup"}`}
+                        aria-label={`Quitar a ${m.full_name || m.email} de la ${role === "investor" ? "organización" : "startup"}`}
+                      >
+                        <UserMinus size={14} strokeWidth={1.5} />
+                      </Button>
+                    )}
+                    {isMe && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => setRemoveTarget(m)}
+                        title={`Salir de ${role === "investor" ? "la organización" : "la startup"}`}
+                        aria-label={`Salir de ${role === "investor" ? "la organización" : "la startup"}`}
+                      >
+                        <LogOut size={14} strokeWidth={1.5} />
+                      </Button>
+                    )}
+                  </div>
                 </li>
               );
             })}

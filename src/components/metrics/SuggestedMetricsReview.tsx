@@ -70,7 +70,7 @@ export function SuggestedMetricsReview({ open, onOpenChange, suggestions, catego
         <AlertTriangle size={16} aria-hidden="true" />
         <AlertDescription className="text-xs">
           Este flujo todavía genera fórmulas de texto libre, que el backend ya no acepta para crear métricas nuevas.
-          No se puede confirmar acá hasta que se actualice el análisis de la hoja — copiá los datos de abajo y armá
+          No se puede confirmar acá hasta que se actualice el análisis de la hoja: copiá los datos de abajo y armá
           la métrica a mano con "Agregar métrica".
         </AlertDescription>
       </Alert>

@@ -91,17 +91,17 @@ export const FUNCTION_SIGNATURES: Record<string, FunctionSignature> = {
   SUMLAST: {
     params: ['"campo" (entre comillas)', "n_meses"],
     description:
-      'Suma el campo en los últimos N meses, incluido el actual. "campo" es un input_key o metric_id que ya existe en el catálogo de la company (no un campo crudo de una integración — para eso usá FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG).',
+      'Suma el campo en los últimos N meses, incluido el actual. "campo" es un input_key o metric_id que ya existe en el catálogo de la company (no un campo crudo de una integración, para eso usá FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG).',
   },
   AVGLAST: {
     params: ['"campo" (entre comillas)', "n_meses"],
     description:
-      'Promedia el campo en los últimos N meses, incluido el actual. "campo" es un input_key o metric_id que ya existe en el catálogo de la company (no un campo crudo de una integración — para eso usá FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG).',
+      'Promedia el campo en los últimos N meses, incluido el actual. "campo" es un input_key o metric_id que ya existe en el catálogo de la company (no un campo crudo de una integración, para eso usá FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG).',
   },
   YTD: {
     params: ['"campo" (entre comillas)'],
     description:
-      'Acumulado del campo desde enero del año en curso. "campo" es un input_key o metric_id que ya existe en el catálogo de la company (no un campo crudo de una integración — para eso usá FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG).',
+      'Acumulado del campo desde enero del año en curso. "campo" es un input_key o metric_id que ya existe en el catálogo de la company (no un campo crudo de una integración, para eso usá FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG).',
   },
   FIELDSUM: {
     params: ['"campo_crudo"', '["campo_filtro", "valor1,valor2"]…'],
