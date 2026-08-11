@@ -17,7 +17,15 @@ type Props = {
 // siendo legible, solo menos amigable que dentro del builder).
 export function QuerySummary({ query, rawFields = [], metricOptions = [], className }: Props) {
   const text = summarizeQuery(query, {
-    rawFieldLabel: (k) => rawFields.find((f) => f.field_key === k)?.sample_column ?? k,
+    // Dos conexiones pueden tener una columna con el mismo nombre visible
+    // ("Monto") mapeada a datos distintos — el field_key ya las distingue
+    // sin ambigüedad, pero el resumen para humanos también necesita
+    // mostrar de qué planilla/hoja viene para no confundirlas a simple vista.
+    rawFieldLabel: (k) => {
+      const f = rawFields.find((f) => f.field_key === k);
+      if (!f) return k;
+      return f.connection_label ? `${f.sample_column} (${f.connection_label})` : f.sample_column;
+    },
     metricLabel: (id) => metricOptions.find((m) => m.id === id)?.name ?? id,
   });
   return <span className={cn("text-sm text-foreground", className)}>{text}</span>;

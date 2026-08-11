@@ -670,8 +670,12 @@ export default function GrowthTrackerSheets() {
       await loadConnections();
       // El connection_id de una conexión nueva no vuelve en la respuesta de
       // save-sheet-mapping — se busca en la lista recién recargada por la
-      // combinación que la identifica unívocamente, para poder probarla en
-      // el acto en vez de dejar al usuario sin feedback inmediato.
+      // combinación que la identifica unívocamente, para sincronizarla de
+      // una — guardar el mapeo sin cargar los datos reales todavía dejaba
+      // al usuario con un mapeo "guardado" pero sin ninguna fila importada
+      // hasta que volviera a apretar "Sincronizar" a mano (bug real
+      // reportado 2026-08-11: fórmulas que dependían de este campo se veían
+      // vacías/en 0 aunque la hoja sí tuviera datos).
       let syncTargetId = editingConnectionId;
       if (!syncTargetId) {
         const res2 = await fetch(`${LIST_SHEET_CONNECTIONS_URL}?company_id=${encodeURIComponent(company_id)}`, {
@@ -690,7 +694,7 @@ export default function GrowthTrackerSheets() {
         }
       }
       cancelWizard();
-      if (syncTargetId) await runConnectionSync(syncTargetId, true);
+      if (syncTargetId) await runConnectionSync(syncTargetId, false);
     } catch {
       toast.error("No se pudo guardar el mapeo");
     } finally {
