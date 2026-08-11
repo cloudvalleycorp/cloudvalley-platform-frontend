@@ -12,7 +12,7 @@ import {
   FileBarChart,
   type LucideIcon,
 } from "lucide-react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
 import {
@@ -120,7 +120,10 @@ export function AppSidebar() {
     return (
       <Sidebar>
         <SidebarHeader className="border-b border-sidebar-border px-5 py-5">
-          <div className="text-lg font-medium tracking-tight">CloudValley</div>
+          <Link to="/" className="inline-flex items-center gap-2 text-base font-medium tracking-tight text-foreground hover:text-foreground/70 transition-colors">
+            <img src="/logo.svg" alt="" className="h-6 w-6 shrink-0" />
+            CloudValley
+          </Link>
           {fund_name && <div className="mt-3 text-sm text-foreground">{fund_name}</div>}
         </SidebarHeader>
         <SidebarContent className="px-3 py-4">
@@ -140,7 +143,10 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-5 py-5">
-        <div className="text-lg font-medium tracking-tight">CloudValley</div>
+        <Link to="/" className="inline-flex items-center gap-2 text-base font-medium tracking-tight text-foreground hover:text-foreground/70 transition-colors">
+          <img src="/logo.svg" alt="" className="h-6 w-6 shrink-0" />
+          CloudValley
+        </Link>
         {startup && (
           <div className="mt-3 space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">

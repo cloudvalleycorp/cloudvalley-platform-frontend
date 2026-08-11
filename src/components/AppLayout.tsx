@@ -82,13 +82,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
               <div className="md:hidden">
                 <SidebarTrigger />
               </div>
-              <Link to="/" className="inline-flex items-center gap-2 text-base font-medium tracking-tight text-foreground shrink-0">
+              <Link to="/" className="md:hidden inline-flex items-center gap-2 text-base font-medium tracking-tight text-foreground shrink-0">
                 <img src="/logo.svg" alt="" className="h-6 w-6 shrink-0" />
                 CloudValley
               </Link>
               {orgLabel && (
                 <>
-                  <span className="text-muted-foreground/50 hidden sm:inline">/</span>
+                  <span className="text-muted-foreground/50 hidden sm:inline md:hidden">/</span>
                   <span className="text-sm text-foreground truncate hidden sm:inline">{orgLabel}</span>
                 </>
               )}
