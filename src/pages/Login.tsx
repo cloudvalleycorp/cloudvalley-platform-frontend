@@ -47,6 +47,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-background px-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-12">
+          <img src="/logo.svg" alt="" className="h-12 w-12 mx-auto mb-4" />
           <h1 className="text-3xl font-medium tracking-tight">CloudValley</h1>
           <p className="mt-2 text-sm text-muted-foreground">Acceso con enlace mágico</p>
         </div>
