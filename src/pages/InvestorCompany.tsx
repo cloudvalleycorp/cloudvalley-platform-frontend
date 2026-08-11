@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Plus, Map } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import { BackLink } from "@/components/BackLink";
@@ -33,7 +34,12 @@ import { periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricP
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { useSharedDocuments } from "@/hooks/useSharedDocuments";
+import { useSharedRoadmap } from "@/hooks/useSharedRoadmap";
 import { DATA_ROOM_CATEGORIES } from "@/lib/dataRoom";
+import { LIST_ROADMAP_PILLARS_URL, type RoadmapPillar, type RoadmapTask } from "@/lib/roadmap";
+import { RoadmapTaskList } from "@/components/roadmap/RoadmapTaskList";
+import { RoadmapTaskDetailSheet } from "@/components/roadmap/RoadmapTaskDetailSheet";
+import { AddRoadmapTaskDialog } from "@/components/roadmap/AddRoadmapTaskDialog";
 import { API_BASE_URL } from "@/lib/apiConfig";
 
 const GET_COMPANY_PROFILE_URL = `${API_BASE_URL}/get-company-profile`;
@@ -55,6 +61,7 @@ type CompanyProfile = {
 export default function InvestorCompany() {
   const { company_id } = useParams<{ company_id: string }>();
   const { user, loading, isOrgViewer, fund_name, portfolio_company_ids, portfolio_company_names } = useAuth();
+  const queryClient = useQueryClient();
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "forbidden" | "not_found" | "error">("loading");
 
@@ -94,16 +101,30 @@ export default function InvestorCompany() {
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [openRoadmapTask, setOpenRoadmapTask] = useState<RoadmapTask | null>(null);
+  const [addingRequirement, setAddingRequirement] = useState(false);
   // 24 meses de margen sobre el período elegido para que SUMLAST/AVGLAST/YTD
   // sigan calculando — se recalcula (y refetchea) al cambiar de período.
   const metricsRange = useMemo(() => periodRange(period, 24), [period]);
   const metrics = useConnectedCompanyMetrics(company_id ?? null, metricsRange);
   const shared = useSharedFinancialReports(company_id ?? null);
   const sharedDocs = useSharedDocuments(company_id ?? null);
+  const roadmap = useSharedRoadmap(company_id ?? null);
+  // Mismo pedido que ya usa InvestorPortfolio.tsx para armar "Agregar
+  // requisito" — cualquier rol autenticado puede listar pilares.
+  const { data: roadmapPillars = [] } = useQuery({
+    queryKey: ["roadmap-pillars"],
+    queryFn: async () => {
+      const res = await fetch(LIST_ROADMAP_PILLARS_URL, { credentials: "include" });
+      if (!res.ok) return [] as RoadmapPillar[];
+      const data = await res.json();
+      return Array.isArray(data?.pillars) ? (data.pillars as RoadmapPillar[]) : [];
+    },
+  });
 
   // "No access" (403) is distinto de "la conexión está activa pero todavía
   // no se compartió nada" — solo se avisa una vez, en la transición.
-  const noAccess = metrics.forbidden || shared.forbidden || sharedDocs.forbidden;
+  const noAccess = metrics.forbidden || shared.forbidden || sharedDocs.forbidden || roadmap.forbidden;
   const wasForbidden = useRef(false);
   useEffect(() => {
     if (noAccess && !wasForbidden.current) {
@@ -281,6 +302,42 @@ export default function InvestorCompany() {
 
               <div className="mt-10 pt-8 border-t border-border">
                 <div className="flex items-center justify-between mb-6 gap-2">
+                  <h2 className="text-sm font-medium">Roadmap</h2>
+                  {roadmapPillars.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={() => setAddingRequirement(true)}>
+                      <Plus size={13} strokeWidth={1.5} className="mr-1.5" /> Agregar requisito para esta empresa
+                    </Button>
+                  )}
+                </div>
+
+                {noAccess ? (
+                  <EmptyState
+                    icon={Map}
+                    title="No tenés acceso a esta información."
+                    description="La conexión con esta empresa ya no está activa."
+                    className="p-8"
+                  />
+                ) : roadmap.loading ? (
+                  <LoadingState />
+                ) : roadmap.tasks.length === 0 ? (
+                  <EmptyState
+                    icon={Map}
+                    title="Todavía no hay roadmap para ver."
+                    description="Cuando la startup tenga tareas cargadas, van a aparecer acá agrupadas por pilar."
+                    className="p-8"
+                  />
+                ) : (
+                  <RoadmapTaskList
+                    pillars={roadmap.pillars}
+                    tasks={roadmap.tasks}
+                    onOpenTask={setOpenRoadmapTask}
+                    readOnly
+                  />
+                )}
+              </div>
+
+              <div className="mt-10 pt-8 border-t border-border">
+                <div className="flex items-center justify-between mb-6 gap-2">
                   <h2 className="text-sm font-medium">Data Room</h2>
                   {sharedDocs.documents.length > 0 && (
                     <span className="text-xs text-muted-foreground">
@@ -345,6 +402,22 @@ export default function InvestorCompany() {
       </div>
 
       <MetricInfoSheet metric={openInfo} onClose={() => setOpenInfo(null)} history={infoHistory} />
+
+      <RoadmapTaskDetailSheet task={openRoadmapTask} onClose={() => setOpenRoadmapTask(null)} />
+
+      {profile && (
+        <AddRoadmapTaskDialog
+          open={addingRequirement}
+          onOpenChange={setAddingRequirement}
+          pillars={roadmapPillars}
+          defaultPillarId={roadmapPillars[0]?.id ?? ""}
+          title={`Agregar requisito para ${profile.name}`}
+          description="Se suma al roadmap de esta startup — no cuenta para su readiness score, que se calcula solo con el catálogo estándar."
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ["shared-roadmap", company_id] })}
+          companies={company_id ? [{ id: company_id, name: profile.name }] : []}
+          hideTargetPicker
+        />
+      )}
 
       <PlatformAgentPanel
         open={assistantOpen}
