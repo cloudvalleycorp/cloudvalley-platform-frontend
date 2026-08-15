@@ -6,11 +6,13 @@ import { EmptyState } from "@/components/EmptyState";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Sparkles, Copy, AlertTriangle } from "lucide-react";
-import type { SuggestedMetric } from "@/lib/aiInsights";
+import { Sparkles, AlertTriangle } from "lucide-react";
+import { QuerySummary } from "@/components/metrics/query-builder/QuerySummary";
+import { handleMembershipError } from "@/lib/membership";
+import { normalizeCategory, slugify } from "@/hooks/useMetricPropertyForm";
+import { UPSERT_FINANCIAL_METRIC_DEFINITION_URL } from "@/lib/financialReports";
+import type { SuggestedMetric, MetricNeedingMoreData } from "@/lib/aiInsights";
 import type { MetricDef } from "@/lib/metrics";
 
 type ReviewRow = SuggestedMetric & { approved: boolean };
@@ -19,30 +21,42 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   suggestions: SuggestedMetric[];
+  // Métricas que la IA hubiera necesitado inventar un supuesto de negocio
+  // (margen, tasa) para proponer sin datos reales — se muestran como
+  // referencia, nunca se completan solas del lado frontend.
+  needingMoreData: MetricNeedingMoreData[];
   companyId: string | null;
   allMetrics: MetricDef[];
   categories: { id: string; label: string }[];
   defaultCategory: string;
   // La IA solo propone (ver aiInsights.ts) — esto recién persiste algo real
   // al confirmar, vía upsert-metric-definition (el mismo endpoint que ya usa
-  // MetricPropertyPanel), nunca solo. Después recarga el catálogo.
+  // MetricPropertyPanel). Después recarga el catálogo.
   onSaved: () => void;
 };
 
-// Revisión compartida para las dos formas de llegar a una lista de
-// SuggestedMetric: el paso "Analizar con IA" del wizard de Sheets
-// (GrowthTrackerSheets.tsx) y el botón "Sugerir métricas" en Administrar
-// métricas (Metrics.tsx). BLOQUEADO desde el cambio de contrato 2026-08-10:
-// analyze-transactional-sheet (endpoint que arma esta lista) sigue
-// devolviendo formula_expression en texto libre, pero upsert-metric-
-// definition ya no acepta ese campo para escrituras nuevas — confirmar acá
-// garantizaría un 400 en cada fila. No se intenta convertir el texto a
-// QuerySpec (frágil): el submit queda deshabilitado hasta que backend
-// actualice analyze-transactional-sheet para devolver query también. La
-// lista sigue visible/editable como referencia, con un botón para copiar
-// cada fórmula y reconstruirla a mano con el query builder.
-export function SuggestedMetricsReview({ open, onOpenChange, suggestions, categories, defaultCategory }: Props) {
+// Revisión de lo que devuelve analyze-transactional-sheet (paso "Analizar
+// con IA" del wizard de Sheets, GrowthTrackerSheets.tsx). Desde el cambio de
+// contrato 2026-08-14, suggested_metrics trae query (QuerySpec estructurado)
+// en vez de formula_expression de texto libre, así que ahora sí se puede
+// confirmar directo acá contra upsert-metric-definition — antes del cambio
+// esto quedaba bloqueado (ver historial de este archivo). La query se
+// muestra de solo lectura vía QuerySummary; si el usuario quiere ajustarla
+// (no solo nombre/categoría/descripción/unidad), lo hace después desde
+// "Editar métrica" con el query builder completo.
+export function SuggestedMetricsReview({
+  open,
+  onOpenChange,
+  suggestions,
+  needingMoreData,
+  companyId,
+  allMetrics,
+  categories,
+  defaultCategory,
+  onSaved,
+}: Props) {
   const [rows, setRows] = useState<ReviewRow[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) setRows(suggestions.map((s) => ({ ...s, approved: true, category: s.category?.trim() || defaultCategory })));
@@ -51,9 +65,68 @@ export function SuggestedMetricsReview({ open, onOpenChange, suggestions, catego
   const setRow = (i: number, patch: Partial<ReviewRow>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-  const copyFormula = (formula: string) => {
-    navigator.clipboard.writeText(formula);
-    toast.success("Fórmula copiada");
+  const approvedCount = rows.filter((r) => r.approved).length;
+
+  const handleConfirm = async () => {
+    if (!companyId) return;
+    const approved = rows.filter((r) => r.approved && r.name.trim());
+    if (approved.length === 0) {
+      onOpenChange(false);
+      return;
+    }
+    setSaving(true);
+    const existingIds = new Set(allMetrics.map((m) => m.id));
+    let savedCount = 0;
+    for (const row of approved) {
+      const category = normalizeCategory(row.category, categories);
+      if (!category) continue;
+      const base = slugify(row.name);
+      let slug = base;
+      let suffix = 2;
+      while (existingIds.has(slug)) {
+        slug = `${base}_${suffix}`;
+        suffix++;
+      }
+      existingIds.add(slug);
+      const displayOrder =
+        Math.max(0, ...allMetrics.filter((m) => m.category === category).map((m) => m.order_index)) + 1;
+      const body: Record<string, unknown> = {
+        company_id: companyId,
+        metric_id: slug,
+        name: row.name.trim(),
+        category,
+        metric_type: "calculated",
+        unit: row.unit.trim() || null,
+        display_order: displayOrder,
+        query: row.query,
+      };
+      if (row.description.trim()) body.description = row.description.trim();
+      if (row.why_it_matters.trim()) body.why_it_matters = row.why_it_matters.trim();
+      try {
+        const res = await fetch(UPSERT_FINANCIAL_METRIC_DEFINITION_URL, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (await handleMembershipError(res)) {
+          setSaving(false);
+          return;
+        }
+        if (res.ok) savedCount++;
+      } catch {
+        // sigue con el resto de las filas aprobadas
+      }
+    }
+    setSaving(false);
+    if (savedCount > 0) {
+      toast.success(`${savedCount} métrica${savedCount === 1 ? "" : "s"} agregada${savedCount === 1 ? "" : "s"}`);
+      onSaved();
+    }
+    if (savedCount < approved.length) {
+      toast.error(`${approved.length - savedCount} métrica${approved.length - savedCount === 1 ? "" : "s"} no se pudo guardar`);
+    }
+    onOpenChange(false);
   };
 
   return (
@@ -63,17 +136,25 @@ export function SuggestedMetricsReview({ open, onOpenChange, suggestions, catego
       title="Revisá las métricas sugeridas"
       description="La IA propuso esto a partir de tus datos. Nada se crea todavía."
       contentClassName="sm:max-w-2xl"
-      submitLabel="No disponible"
-      busy
+      submitLabel={approvedCount > 0 ? `Agregar ${approvedCount} métrica${approvedCount === 1 ? "" : "s"}` : "Agregar"}
+      onSubmit={handleConfirm}
+      busy={saving}
     >
-      <Alert variant="destructive">
-        <AlertTriangle size={16} aria-hidden="true" />
-        <AlertDescription className="text-xs">
-          Este flujo todavía genera fórmulas de texto libre, que el backend ya no acepta para crear métricas nuevas.
-          No se puede confirmar acá hasta que se actualice el análisis de la hoja: copiá los datos de abajo y armá
-          la métrica a mano con "Agregar métrica".
-        </AlertDescription>
-      </Alert>
+      {needingMoreData.length > 0 && (
+        <Alert>
+          <AlertTriangle size={16} aria-hidden="true" />
+          <AlertDescription className="text-xs space-y-1">
+            <p className="font-medium">La IA no pudo proponer estas métricas por falta de datos:</p>
+            <ul className="list-disc pl-4 space-y-0.5">
+              {needingMoreData.map((m, i) => (
+                <li key={i}>
+                  <span className="font-medium">{m.name}:</span> {m.missing_data_description}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
       {rows.length === 0 ? (
         <EmptyState bordered={false} icon={Sparkles} title="La IA no encontró métricas nuevas para proponer." />
       ) : (
@@ -137,35 +218,15 @@ export function SuggestedMetricsReview({ open, onOpenChange, suggestions, catego
                       />
                     </FormField>
                   )}
-                  <FormField label="Fórmula">
-                    <div className="flex items-center gap-1.5">
-                      <Input
-                        value={row.formula_expression}
-                        onChange={(e) => setRow(i, { formula_expression: e.target.value })}
-                        className="font-mono text-xs"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 shrink-0"
-                        onClick={() => copyFormula(row.formula_expression)}
-                        aria-label="Copiar fórmula"
-                      >
-                        <Copy size={13} aria-hidden="true" />
-                      </Button>
+                  <div>
+                    <p className="text-xs font-medium text-foreground mb-1.5">Consulta</p>
+                    <div className="rounded-md bg-surface border border-border p-2.5">
+                      <QuerySummary query={row.query} className="text-xs" />
                     </div>
-                  </FormField>
-                  {row.fields_used.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs text-muted-foreground">Usa:</span>
-                      {row.fields_used.map((f) => (
-                        <Badge key={f} variant="outline" className="font-mono text-[10px]">
-                          {f}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
+                    <p className="text-[11px] text-tertiary mt-1">
+                      Se puede ajustar después desde "Editar métrica" con el query builder completo.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

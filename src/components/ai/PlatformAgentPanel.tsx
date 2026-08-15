@@ -82,19 +82,21 @@ function createdLinks(trace: ObservabilityTraceEntry[]) {
       // metric_id suelto en el nivel de arriba — status "created" de
       // create-report-from-proposal sí trae report_id suelto.
       const nestedMetric = asRecord(entry.result?.metric);
+      const status = entry.result?.status;
       return {
         index,
-        pending: entry.result?.status === "pending_confirmation",
+        // Requiere un status explícito de escritura completada, no la mera
+        // ausencia de pending_confirmation — esa versión anterior mostraba
+        // "Ver métrica" antes de confirmar nada apenas apareció un tool
+        // nuevo (propose-metric-edit, 2026-08-14) con un metric_id suelto
+        // puramente informativo (identifica de qué métrica se habla, no que
+        // se haya escrito) y sin ningún status. Confirmado en vivo.
+        done: status === "ok" || status === "created" || status === "added",
         reportId: asString(entry.result?.report_id),
         metricId: asString(entry.result?.metric_id) ?? asString(nestedMetric?.metric_id),
       };
     })
-    // pending_confirmation ya trae report_id/metric_id sueltos en algunos
-    // casos (add-metric-to-report con una métrica existente) — sin este
-    // filtro se mostraba un "Ver reporte" enseguida, antes de confirmar
-    // nada (confirmado en vivo 2026-08-09). Solo cuenta como "creado" un
-    // resultado que NO está esperando confirmación.
-    .filter((x) => !x.pending && (x.reportId || x.metricId));
+    .filter((x) => x.done && (x.reportId || x.metricId));
 }
 // Red de seguridad, no la solución principal: ahora existe add-metric-to-report
 // para agregar una métrica a un reporte YA EXISTENTE (pedida y deployada
@@ -129,6 +131,21 @@ function queryPreviews(trace: ObservabilityTraceEntry[]) {
       const key = JSON.stringify(x.query);
       return seen.has(key) ? false : (seen.add(key), true);
     });
+}
+// Duplicado detectado (cambio de contrato 2026-08-14): el paso de
+// upsert-metric-definition trae result.existing_metric_id (+ opcional
+// result.proposed_query) en vez de pending_confirmation directo. El texto
+// explicativo va por pending_clarifications, no acá — esto solo da los IDs
+// para las dos acciones (ver handleUseExisting/handleCreateDuplicateAnyway).
+function duplicateSuggestions(trace: ObservabilityTraceEntry[]) {
+  return trace
+    .map((entry, index) => {
+      const existingMetricId = asString(entry.result?.existing_metric_id);
+      if (!existingMetricId) return null;
+      const proposedQuery = isQuerySpec(entry.result?.proposed_query) ? (entry.result.proposed_query as QuerySpec) : null;
+      return { index, existingMetricId, proposedQuery };
+    })
+    .filter((x): x is { index: number; existingMetricId: string; proposedQuery: QuerySpec | null } => !!x);
 }
 
 type Props = {
@@ -169,17 +186,36 @@ export function PlatformAgentPanel({
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
 
-  const send = async (text: string) => {
+  const send = async (text: string, opts?: { confirmDuplicate?: boolean }) => {
     const q = text.trim();
     if (!q) return;
     setQuestion("");
     setPendingQuestion(q);
-    const response = await ask(q, { uiContext, formulaSyntax, metricFields });
+    const response = await ask(q, { uiContext, formulaSyntax, metricFields, confirmDuplicate: opts?.confirmDuplicate });
     setPendingQuestion(null);
     if (response) setExchanges((prev) => [...prev, { question: q, response, resolvedTraceIndices: new Set() }]);
   };
 
   const handleAsk = () => send(question);
+
+  const resolveTrace = (exchangeIdx: number, traceIdx: number) => {
+    setExchanges((prev) =>
+      prev.map((ex, i) =>
+        i === exchangeIdx ? { ...ex, resolvedTraceIndices: new Set(ex.resolvedTraceIndices).add(traceIdx) } : ex
+      )
+    );
+  };
+
+  const handleUseExisting = (exchangeIdx: number, traceIdx: number, metricId: string) => {
+    resolveTrace(exchangeIdx, traceIdx);
+    onOpenChange(false);
+    navigate(`/metrics/${metricId}`);
+  };
+
+  const handleCreateDuplicateAnyway = (exchangeIdx: number, traceIdx: number, question: string) => {
+    resolveTrace(exchangeIdx, traceIdx);
+    void send(question, { confirmDuplicate: true });
+  };
 
   // Backend persiste el historial solo (cambio de contrato 2026-08-10) — el
   // panel ya no le manda conversation_history, así que "vaciar" acá es
@@ -193,11 +229,7 @@ export function PlatformAgentPanel({
   };
 
   const handleConfirmWrite = async (exchangeIdx: number, traceIdx: number, proposed: Record<string, unknown>) => {
-    setExchanges((prev) =>
-      prev.map((ex, i) =>
-        i === exchangeIdx ? { ...ex, resolvedTraceIndices: new Set(ex.resolvedTraceIndices).add(traceIdx) } : ex
-      )
-    );
+    resolveTrace(exchangeIdx, traceIdx);
     setPendingQuestion("Confirmando…");
     // Backend confirmó (2026-08-08): el confirm_write NO necesita repetir
     // question/conversation_history — upsert-metric-definition/
@@ -228,13 +260,7 @@ export function PlatformAgentPanel({
     }
   };
 
-  const handleDiscard = (exchangeIdx: number, traceIdx: number) => {
-    setExchanges((prev) =>
-      prev.map((ex, i) =>
-        i === exchangeIdx ? { ...ex, resolvedTraceIndices: new Set(ex.resolvedTraceIndices).add(traceIdx) } : ex
-      )
-    );
-  };
+  const handleDiscard = (exchangeIdx: number, traceIdx: number) => resolveTrace(exchangeIdx, traceIdx);
 
   const handleOpenChange = (o: boolean) => {
     onOpenChange(o);
@@ -280,6 +306,7 @@ export function PlatformAgentPanel({
             const created = allCreated.filter((c) => !unexpectedReports.includes(c));
             const previews = formulaPreviews(trace);
             const queries = queryPreviews(trace);
+            const duplicates = duplicateSuggestions(trace).filter((d) => !ex.resolvedTraceIndices.has(d.index));
             return (
               <div key={exchangeIdx} className="space-y-2">
                 <div className="flex justify-end">
@@ -291,6 +318,43 @@ export function PlatformAgentPanel({
                   <div className="max-w-[85%] rounded-2xl rounded-bl-sm bg-surface border border-border px-4 py-2.5 text-sm text-foreground">
                     {ex.response.answer}
                   </div>
+
+                  {ex.response.pending_clarifications.map((text, i) => (
+                    <div
+                      key={`cl-${i}`}
+                      className="max-w-[85%] rounded-2xl rounded-bl-sm bg-warning/10 border border-warning/40 px-4 py-2.5 text-sm text-foreground"
+                    >
+                      {text}
+                    </div>
+                  ))}
+
+                  {duplicates.map(({ index, existingMetricId, proposedQuery }) => (
+                    <div
+                      key={`d-${index}`}
+                      className="w-full max-w-[85%] rounded-md border border-warning/40 bg-warning/5 p-3 space-y-2"
+                    >
+                      {proposedQuery && (
+                        <div className="pb-1.5 mb-1 border-b border-border/60">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
+                            Consulta que se iba a proponer
+                          </p>
+                          <QuerySummary query={proposedQuery} className="text-xs" />
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleUseExisting(exchangeIdx, index, existingMetricId)}>
+                          Usar la métrica existente
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleCreateDuplicateAnyway(exchangeIdx, index, ex.question)}
+                        >
+                          Crear una nueva de todos modos
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
 
                   {previews.map(({ index, formula, value }) => (
                     <div key={`f-${index}`} className="w-full max-w-[85%] rounded-md bg-surface border border-border p-3">

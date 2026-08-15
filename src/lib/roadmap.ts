@@ -4,11 +4,11 @@ export const LIST_ROADMAP_URL = `${API_BASE_URL}/list-roadmap`;
 export const TOGGLE_TASK_STATUS_URL = `${API_BASE_URL}/toggle-task-status`;
 // Lado inversor: roadmap de solo lectura de una empresa conectada — mismo
 // criterio que LIST_SHARED_DOCUMENTS_URL/LIST_SHARED_FINANCIAL_REPORTS_URL
-// (403 si no hay conexión activa). Endpoint ASUMIDO, no confirmado con
-// backend todavía (ver "Pedido a backend" del plan 2026-08-11) — el nombre
-// exacto y el modelo de visibilidad (¿todo el roadmap, o hace falta un
-// is_public por tarea/pilar como en métricas/documentos?) quedan pendientes
-// de confirmación. useSharedRoadmap.ts degrada con gracia si esto 404.
+// (403 si no hay conexión activa). Contrato confirmado por backend
+// 2026-08-14: mismo shape que ListRoadmapResponse (readiness_score +
+// pillars + tasks), salvo que nunca incluye tareas scope="startup" (notas
+// propias del founder) — solo catálogo global + lo que el fondo del
+// inversor le asignó a esa startup.
 export const LIST_SHARED_ROADMAP_URL = `${API_BASE_URL}/list-shared-roadmap`;
 // admin-only
 export const LIST_ROADMAP_CATALOG_URL = `${API_BASE_URL}/list-roadmap-catalog`;

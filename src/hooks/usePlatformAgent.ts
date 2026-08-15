@@ -14,6 +14,9 @@ export type AskOptions = {
   uiContext: PlatformAgentUiContext;
   formulaSyntax?: FormulaSyntaxEntry[];
   confirmWrite?: boolean;
+  // Reintenta el mismo pedido forzando la creación aunque exista una
+  // métrica equivalente — ver "duplicado detectado" en PlatformAgentPanel.tsx.
+  confirmDuplicate?: boolean;
   metricFields?: PlatformAgentMetricFields;
   // Solo para confirmar add-metric-to-report — el reporte YA existente al
   // que se agrega la métrica (uiContext.selectedReportId en report_editor).
@@ -50,6 +53,7 @@ export function usePlatformAgent(companyId: string | null, surface: PlatformAgen
           ...(opts.resetConversation ? { reset_conversation: true } : {}),
           ...(opts.formulaSyntax ? { formula_syntax: opts.formulaSyntax } : {}),
           ...(opts.confirmWrite ? { confirm_write: true } : {}),
+          ...(opts.confirmDuplicate ? { confirm_duplicate: true } : {}),
           ...(opts.reportId ? { report_id: opts.reportId } : {}),
           ...(opts.metricFields ?? {}),
         }),

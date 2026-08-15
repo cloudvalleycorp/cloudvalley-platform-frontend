@@ -302,7 +302,14 @@ export default function InvestorCompany() {
 
               <div className="mt-10 pt-8 border-t border-border">
                 <div className="flex items-center justify-between mb-6 gap-2">
-                  <h2 className="text-sm font-medium">Roadmap</h2>
+                  <h2 className="text-sm font-medium flex items-center gap-2">
+                    Roadmap
+                    {roadmap.tasks.length > 0 && (
+                      <span className="text-xs font-normal text-muted-foreground">
+                        Readiness {roadmap.readinessScore}/100
+                      </span>
+                    )}
+                  </h2>
                   {roadmapPillars.length > 0 && (
                     <Button variant="outline" size="sm" onClick={() => setAddingRequirement(true)}>
                       <Plus size={13} strokeWidth={1.5} className="mr-1.5" /> Agregar requisito para esta empresa

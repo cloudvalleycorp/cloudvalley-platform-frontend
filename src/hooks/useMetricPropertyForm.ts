@@ -110,8 +110,15 @@ export function useMetricPropertyForm({
   useEffect(() => {
     if (metric) setDraft(draftFromMetric(metric));
     else if (creating) setDraft(emptyDraft(defaultCategory));
+    // metric además de seedKey: seedKey por sí solo (el id) no cambia
+    // cuando la MISMA métrica trae datos nuevos por un refetch (ej.
+    // financial.reload() tras confirmar una edición vía el Asistente) —
+    // sin esto el panel seguía mostrando el valor viejo hasta un reload
+    // manual de la página (bug real encontrado en vivo 2026-08-15). metric
+    // solo cambia de referencia cuando react-query realmente refetchea, no
+    // en cada render, así que esto no pisa cambios sin guardar del usuario.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seedKey]);
+  }, [seedKey, metric]);
 
   const setField = (key: string, value: string | boolean) => setDraft((prev) => ({ ...prev, [key]: value }));
   const setQuery = (query: QuerySpec | null) => setDraft((prev) => ({ ...prev, query }));

@@ -105,6 +105,12 @@ export type PlatformAgentRequest = {
   reset_conversation?: boolean;
   formula_syntax?: FormulaSyntaxEntry[];
   confirm_write?: boolean;
+  // Fuerza crear una métrica calculada nueva aunque el backend haya
+  // detectado una equivalente ya existente (cambio de contrato 2026-08-14,
+  // ver "duplicado detectado" en PlatformAgentPanel.tsx). Sin esto, un
+  // pedido de creación que matchea una métrica existente vuelve como
+  // pending_clarifications en vez de crear directo.
+  confirm_duplicate?: boolean;
   // Solo para confirmar add-metric-to-report (tool nueva, pedida 2026-08-08,
   // NO deployada todavía al momento de escribir esto — verificar shape real
   // en cuanto backend confirme el deploy). El reporte YA existente al que se
@@ -140,13 +146,26 @@ export type PlatformAgentRequest = {
 // objeto propuesto para una métrica calculada trae query (objeto), no
 // formula_expression (string) — PlatformAgentPanel.tsx lo detecta con
 // isQuerySpec y lo muestra vía QuerySummary, no como InfoRow de texto.
+// Detección de duplicados (cambio de contrato 2026-08-14): si el pedido es
+// crear una métrica calculada y el backend encuentra una equivalente ya
+// existente, el paso de upsert-metric-definition en el trace trae
+// result.existing_metric_id (+ opcional result.proposed_query) en vez de
+// pending_confirmation directo, y pending_clarifications explica la
+// situación en texto. Ver duplicateSuggestion() en PlatformAgentPanel.tsx.
 export type ObservabilityTraceEntry = { tool: string; result: Record<string, unknown> };
 
 export type PlatformAgentResponse = {
+  // Puede venir "metadata_edit" (cambio de contrato 2026-08-14) cuando el
+  // pedido edita nombre/categoría/descripción/unidad/why_it_matters/
+  // benchmark/origen de una métrica ya existente sin tocar su query — no
+  // hay ninguna rama del frontend que dependa de este valor puntual hoy
+  // (la detección sigue siendo estructural, ver arriba), es solo para
+  // debug/observability.
   intent_recognized: string;
   tool_plan: string[];
   data_used: string[];
   answer: string; // narrativa ya redactada, lista para mostrar
+  // Renderizado en PlatformAgentPanel.tsx (antes se ignoraba por completo).
   pending_clarifications: string[];
   action_requests: string[];
   observability_trace: ObservabilityTraceEntry[];
@@ -156,23 +175,31 @@ export type PlatformAgentResponse = {
 // ---- Sheets: analizar hoja transaccional (sigue siendo un flujo puntual) ----
 
 export type SuggestedField = { column: string; field_key: string; value_type: "number" | "text" };
-// fields_used/dependencies son solo informativos para la UI — no se guardan
-// en ningún lado, upsert-metric-definition no los acepta.
+// Cambio de contrato 2026-08-14: query (QuerySpec estructurado) reemplaza a
+// formula_expression, mismo criterio que upsert-metric-definition/
+// propose-query desde el 2026-08-10 — ahora se puede confirmar directo sin
+// pasar por el query builder a mano (ver SuggestedMetricsReview.tsx).
+// aggregation/fields_used/dependencies salieron del contrato (la
+// aggregation ya vive adentro de query, fields_used/dependencies eran solo
+// informativos y nunca se guardaban).
 export type SuggestedMetric = {
   name: string;
   category: string;
   description: string;
   why_it_matters: string;
-  formula_expression: string;
-  aggregation: string;
   unit: string;
-  fields_used: string[];
-  dependencies: string[];
+  query: QuerySpec;
 };
+// Mismo cambio de contrato: cuando el modelo necesitaría inventar un
+// supuesto de negocio (margen, tasa) sin datos reales para proponer una
+// métrica, la devuelve acá en vez de forzar un query inventado — mostrar
+// el mensaje tal cual, nunca completar el hueco del lado frontend.
+export type MetricNeedingMoreData = { name: string; missing_data_description: string };
 // Se ofrece en el paso 3 del wizard de Sheets, ANTES de guardar la conexión —
 // mismo paso que ya usa get-sheet-headers. Requiere ser owner. headers/
 // sample_rows salen directo de la respuesta de get-sheet-headers, ver
-// GrowthTrackerSheets.tsx.
+// GrowthTrackerSheets.tsx. formula_syntax ya NO se manda (cambio de
+// contrato 2026-08-14, lo ignora si igual llega).
 export type AnalyzeTransactionalSheetRequest = {
   company_id: string;
   account_id: string;
@@ -180,11 +207,11 @@ export type AnalyzeTransactionalSheetRequest = {
   sheet_name: string;
   headers: string[];
   sample_rows: string[][]; // hasta 15 filas, tal cual las devuelve get-sheet-headers
-  formula_syntax: FormulaSyntaxEntry[];
 };
-// Cualquiera de las dos listas puede venir vacía (el backend filtra
+// Cualquiera de las listas puede venir vacía (el backend filtra
 // internamente lo que no pasa validación) — mostrar solo lo que vino.
 export type AnalyzeTransactionalSheetResponse = {
   suggested_fields: SuggestedField[];
   suggested_metrics: SuggestedMetric[];
+  metrics_needing_more_data: MetricNeedingMoreData[];
 };
