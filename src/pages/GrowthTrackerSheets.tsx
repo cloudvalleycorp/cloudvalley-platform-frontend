@@ -36,8 +36,7 @@ import { handleMembershipError } from "@/lib/membership";
 import { periodRange } from "@/lib/metricPeriod";
 import { groupRowErrors } from "@/lib/financialData";
 import { cn } from "@/lib/utils";
-import type { SuggestedMetric } from "@/lib/aiInsights";
-import { FORMULA_SYNTAX } from "@/lib/formulaEngine";
+import type { SuggestedMetric, MetricNeedingMoreData } from "@/lib/aiInsights";
 import { SuggestedMetricsReview } from "@/components/metrics/SuggestedMetricsReview";
 import {
   LIST_GOOGLE_ACCOUNTS_URL,
@@ -214,6 +213,7 @@ export default function GrowthTrackerSheets() {
   // SuggestedMetricsReview para aprobar/editar antes de guardar.
   const { analyzeTransactionalSheet, analyzingSheet } = useMetricInsights(company_id);
   const [suggestedMetrics, setSuggestedMetrics] = useState<SuggestedMetric[]>([]);
+  const [metricsNeedingMoreData, setMetricsNeedingMoreData] = useState<MetricNeedingMoreData[]>([]);
   const [showMetricsReview, setShowMetricsReview] = useState(false);
 
   // Per-connection sync state — each connection card syncs/tests
@@ -460,7 +460,6 @@ export default function GrowthTrackerSheets() {
       sheetName,
       headers: autoMapped.hs,
       sampleRows: autoMapped.sampleRows,
-      formulaSyntax: FORMULA_SYNTAX,
     });
     if (!analysis) return;
 
@@ -478,9 +477,16 @@ export default function GrowthTrackerSheets() {
         `IA mapeó ${suggestedCount} columna${suggestedCount === 1 ? "" : "s"}. Revisá los nombres abajo antes de guardar.`
       );
     }
-    if (analysis.suggested_metrics.length > 0) {
+    // No se abre la revisión todavía acá a propósito: las métricas sugeridas
+    // referencian field_keys (ej. FIELDSUM-style aggregation sobre
+    // "inversion") que recién existen del lado backend una vez que se
+    // guarda el mapeo (Guardar mapeo, más abajo) — confirmarlas antes tira
+    // 400 "aggregation referencia un field_key inexistente" (bug real
+    // encontrado en vivo 2026-08-15). Se guarda el resultado y se abre la
+    // revisión recién en handleSaveMapping, tras un guardado exitoso.
+    if (analysis.suggested_metrics.length > 0 || analysis.metrics_needing_more_data.length > 0) {
       setSuggestedMetrics(analysis.suggested_metrics);
-      setShowMetricsReview(true);
+      setMetricsNeedingMoreData(analysis.metrics_needing_more_data);
     }
   };
 
@@ -507,8 +513,23 @@ export default function GrowthTrackerSheets() {
     setTabSearch("");
   };
 
+  // Limpia sugerencias de una hoja NUEVA analizada antes de arrancar un
+  // wizard distinto — editar una conexión existente no vuelve a llamar a
+  // analyzeTransactionalSheet (ver loadHeaders: el branch "seed" no
+  // autoanaliza), así que sin este reset podían quedar colgadas en el
+  // estado y aparecer al guardar el mapeo de una conexión que no tiene
+  // nada que ver. Deliberadamente NO vive en resetWizardData(): esa función
+  // también la llama handleSaveMapping vía cancelWizard() justo antes de
+  // abrir la revisión de sugerencias, y limpiar ahí las vaciaba antes de
+  // que el diálogo llegara a mostrarlas (confirmado en vivo 2026-08-15).
+  const resetSuggestedMetrics = () => {
+    setSuggestedMetrics([]);
+    setMetricsNeedingMoreData([]);
+  };
+
   const openAddConnection = (accountId: string) => {
     resetWizardData();
+    resetSuggestedMetrics();
     setEditingConnectionId(null);
     setWizardAccountId(accountId);
     loadSheets(accountId);
@@ -516,6 +537,7 @@ export default function GrowthTrackerSheets() {
 
   const openEditConnection = (conn: SheetConnection) => {
     resetWizardData();
+    resetSuggestedMetrics();
     setEditingConnectionId(conn.connection_id);
     setWizardAccountId(conn.account_id);
     setSelectedSpreadsheetId(conn.spreadsheet_id);
@@ -694,6 +716,9 @@ export default function GrowthTrackerSheets() {
         }
       }
       cancelWizard();
+      // Recién acá los field_keys sugeridos existen del lado backend (ver
+      // nota en el handler de análisis) — es seguro dejar confirmar.
+      if (suggestedMetrics.length > 0 || metricsNeedingMoreData.length > 0) setShowMetricsReview(true);
       if (syncTargetId) await runConnectionSync(syncTargetId, false);
     } catch {
       toast.error("No se pudo guardar el mapeo");
@@ -1367,6 +1392,7 @@ export default function GrowthTrackerSheets() {
         open={showMetricsReview}
         onOpenChange={setShowMetricsReview}
         suggestions={suggestedMetrics}
+        needingMoreData={metricsNeedingMoreData}
         companyId={company_id}
         allMetrics={financial.metrics}
         categories={metricCategories}

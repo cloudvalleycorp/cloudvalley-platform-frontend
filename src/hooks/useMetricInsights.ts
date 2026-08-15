@@ -3,7 +3,6 @@ import { toast } from "sonner";
 import {
   ANALYZE_TRANSACTIONAL_SHEET_URL,
   handleAiError,
-  type FormulaSyntaxEntry,
   type AnalyzeTransactionalSheetResponse,
 } from "@/lib/aiInsights";
 
@@ -23,7 +22,6 @@ export function useMetricInsights(companyId: string | null) {
     sheetName: string;
     headers: string[];
     sampleRows: string[][];
-    formulaSyntax: FormulaSyntaxEntry[];
   }): Promise<AnalyzeTransactionalSheetResponse | null> => {
     if (!companyId) return null;
     setAnalyzingSheet(true);
@@ -39,7 +37,6 @@ export function useMetricInsights(companyId: string | null) {
           sheet_name: params.sheetName,
           headers: params.headers,
           sample_rows: params.sampleRows,
-          formula_syntax: params.formulaSyntax,
         }),
       });
       if (!res.ok) {
