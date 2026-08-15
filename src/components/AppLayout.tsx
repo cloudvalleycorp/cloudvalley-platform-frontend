@@ -87,18 +87,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 CloudValley
               </Link>
               {orgLabel && (
-                <>
-                  <span className="text-muted-foreground/50 hidden sm:inline md:hidden">/</span>
-                  <span className="text-sm text-foreground truncate hidden sm:inline">{orgLabel}</span>
-                </>
+                <span className="text-sm text-foreground truncate min-w-0">
+                  <span className="text-muted-foreground/50 mr-2 md:hidden">/</span>
+                  {orgLabel}
+                </span>
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {isOrgViewer && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
-                  Modo lectura
-                </span>
-              )}
               <Button
                 variant="ghost"
                 size="icon"

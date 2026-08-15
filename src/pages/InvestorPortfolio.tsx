@@ -8,9 +8,10 @@ import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { AddRoadmapTaskDialog } from "@/components/roadmap/AddRoadmapTaskDialog";
+import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { PortfolioMetricsRow, PORTFOLIO_COMPARISON_METRICS } from "@/components/investor/PortfolioMetricsRow";
 import { LIST_ROADMAP_PILLARS_URL, type RoadmapPillar } from "@/lib/roadmap";
-import { Building2, Plus } from "lucide-react";
+import { Building2, Plus, Sparkles } from "lucide-react";
 
 export default function InvestorPortfolio() {
   const {
@@ -80,6 +81,14 @@ function InvestorPortfolioContent({ companies }: { companies: { id: string; name
   });
 
   const [addingRequirement, setAddingRequirement] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const toggleSelected = (companyId: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(companyId) ? prev.filter((id) => id !== companyId) : [...prev, companyId]
+    );
+  };
 
   return (
     <AppLayout>
@@ -88,11 +97,18 @@ function InvestorPortfolioContent({ companies }: { companies: { id: string; name
           title="Portfolio"
           subtitle={`${companies.length} empresa${companies.length === 1 ? "" : "s"}`}
           action={
-            pillars.length > 0 && (
-              <Button variant="outline" onClick={() => setAddingRequirement(true)}>
-                <Plus size={14} strokeWidth={1.5} className="mr-2" /> Agregar requisito
-              </Button>
-            )
+            <>
+              {companies.length > 0 && (
+                <Button variant="outline" onClick={() => setAssistantOpen(true)}>
+                  <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
+                </Button>
+              )}
+              {pillars.length > 0 && (
+                <Button variant="outline" onClick={() => setAddingRequirement(true)}>
+                  <Plus size={14} strokeWidth={1.5} className="mr-2" /> Agregar requisito
+                </Button>
+              )}
+            </>
           }
         />
 
@@ -103,24 +119,45 @@ function InvestorPortfolioContent({ companies }: { companies: { id: string; name
             description="Las conexiones con startups se gestionan desde Conexiones. Cuando tu fondo conecte con una, va a aparecer acá."
           />
         ) : (
-          <div className="border border-border rounded-lg bg-card overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-muted-foreground border-b border-border">
-                  <th className="text-left font-normal px-4 py-3">Empresa</th>
-                  {PORTFOLIO_COMPARISON_METRICS.map((m) => (
-                    <th key={m.id} className="text-right font-normal px-4 py-3">
-                      {m.label}
-                    </th>
+          <div className="space-y-2">
+            {selectedIds.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {selectedIds.length} empresa{selectedIds.length === 1 ? "" : "s"} seleccionada
+                {selectedIds.length === 1 ? "" : "s"} para el asistente.{" "}
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds([])}
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  Limpiar selección
+                </button>
+              </p>
+            )}
+            <div className="border border-border rounded-lg bg-card overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-muted-foreground border-b border-border">
+                    <th className="text-left font-normal px-4 py-3">Empresa</th>
+                    {PORTFOLIO_COMPARISON_METRICS.map((m) => (
+                      <th key={m.id} className="text-right font-normal px-4 py-3">
+                        {m.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {companies.map((c) => (
+                    <PortfolioMetricsRow
+                      key={c.id}
+                      companyId={c.id}
+                      companyName={c.name}
+                      selected={selectedIds.includes(c.id)}
+                      onToggleSelected={toggleSelected}
+                    />
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {companies.map((c) => (
-                  <PortfolioMetricsRow key={c.id} companyId={c.id} companyName={c.name} />
-                ))}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -134,6 +171,15 @@ function InvestorPortfolioContent({ companies }: { companies: { id: string; name
         description="Se suma al roadmap de las startups elegidas, no cuenta para su readiness score, que se calcula solo con el catálogo estándar."
         onSaved={() => {}}
         companies={companies}
+      />
+
+      <PlatformAgentPanel
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        companyId={null}
+        surface="investor_portfolio"
+        uiContext={{ selectedMetricId: null, selectedCategoryId: null, selectedReportId: null, currentPeriodId: null }}
+        companyIds={selectedIds.length > 0 ? selectedIds : undefined}
       />
     </AppLayout>
   );
