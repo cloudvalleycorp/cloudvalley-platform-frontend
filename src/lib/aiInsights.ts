@@ -60,7 +60,16 @@ export type PlatformAgentSurface =
   // Pantalla de listado de reportes (Reporting.tsx, "Hacer Reporte" sin un
   // reporte abierto todavía) — agregado por backend a pedido, reemplaza el
   // "metrics" que se mandaba ahí como aproximación.
-  | "reporting_list";
+  | "reporting_list"
+  // Portfolio del investor (InvestorPortfolio.tsx) — cross-company, cambio
+  // de contrato 2026-08-15. Es el único surface donde NO se manda
+  // company_id singular: se reemplaza por company_ids (plural, opcional —
+  // ausente = todo el portfolio del fondo). El session_key de esta
+  // conversación es por fondo (portfolio_{fund_id}), no por company; es
+  // UNA sola conversación continua para toda la pantalla, distinta de las
+  // conversaciones por-company del resto de la app — resuelto server-side
+  // a partir del JWT, no hace falta mandar fund_id a mano.
+  | "investor_portfolio";
 
 export type PlatformAgentUiContext = {
   selectedMetricId: string | null;
@@ -94,7 +103,15 @@ export type PlatformAgentMetricFields = Partial<{
 }>;
 
 export type PlatformAgentRequest = {
-  company_id: string;
+  // Ausente cuando surface === "investor_portfolio" (se manda company_ids
+  // en su lugar, ver abajo) — presente y obligatorio en el resto.
+  company_id?: string;
+  // Solo aplica a surface === "investor_portfolio". Opcional: ausente o
+  // vacío = todo el portfolio conectado del fondo. Una company que no
+  // pertenezca de verdad al portfolio del investor se descarta en silencio
+  // del lado backend (JWT desactualizado o intento no autorizado) — nunca
+  // genera un error visible.
+  company_ids?: string[];
   domain?: string; // opcional, default "metrics_reporting" — único valor soportado hoy
   surface: PlatformAgentSurface;
   uiContext: PlatformAgentUiContext;

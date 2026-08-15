@@ -296,11 +296,11 @@ export default function AdminRoadmap() {
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-4 gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
                 <h2 className="text-sm font-medium">Tareas</h2>
                 <div className="flex items-center gap-2">
                   <Select value={pillarFilter} onValueChange={setPillarFilter}>
-                    <SelectTrigger className="w-56 h-9"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-full sm:w-56 h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos los pilares</SelectItem>
                       {pillars.map((p) => (

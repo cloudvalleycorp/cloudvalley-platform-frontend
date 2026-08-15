@@ -24,13 +24,17 @@ export type AskOptions = {
   // "Nueva conversación" — backend persiste el historial solo (cambio de
   // contrato 2026-08-10), esto le pide arrancar de cero.
   resetConversation?: boolean;
+  // Solo surface "investor_portfolio" (cambio de contrato 2026-08-15):
+  // acota la pregunta a estas companies del portfolio. Ausente/vacío = todo
+  // el portfolio conectado del fondo.
+  companyIds?: string[];
 };
 
 /**
  * CAPA: AI Integration Layer — punto de entrada único al agente operativo
  * (POST /platform-agent). Reemplaza los viejos flujos puntuales
  * (generate-formula/explain-metric/ask-metrics-question/suggest-metrics):
- * el agente no solo propone texto, puede escribir una métrica (con
+ * el agente no solo puede responder, puede escribir una métrica (con
  * confirm_write explícito del usuario) o crear un reporte directamente
  * cuando el pedido no es ambiguo. Ver PlatformAgentPanel.tsx.
  */
@@ -38,7 +42,10 @@ export function usePlatformAgent(companyId: string | null, surface: PlatformAgen
   const [asking, setAsking] = useState(false);
 
   const ask = async (question: string, opts: AskOptions): Promise<PlatformAgentResponse | null> => {
-    if (!companyId) return null;
+    // investor_portfolio es cross-company — no tiene un companyId singular,
+    // así que no bloquea acá (company_ids es opcional, ver abajo). El resto
+    // de surfaces sí necesita un companyId real.
+    if (!companyId && surface !== "investor_portfolio") return null;
     setAsking(true);
     try {
       const res = await fetch(PLATFORM_AGENT_URL, {
@@ -46,7 +53,7 @@ export function usePlatformAgent(companyId: string | null, surface: PlatformAgen
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          company_id: companyId,
+          ...(companyId ? { company_id: companyId } : {}),
           surface,
           uiContext: opts.uiContext,
           ...(question.trim() ? { question: question.trim() } : {}),
@@ -55,6 +62,7 @@ export function usePlatformAgent(companyId: string | null, surface: PlatformAgen
           ...(opts.confirmWrite ? { confirm_write: true } : {}),
           ...(opts.confirmDuplicate ? { confirm_duplicate: true } : {}),
           ...(opts.reportId ? { report_id: opts.reportId } : {}),
+          ...(opts.companyIds && opts.companyIds.length > 0 ? { company_ids: opts.companyIds } : {}),
           ...(opts.metricFields ?? {}),
         }),
       });

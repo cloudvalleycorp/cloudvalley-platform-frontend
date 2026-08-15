@@ -87,7 +87,7 @@ function NavItem({
 }
 
 export function AppSidebar() {
-  const { isAdmin, isOrgViewer, fund_name, company_id } = useAuth();
+  const { isAdmin, isOrgViewer, company_id } = useAuth();
   const { startup } = useStartup();
   const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
 
@@ -124,7 +124,6 @@ export function AppSidebar() {
             <img src="/logo.svg" alt="" className="h-6 w-6 shrink-0" />
             CloudValley
           </Link>
-          {fund_name && <div className="mt-3 text-sm text-foreground">{fund_name}</div>}
         </SidebarHeader>
         <SidebarContent className="px-3 py-4">
           <SidebarGroup>

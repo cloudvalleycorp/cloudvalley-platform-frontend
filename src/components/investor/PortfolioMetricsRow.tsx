@@ -40,9 +40,14 @@ function valueFor(def: MetricDef | undefined, currentInputs: Record<string, numb
   return { value: null, unit: def.unit };
 }
 
-type Props = { companyId: string; companyName: string };
+type Props = {
+  companyId: string;
+  companyName: string;
+  selected: boolean;
+  onToggleSelected: (companyId: string) => void;
+};
 
-export function PortfolioMetricsRow({ companyId, companyName }: Props) {
+export function PortfolioMetricsRow({ companyId, companyName, selected, onToggleSelected }: Props) {
   const metrics = useConnectedCompanyMetrics(companyId, range);
   const { currentInputs } = useMetricReportData({ metrics: metrics.metrics, entries: metrics.entries, period });
   const calcDefs = useMemo(() => metrics.metrics.filter((m) => m.metric_type === "calculated"), [metrics.metrics]);
@@ -50,9 +55,18 @@ export function PortfolioMetricsRow({ companyId, companyName }: Props) {
 
   const nameCell = (
     <td className="px-4 py-3 text-sm font-medium">
-      <Link to={`/portfolio/${companyId}`} className="hover:underline">
-        {companyName}
-      </Link>
+      <div className="flex items-center gap-2.5">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelected(companyId)}
+          aria-label={`Seleccionar ${companyName} para el asistente`}
+          className="h-4 w-4 rounded border-input accent-primary shrink-0"
+        />
+        <Link to={`/portfolio/${companyId}`} className="hover:underline">
+          {companyName}
+        </Link>
+      </div>
     </td>
   );
 

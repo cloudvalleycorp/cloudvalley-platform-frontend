@@ -157,6 +157,9 @@ type Props = {
   formulaSyntax?: FormulaSyntaxEntry[];
   metricFields?: PlatformAgentMetricFields;
   onAgentWrote?: () => void;
+  // Solo surface "investor_portfolio": acota la pregunta a estas companies
+  // del portfolio (ausente/vacío = todo el portfolio conectado del fondo).
+  companyIds?: string[];
 };
 
 /**
@@ -179,6 +182,7 @@ export function PlatformAgentPanel({
   formulaSyntax,
   metricFields,
   onAgentWrote,
+  companyIds,
 }: Props) {
   const navigate = useNavigate();
   const { ask, asking } = usePlatformAgent(companyId, surface);
@@ -191,7 +195,13 @@ export function PlatformAgentPanel({
     if (!q) return;
     setQuestion("");
     setPendingQuestion(q);
-    const response = await ask(q, { uiContext, formulaSyntax, metricFields, confirmDuplicate: opts?.confirmDuplicate });
+    const response = await ask(q, {
+      uiContext,
+      formulaSyntax,
+      metricFields,
+      confirmDuplicate: opts?.confirmDuplicate,
+      companyIds,
+    });
     setPendingQuestion(null);
     if (response) setExchanges((prev) => [...prev, { question: q, response, resolvedTraceIndices: new Set() }]);
   };
@@ -254,7 +264,7 @@ export function PlatformAgentPanel({
     if (response) {
       setExchanges((prev) => [
         ...prev,
-        { question: "Confirmado ✓", response, resolvedTraceIndices: new Set() },
+        { question: "Confirmado", response, resolvedTraceIndices: new Set() },
       ]);
       onAgentWrote?.();
     }
@@ -286,15 +296,27 @@ export function PlatformAgentPanel({
             )}
           </div>
           <SheetDescription>
-            Pedile algo en lenguaje natural: puede responder, proponer una métrica o crear un reporte.
+            {surface === "investor_portfolio"
+              ? "Contame qué necesitás saber sobre las empresas de tu portfolio."
+              : "Contame qué necesitás: puedo responder dudas, proponer una métrica o armarte un reporte."}
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {exchanges.length === 0 && !pendingQuestion && (
             <p className="text-sm text-muted-foreground">
-              Ej: "¿por qué bajó el churn en marzo?", "creá una métrica de churn mensual sobre clientes activos" o
-              "hacé el reporte del mes".
+              {surface === "investor_portfolio" ? (
+                companyIds && companyIds.length > 0 ? (
+                  <>Ej: "compará el Revenue de estas empresas" o "¿cuál viene quemando más caja este trimestre?".</>
+                ) : (
+                  <>Ej: "¿cómo viene mi portfolio este trimestre?" o "¿qué empresa necesita más atención ahora?".</>
+                )
+              ) : (
+                <>
+                  Ej: "¿por qué bajó el churn en marzo?", "creá una métrica de churn mensual sobre clientes activos" o
+                  "hacé el reporte del mes".
+                </>
+              )}
             </p>
           )}
 
@@ -499,7 +521,7 @@ export function PlatformAgentPanel({
             }}
             rows={2}
             placeholder="Escribí tu pedido…"
-            aria-label="Escribí tu pedido"
+            aria-label="Escribí tu pedido…"
             className="resize-none"
           />
           <Button size="sm" onClick={handleAsk} disabled={!question.trim() || asking} aria-label="Enviar">
