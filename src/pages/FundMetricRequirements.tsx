@@ -21,7 +21,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CoverageRing, coverageTone } from "@/components/investor/CoverageRing";
 import { useMetricRequirements, useMetricRequirementMutations } from "@/hooks/useMetricRequirements";
 import { useMetricRequirementCoverage } from "@/hooks/useMetricRequirementCoverage";
 import {
@@ -196,16 +195,9 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
             {requirements.map((r) => {
               const cov = coverageById.get(r.requirement_id);
               const target = cov?.target_count ?? companies.length;
-              const percent = target > 0 ? ((cov?.ok_count ?? 0) / target) * 100 : 0;
               return (
                 <div key={r.requirement_id} className="flex flex-col sm:flex-row sm:items-center gap-4 px-5 py-4">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <CoverageRing
-                      percent={percent}
-                      label={target > 0 ? `${cov?.ok_count ?? 0}/${target}` : "—"}
-                      tone={r.mandatory ? coverageTone(percent, target) : "muted"}
-                      size={44}
-                    />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-foreground truncate">{r.name}</span>
@@ -217,6 +209,7 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
                         {r.unit} · {PERIODICITY_LABELS[r.periodicity]}
+                        {r.mandatory && ` · ${cov?.ok_count ?? 0}/${target} al día`}
                         {r.description ? ` · ${r.description}` : ""}
                       </p>
                     </div>

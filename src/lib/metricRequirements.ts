@@ -109,6 +109,25 @@ export type PortfolioMetricsDashboardResponse = {
 };
 
 // ---- Lado startup ----
+
+// Fila origin="fund_required" dentro de la respuesta de list-metrics (D.1) —
+// metric_id siempre null, no es una MetricDefinition real todavía, es el
+// pedido del fondo. Se usa requirement_id como key, nunca metric_id.
+export type FundRequiredMetricRow = {
+  requirement_id: string;
+  source_fund_id: string;
+  source_fund_name: string;
+  is_mandatory: boolean;
+  linked_own_metric_id: string | null;
+  compliance_status: ComplianceStatus;
+  name: string;
+  description: string | null;
+  why_it_matters: string | null;
+  unit: string;
+  value_type: MetricValueType;
+  periodicity: MetricPeriodicity;
+};
+
 export type SuggestedMetricLinkCandidate = { metric_id: string; name: string; score: number; reason: string };
 export type SuggestMetricLinksResponse = { candidates: SuggestedMetricLinkCandidate[] };
 

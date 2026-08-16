@@ -27,6 +27,7 @@ import { LIST_RAW_FIELDS_URL, LIST_SHEET_CONNECTIONS_URL, type SheetConnection }
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { handleMembershipError } from "@/lib/membership";
+import { FundRequiredMetricsSection } from "@/components/metrics/FundRequiredMetricsSection";
 
 // Los tabs son 100% dinámicos: cualquier category que devuelva list-metrics
 // se vuelve un tab (así una métrica custom con category nueva, o el catálogo
@@ -348,6 +349,12 @@ export default function Metrics() {
               </Button>
             )
           }
+        />
+
+        <FundRequiredMetricsSection
+          rows={financial.fundRequired}
+          ownMetrics={financial.metrics}
+          onChanged={financial.reload}
         />
 
         {pageMode === "data" && (
