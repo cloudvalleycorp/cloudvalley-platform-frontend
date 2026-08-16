@@ -10,10 +10,11 @@ import {
   Landmark,
   DollarSign,
   FileBarChart,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
 import {
   Sidebar,
@@ -59,12 +60,18 @@ function NavItem({
   icon: Icon,
   label,
   className,
+  tone = "light",
 }: {
   to: string;
   end: boolean;
   icon: LucideIcon;
   label: string;
   className?: string;
+  // "dark": sidebar del investor, chrome fijo oscuro (ver --investor-sidebar-*
+  // en index.css) — el inactivo no puede usar text-muted-foreground/
+  // hover:text-foreground (tokens del tema global, ilegibles sobre fondo
+  // oscuro fijo), necesita su propio par de contraste.
+  tone?: "light" | "dark";
 }) {
   const { pathname } = useLocation();
   const active = isNavActive(pathname, to, end);
@@ -74,7 +81,8 @@ function NavItem({
         <NavLink
           to={to}
           className={cn(
-            "flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 text-muted-foreground hover:text-foreground",
+            "flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150",
+            tone === "dark" ? "text-sidebar-foreground/65 hover:text-sidebar-foreground" : "text-muted-foreground hover:text-foreground",
             className,
           )}
         >
@@ -117,25 +125,49 @@ export function AppSidebar() {
   }, [company_id]);
 
   if (isOrgViewer) {
+    // Chrome fijo oscuro, independiente del toggle claro/oscuro de la app —
+    // distingue de un vistazo que estás en el modo fondo, no founder. Los
+    // --sidebar-* que Sidebar/SidebarMenuButton ya leen (bg-sidebar,
+    // text-sidebar-foreground, data-active:bg-sidebar-accent, etc.) se
+    // redefinen localmente acá con los valores fijos de --investor-sidebar-*
+    // — ningún componente de shadcn/ui/sidebar.tsx necesita tocarse.
+    // Sin hsl() acá: --sidebar-* guardan el triplete crudo ("H S% L%"),
+    // igual que --investor-sidebar-* — es Tailwind (tailwind.config.ts,
+    // sidebar.DEFAULT: "hsl(var(--sidebar-background))") el que envuelve en
+    // hsl() al resolver bg-sidebar/text-sidebar-foreground. Envolver acá
+    // también producía hsl(hsl(...)), CSS inválido que el browser descarta
+    // silenciosamente (confirmado en vivo: sidebar seguía blanco).
+    const investorSidebarVars = {
+      "--sidebar-background": "var(--investor-sidebar-background)",
+      "--sidebar-foreground": "var(--investor-sidebar-foreground)",
+      "--sidebar-accent": "var(--investor-sidebar-accent)",
+      "--sidebar-accent-foreground": "var(--investor-sidebar-accent-foreground)",
+      "--sidebar-border": "var(--investor-sidebar-border)",
+      "--sidebar-ring": "var(--investor-sidebar-accent-foreground)",
+    } as CSSProperties;
+
     return (
-      <Sidebar>
-        <SidebarHeader className="border-b border-sidebar-border px-5 py-5">
-          <Link to="/" className="inline-flex items-center gap-2 text-base font-medium tracking-tight text-foreground hover:text-foreground/70 transition-colors">
-            <img src="/logo.svg" alt="" className="h-6 w-6 shrink-0" />
-            CloudValley
-          </Link>
-        </SidebarHeader>
-        <SidebarContent className="px-3 py-4">
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <NavItem to="/portfolio" end={false} icon={Building2} label="Portfolio" />
-                <NavItem to="/conexiones" end icon={Network} label="Conexiones" />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-      </Sidebar>
+      <div style={investorSidebarVars}>
+        <Sidebar>
+          <SidebarHeader className="border-b border-sidebar-border px-5 py-5">
+            <Link to="/" className="inline-flex items-center gap-2 text-base font-medium tracking-tight text-sidebar-foreground hover:text-sidebar-foreground/70 transition-colors">
+              <img src="/logo.svg" alt="" className="h-6 w-6 shrink-0" />
+              CloudValley
+            </Link>
+          </SidebarHeader>
+          <SidebarContent className="px-3 py-4">
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <NavItem to="/portfolio" end={false} icon={Building2} label="Portfolio" tone="dark" />
+                  <NavItem to="/requisitos" end icon={SlidersHorizontal} label="Gestión" tone="dark" />
+                  <NavItem to="/conexiones" end icon={Network} label="Conexiones" tone="dark" />
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+        </Sidebar>
+      </div>
     );
   }
 

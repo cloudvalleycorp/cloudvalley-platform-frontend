@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Sparkles, Plus, Map } from "lucide-react";
+import { Plus, Map } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import { BackLink } from "@/components/BackLink";
@@ -17,7 +17,6 @@ import { FileText } from "lucide-react";
 import { ReportSectionView } from "@/components/metrics/ReportSectionView";
 import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
-import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -30,7 +29,7 @@ import { Accordion } from "@/components/ui/accordion";
 import { CategoryAccordion } from "@/components/dataRoom/CategoryAccordion";
 import { DocumentRow } from "@/components/dataRoom/DocumentRow";
 import { type MetricDef } from "@/lib/metrics";
-import { evalFormula, FORMULA_SYNTAX } from "@/lib/formulaEngine";
+import { evalFormula } from "@/lib/formulaEngine";
 import { periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
@@ -101,7 +100,6 @@ export default function InvestorCompany() {
 
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
-  const [assistantOpen, setAssistantOpen] = useState(false);
   const [openRoadmapTask, setOpenRoadmapTask] = useState<RoadmapTask | null>(null);
   const [addingRequirement, setAddingRequirement] = useState(false);
   // 24 meses de margen sobre el período elegido para que SUMLAST/AVGLAST/YTD
@@ -217,11 +215,6 @@ export default function InvestorCompany() {
                     )}
                     {profile.industry && <span>{profile.industry}</span>}
                   </span>
-                }
-                action={
-                  <Button variant="outline" onClick={() => setAssistantOpen(true)}>
-                    <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
-                  </Button>
                 }
               />
               <div className="space-y-8 mt-8">
@@ -430,20 +423,6 @@ export default function InvestorCompany() {
           hideTargetPicker
         />
       )}
-
-      <PlatformAgentPanel
-        open={assistantOpen}
-        onOpenChange={setAssistantOpen}
-        companyId={company_id ?? null}
-        surface="investor_company"
-        uiContext={{
-          selectedMetricId: openInfo?.id ?? null,
-          selectedCategoryId: null,
-          selectedReportId: shared.selectedId ?? null,
-          currentPeriodId: toPeriodString(period.month, period.year),
-        }}
-        formulaSyntax={FORMULA_SYNTAX}
-      />
     </AppLayout>
   );
 }

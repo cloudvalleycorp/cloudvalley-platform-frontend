@@ -1,0 +1,162 @@
+// CAPA: Requisitos de métricas por fondo — contrato confirmado por backend
+// 2026-08-16 (13 endpoints: 10 nuevos + 3 modificados). Un fondo pide un
+// valor con nombre/descripción/unidad/periodicidad — NUNCA una fórmula, no
+// tiene visibilidad del modelo de datos crudos de cada startup. La startup
+// vincula (o crea) su propia métrica para cumplir el pedido; el fondo solo
+// ve el valor resultante, nunca el query. Ver diseño completo en el
+// artifact "Requisitos de Métricas" publicado esta sesión.
+import { API_BASE_URL } from "@/lib/apiConfig";
+
+// ---- Lado fondo — CRUD de requisitos ----
+export const LIST_METRIC_REQUIREMENTS_URL = `${API_BASE_URL}/list-metric-requirements`;
+export const UPSERT_METRIC_REQUIREMENT_URL = `${API_BASE_URL}/upsert-metric-requirement`;
+export const SET_METRIC_REQUIREMENT_MANDATORY_URL = `${API_BASE_URL}/set-metric-requirement-mandatory`;
+export const DELETE_METRIC_REQUIREMENT_URL = `${API_BASE_URL}/delete-metric-requirement`;
+
+// ---- Lado fondo — vistas agregadas ----
+export const LIST_METRIC_REQUIREMENT_COVERAGE_URL = `${API_BASE_URL}/list-metric-requirement-coverage`;
+export const LIST_PORTFOLIO_METRICS_DASHBOARD_URL = `${API_BASE_URL}/list-portfolio-metrics-dashboard`;
+
+// ---- Lado startup — cumplimiento (hooks/UI llegan en una pasada aparte) ----
+export const SUGGEST_METRIC_LINKS_URL = `${API_BASE_URL}/suggest-metric-links`;
+export const LINK_METRIC_TO_REQUIREMENT_URL = `${API_BASE_URL}/link-metric-to-requirement`;
+export const UNLINK_METRIC_FROM_REQUIREMENT_URL = `${API_BASE_URL}/unlink-metric-from-requirement`;
+export const SET_METRIC_APPLICABILITY_URL = `${API_BASE_URL}/set-metric-applicability`;
+
+export type MetricValueType = "money" | "count" | "percentage" | "text";
+export type MetricPeriodicity = "monthly" | "quarterly" | "annual";
+
+export type MetricRequirement = {
+  requirement_id: string;
+  fund_id: string;
+  fund_name: string;
+  name: string;
+  description: string | null;
+  why_it_matters: string | null;
+  unit: string;
+  value_type: MetricValueType;
+  periodicity: MetricPeriodicity;
+  mandatory: boolean;
+  effective_from: string | null; // "YYYY-MM"
+  target_startup_ids: string[] | null; // null/[] = todas las conectadas
+};
+
+export type ListMetricRequirementsResponse = { requirements: MetricRequirement[] };
+
+// Nunca lleva query/metric_type/input_key — el fondo no calcula. mandatory/
+// target_startup_ids/effective_from se ignoran acá aunque se manden, viven
+// en SetMetricRequirementMandatoryRequest.
+export type UpsertMetricRequirementRequest = {
+  requirement_id?: string; // ausente = crear
+  name: string;
+  description?: string;
+  why_it_matters?: string;
+  unit: string;
+  value_type: MetricValueType;
+  periodicity: MetricPeriodicity;
+};
+
+export type SetMetricRequirementMandatoryRequest = {
+  requirement_id: string;
+  mandatory: boolean;
+  target_startup_ids?: string[] | null; // null/omitido = todas las conectadas, dinámico
+  effective_from?: string; // "YYYY-MM" — requerido la primera vez que mandatory pasa a true
+};
+
+export type ComplianceStatus =
+  | "ok"
+  | "pending"
+  | "no_data"
+  | "not_applicable"
+  | "error"
+  | "unfulfilled"
+  | "not_required_then";
+
+export type MetricRequirementCoverage = {
+  requirement_id: string;
+  mandatory: boolean;
+  target_count: number;
+  linked_count: number;
+  ok_count: number;
+  pending_count: number;
+  no_data_count: number;
+  not_applicable_count: number;
+  error_count: number;
+  unfulfilled_count: number;
+  last_updated_period: string | null;
+};
+
+export type ListMetricRequirementCoverageResponse = { coverage: MetricRequirementCoverage[] };
+
+export type PortfolioDashboardRow = {
+  company_id: string;
+  company_name: string;
+  requirement_id: string;
+  values: Record<string, number | null>; // período -> valor
+  compliance_status: Record<string, ComplianceStatus>; // período -> estado
+};
+
+export type PortfolioAggregateEntry = { sum?: number; count_with_data?: number; avg?: number };
+
+// portfolio_aggregates solo existe para requisitos con value_type en
+// money/count/percentage (nunca text). skipped documenta requisitos que no
+// aplican a ninguna company para el período pedido (no es un error).
+export type PortfolioMetricsDashboardResponse = {
+  periods: string[];
+  rows: PortfolioDashboardRow[];
+  portfolio_aggregates: Record<string, Record<string, PortfolioAggregateEntry>>;
+  skipped: { requirement_id: string; reason: string }[];
+};
+
+// ---- Lado startup ----
+export type SuggestedMetricLinkCandidate = { metric_id: string; name: string; score: number; reason: string };
+export type SuggestMetricLinksResponse = { candidates: SuggestedMetricLinkCandidate[] };
+
+export type LinkMetricToRequirementRequest = { requirement_id: string; own_metric_id: string };
+// definition_conflict es informativo (ej. unidades distintas) — nunca bloquea.
+export type LinkMetricToRequirementResponse = { link_id: string; definition_conflict: boolean };
+
+export type SetMetricApplicabilityRequest = {
+  requirement_id: string;
+  status: "not_applicable" | "clear";
+  reason?: string; // obligatorio si status="not_applicable"
+};
+
+export const VALUE_TYPE_LABELS: Record<MetricValueType, string> = {
+  money: "Dinero",
+  count: "Número",
+  percentage: "Porcentaje",
+  text: "Texto",
+};
+
+export const PERIODICITY_LABELS: Record<MetricPeriodicity, string> = {
+  monthly: "Mensual",
+  quarterly: "Trimestral",
+  annual: "Anual",
+};
+
+// Formateo genérico de un valor de dashboard según el value_type del
+// requisito — el fondo define la unidad como texto libre (no es uno de los
+// units reconocidos por formatMetricValue en lib/metrics.ts, que es para el
+// catálogo propio de una startup), así que acá el formato sale de
+// value_type, con unit como sufijo solo para "count"/casos no cubiertos.
+export function formatRequirementValue(
+  value: number | null,
+  requirement: Pick<MetricRequirement, "value_type" | "unit">
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (requirement.value_type === "money") return `$${value.toLocaleString()}`;
+  if (requirement.value_type === "percentage") return `${value.toFixed(1)}%`;
+  if (requirement.value_type === "count") return value.toLocaleString();
+  return requirement.unit ? `${value} ${requirement.unit}` : String(value);
+}
+
+export const COMPLIANCE_STATUS_LABELS: Record<ComplianceStatus, string> = {
+  ok: "Al día",
+  pending: "Pendiente",
+  no_data: "Sin datos",
+  not_applicable: "No aplica",
+  error: "Error",
+  unfulfilled: "Sin vincular",
+  not_required_then: "Todavía no exigido",
+};

@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from "react";
-import { Navigate, useNavigate, useLocation, Link } from "react-router-dom";
+import { Navigate, useNavigate, useLocation, Link, matchPath } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
@@ -7,7 +7,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
 import { CompleteProfileScreen } from "@/components/CompleteProfileScreen";
-import { LogOut, Settings as SettingsIcon, UserCircle, Moon, Sun } from "lucide-react";
+import { LogOut, Settings as SettingsIcon, UserCircle, Moon, Sun, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const { user, loading: authLoading, isOrgViewer, isAdmin, role, company_id, company_name, fund_name, email, full_name, signOut } = useAuth();
@@ -26,6 +27,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [profilePromptDismissed, setProfilePromptDismissed] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
   const [mountedTheme, setMountedTheme] = useState(false);
+  // Global, no por-página — pero el contexto que le manda al agente SÍ
+  // depende de dónde se lo abre: parado en el detalle de una company puntual
+  // (/portfolio/:id) le manda esa company (surface investor_company); en
+  // cualquier otra pantalla de investor (Portfolio, Requisitos, Conexiones)
+  // es cross-company (surface investor_portfolio, companyId null). Resuelto
+  // por URL, no por props del children — así no hay que enchufar el botón
+  // pantalla por pantalla.
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const companyDetailMatch = matchPath("/portfolio/:companyId", location.pathname);
+  const assistantCompanyId = companyDetailMatch?.params.companyId ?? null;
 
   useEffect(() => {
     setMountedTheme(true);
@@ -39,7 +50,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
       location.pathname.startsWith("/portfolio") ||
       location.pathname === "/account" ||
       location.pathname === "/settings" ||
-      location.pathname === "/conexiones";
+      location.pathname === "/conexiones" ||
+      location.pathname === "/requisitos";
     if (!authLoading && user && isOrgViewer && !allowedForOrgViewer) {
       navigate("/portfolio", { replace: true });
     }
@@ -94,6 +106,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {role === "investor" && (
+                <Button variant="outline" size="sm" onClick={() => setAssistantOpen(true)} aria-label="Asistente">
+                  <Sparkles size={14} className="sm:mr-1.5" aria-hidden="true" />
+                  <span className="hidden sm:inline">Asistente</span>
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -142,6 +160,17 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto focus:outline-none">{children}</main>
         </div>
       </div>
+
+      {role === "investor" && (
+        <PlatformAgentPanel
+          key={assistantCompanyId ?? "portfolio"}
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+          companyId={assistantCompanyId}
+          surface={assistantCompanyId ? "investor_company" : "investor_portfolio"}
+          uiContext={{ selectedMetricId: null, selectedCategoryId: null, selectedReportId: null, currentPeriodId: null }}
+        />
+      )}
     </SidebarProvider>
   );
 }
