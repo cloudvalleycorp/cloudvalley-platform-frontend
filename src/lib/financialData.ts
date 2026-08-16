@@ -135,6 +135,18 @@ export type FinancialMetricDef = {
   // respuestas viejas, por eso siempre opcional y se trata undefined como
   // activo (nunca ocultar de más por falta del campo).
   active?: boolean;
+  // Contrato ampliado 2026-08-16 (ver src/lib/metricRequirements.ts): una
+  // fila fund_required trae metric_id null y estos campos en su lugar — se
+  // parte de la respuesta de list-metrics ANTES de mapear con toMetricDef,
+  // ver useFinancialMetrics.ts. periodicity es nuevo para cualquier fila.
+  periodicity?: "monthly" | "quarterly" | "annual";
+  origin?: "own" | "fund_required";
+  requirement_id?: string;
+  source_fund_id?: string;
+  source_fund_name?: string;
+  is_mandatory?: boolean;
+  linked_own_metric_id?: string | null;
+  compliance_status?: "ok" | "pending" | "no_data" | "not_applicable" | "error" | "unfulfilled" | "not_required_then";
 };
 
 // Shape returned by GET /list-records — one row per period. Values are

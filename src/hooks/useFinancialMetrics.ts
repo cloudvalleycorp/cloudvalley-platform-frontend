@@ -14,6 +14,7 @@ import {
 } from "@/lib/financialData";
 import { toMetricDef, type MetricDef } from "@/lib/metrics";
 import { periodKey, buildEntriesFromRecords } from "@/lib/metricPeriod";
+import type { FundRequiredMetricRow } from "@/lib/metricRequirements";
 
 type PeriodRange = { from: string; to: string };
 
@@ -21,6 +22,7 @@ type FinancialData = {
   metrics: MetricDef[];
   entries: Record<string, Record<string, number>>;
   privacy: Record<string, boolean>;
+  fundRequired: FundRequiredMetricRow[];
 };
 
 async function fetchFinancialData(companyId: string, range: PeriodRange): Promise<FinancialData> {
@@ -37,10 +39,30 @@ async function fetchFinancialData(companyId: string, range: PeriodRange): Promis
     const data = await defsRes.json();
     defs = Array.isArray(data?.metrics) ? data.metrics : [];
   }
+  // Contrato ampliado 2026-08-16: list-metrics ahora también trae filas
+  // origin="fund_required" (metric_id null, no son MetricDefinition propias
+  // todavía) mezcladas con el catálogo — se parten ANTES de mapear con
+  // toMetricDef, que asume una métrica real.
+  const ownDefs = defs.filter((d) => d.origin !== "fund_required");
+  const fundRequiredDefs = defs.filter((d) => d.origin === "fund_required");
   // list-metrics no filtra las métricas soft-deleted (active: false) — bug
   // de backend reportado 2026-08-09, se filtra acá para que "Eliminar" no
   // deje la métrica visible en ningún lado.
-  const mapped = defs.filter((d) => d.active !== false).map(toMetricDef);
+  const mapped = ownDefs.filter((d) => d.active !== false).map(toMetricDef);
+  const fundRequired: FundRequiredMetricRow[] = fundRequiredDefs.map((d) => ({
+    requirement_id: d.requirement_id ?? "",
+    source_fund_id: d.source_fund_id ?? "",
+    source_fund_name: d.source_fund_name ?? "",
+    is_mandatory: !!d.is_mandatory,
+    linked_own_metric_id: d.linked_own_metric_id ?? null,
+    compliance_status: d.compliance_status ?? "unfulfilled",
+    name: d.name,
+    description: d.description ?? null,
+    why_it_matters: d.why_it_matters ?? null,
+    unit: d.unit ?? "",
+    value_type: d.value_type ?? "count",
+    periodicity: d.periodicity ?? "monthly",
+  }));
 
   let entries: Record<string, Record<string, number>> = {};
   if (recordsRes.ok) {
@@ -56,7 +78,7 @@ async function fetchFinancialData(companyId: string, range: PeriodRange): Promis
     for (const p of list) privacy[p.metric_id] = p.is_public;
   }
 
-  return { metrics: mapped, entries, privacy };
+  return { metrics: mapped, entries, privacy, fundRequired };
 }
 
 async function fetchImportLog(companyId: string): Promise<ImportLogEntry[]> {
@@ -92,6 +114,7 @@ export function useFinancialMetrics(companyId: string | null, range: PeriodRange
   const metrics = data?.metrics ?? [];
   const entries = data?.entries ?? {};
   const privacy = data?.privacy ?? {};
+  const fundRequired = data?.fundRequired ?? [];
 
   const logsQueryKey = ["financial-import-log", companyId] as const;
   const { data: logs = [], isLoading: loadingLogs } = useQuery({
@@ -188,6 +211,7 @@ export function useFinancialMetrics(companyId: string | null, range: PeriodRange
     metrics,
     entries,
     privacy,
+    fundRequired,
     loading,
     notEnabled,
     logs,

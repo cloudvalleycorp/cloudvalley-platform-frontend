@@ -101,19 +101,6 @@
     --teal-dark: 175 72% 36%;          /* #1A9E92 */
     --teal-light: 174 59% 68%;         /* #7DDDD3 */
     --teal-subtle: 175 59% 92%;        /* #E0F7F5 */
-
-    /* Sidebar de investor — chrome fijo, independiente del toggle claro/
-       oscuro de la app (decisión de diseño 2026-08-16: distingue el modo
-       fondo del modo founder). Son EXACTAMENTE los mismos valores que ya usa
-       --sidebar-* dentro de .dark más abajo — no son colores nuevos sin
-       verificar, es la paleta oscura ya calculada para sidebar, fijada acá
-       en vez de atada al tema global. */
-    --investor-sidebar-background: 240 13% 10%;
-    --investor-sidebar-foreground: 240 15% 85%;
-    --investor-sidebar-muted: 240 10% 62%;
-    --investor-sidebar-accent: 2 40% 18%;
-    --investor-sidebar-accent-foreground: 2 90% 78%;
-    --investor-sidebar-border: 240 12% 20%;
   }
 
   .dark {
