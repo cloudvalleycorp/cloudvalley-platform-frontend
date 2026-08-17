@@ -64,8 +64,16 @@ AlertDialogTitle.displayName = AlertDialogPrimitive.Title.displayName;
 const AlertDialogDescription = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Description>
->(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Description ref={ref} className={cn("text-sm text-muted-foreground", className)} {...props} />
+>(({ className, children, ...props }, ref) => (
+  // asChild + div (no Radix default <p>): callers like ConfirmationDialog
+  // sometimes pass block content (a paragraph plus a checkbox row, see the
+  // delete-metric confirmation in MetricPropertyPanel.tsx) — a <p> wrapper
+  // produced invalid <p>/<div> nested in <p> DOM (confirmed via React's
+  // validateDOMNesting warning in the browser console 2026-08-17). A div
+  // renders identically for the common plain-string case.
+  <AlertDialogPrimitive.Description asChild ref={ref} {...props}>
+    <div className={cn("text-sm text-muted-foreground", className)}>{children}</div>
+  </AlertDialogPrimitive.Description>
 ));
 AlertDialogDescription.displayName = AlertDialogPrimitive.Description.displayName;
 

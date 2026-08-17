@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { LIST_PORTFOLIO_METRICS_DASHBOARD_URL, type PortfolioMetricsDashboardResponse } from "@/lib/metricRequirements";
 
-type Result = PortfolioMetricsDashboardResponse & { forbidden: boolean };
+type Result = PortfolioMetricsDashboardResponse & { forbidden: boolean; rateLimited: boolean };
 
-const EMPTY: Result = { periods: [], rows: [], portfolio_aggregates: {}, skipped: [], forbidden: false };
+const EMPTY: Result = { periods: [], rows: [], portfolio_aggregates: {}, skipped: [], forbidden: false, rateLimited: false };
 
 async function fetchDashboard(period: string, requirementIds?: string[]): Promise<Result> {
   const params = new URLSearchParams({ period });
@@ -12,6 +12,10 @@ async function fetchDashboard(period: string, requirementIds?: string[]): Promis
     credentials: "include",
   });
   if (res.status === 403) return { ...EMPTY, forbidden: true };
+  // 429 es un rate limit propio de este endpoint (el más costoso del set,
+  // evalúa startup×requisito×período) — mensaje explícito de "esperá un
+  // momento" en vez de reintentar automático o mostrar vacío en silencio.
+  if (res.status === 429) return { ...EMPTY, rateLimited: true };
   if (!res.ok) return EMPTY;
   const data = await res.json();
   return {
@@ -20,6 +24,7 @@ async function fetchDashboard(period: string, requirementIds?: string[]): Promis
     portfolio_aggregates: data?.portfolio_aggregates ?? {},
     skipped: Array.isArray(data?.skipped) ? data.skipped : [],
     forbidden: false,
+    rateLimited: false,
   };
 }
 
@@ -32,6 +37,9 @@ export function usePortfolioMetricsDashboard(period: string, requirementIds?: st
   const { data = EMPTY, isLoading: loading } = useQuery({
     queryKey: ["portfolio-metrics-dashboard", period, key],
     queryFn: () => fetchDashboard(period, requirementIds),
+    // 429 no se reintenta automático — la spec pide "sin reintento
+    // inmediato", así que no sumamos más presión al rate limit del fondo.
+    retry: (failureCount, error) => false,
   });
   return {
     periods: data.periods,
@@ -40,5 +48,6 @@ export function usePortfolioMetricsDashboard(period: string, requirementIds?: st
     skipped: data.skipped,
     loading,
     forbidden: data.forbidden,
+    rateLimited: data.rateLimited,
   };
 }

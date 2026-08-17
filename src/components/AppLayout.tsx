@@ -51,7 +51,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
       location.pathname === "/account" ||
       location.pathname === "/settings" ||
       location.pathname === "/conexiones" ||
-      location.pathname === "/requisitos";
+      location.pathname === "/requisitos" ||
+      location.pathname === "/analiticas";
     if (!authLoading && user && isOrgViewer && !allowedForOrgViewer) {
       navigate("/portfolio", { replace: true });
     }

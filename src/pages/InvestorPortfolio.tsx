@@ -14,7 +14,7 @@ import { LIST_ROADMAP_PILLARS_URL, type RoadmapPillar } from "@/lib/roadmap";
 import { useMetricRequirements } from "@/hooks/useMetricRequirements";
 import { useMetricRequirementCoverage } from "@/hooks/useMetricRequirementCoverage";
 import { usePortfolioMetricsDashboard } from "@/hooks/usePortfolioMetricsDashboard";
-import { formatRequirementValue, PERIODICITY_LABELS } from "@/lib/metricRequirements";
+import { formatRequirementValue, PERIODICITY_LABELS, type MetricRequirementCoverage } from "@/lib/metricRequirements";
 import { toPeriodString } from "@/lib/metricPeriod";
 import { Building2, Plus, SlidersHorizontal, ArrowRight } from "lucide-react";
 
@@ -93,7 +93,7 @@ function InvestorPortfolioContent({ companies }: { companies: { id: string; name
   const mandatory = useMemo(() => requirements.filter((r) => r.mandatory), [requirements]);
   const { coverage } = useMetricRequirementCoverage();
   const coverageById = useMemo(() => {
-    const map = new Map<string, { ok_count: number; target_count: number }>();
+    const map = new Map<string, MetricRequirementCoverage>();
     for (const c of coverage) map.set(c.requirement_id, c);
     return map;
   }, [coverage]);
