@@ -16,6 +16,10 @@ type Props = {
   rows: FundRequiredMetricRow[];
   ownMetrics: MetricDef[];
   onChanged: () => void;
+  // Abre MetricPropertyPanel en modo creación, precargado con este pedido —
+  // ver Metrics.tsx (dueño del panel) y useMetricPropertyForm's
+  // fulfillsRequirementId/prefill.
+  onCreateNew: (requirement: FundRequiredMetricRow) => void;
 };
 
 // Se mezclan visualmente en la misma pantalla de Métricas (arriba del
@@ -23,7 +27,7 @@ type Props = {
 // Cada fila fund_required nunca es una MetricDefinition real (metric_id
 // null): acá solo se muestra el pedido + estado + acciones de cumplimiento
 // (vincular/desvincular/no aplicable), nunca edición de la definición en sí.
-export function FundRequiredMetricsSection({ rows, ownMetrics, onChanged }: Props) {
+export function FundRequiredMetricsSection({ rows, ownMetrics, onChanged, onCreateNew }: Props) {
   const [linking, setLinking] = useState<FundRequiredMetricRow | null>(null);
   const [markingNa, setMarkingNa] = useState<FundRequiredMetricRow | null>(null);
   const [unlinking, setUnlinking] = useState<FundRequiredMetricRow | null>(null);
@@ -97,6 +101,11 @@ export function FundRequiredMetricsSection({ rows, ownMetrics, onChanged }: Prop
           const ok = await linkMetric(linking.requirement_id, metricId);
           if (ok) setLinking(null);
         }}
+        onCreateNew={() => {
+          if (!linking) return;
+          onCreateNew(linking);
+          setLinking(null);
+        }}
         busy={saving}
       />
 
@@ -163,12 +172,14 @@ function LinkMetricDialog({
   ownMetrics,
   onOpenChange,
   onConfirm,
+  onCreateNew,
   busy,
 }: {
   requirement: FundRequiredMetricRow | null;
   ownMetrics: MetricDef[];
   onOpenChange: (open: boolean) => void;
   onConfirm: (metricId: string) => void;
+  onCreateNew: () => void;
   busy: boolean;
 }) {
   const [candidates, setCandidates] = useState<SuggestedMetricLinkCandidate[]>([]);
@@ -239,6 +250,13 @@ function LinkMetricDialog({
           </SelectContent>
         </Select>
       </FormField>
+      <button
+        type="button"
+        onClick={onCreateNew}
+        className="text-xs text-primary hover:underline"
+      >
+        Ninguna me sirve, crear una métrica nueva para esto
+      </button>
     </FormDialog>
   );
 }

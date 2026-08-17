@@ -28,6 +28,7 @@ import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { handleMembershipError } from "@/lib/membership";
 import { FundRequiredMetricsSection } from "@/components/metrics/FundRequiredMetricsSection";
+import type { FundRequiredMetricRow } from "@/lib/metricRequirements";
 
 // Los tabs son 100% dinámicos: cualquier category que devuelva list-metrics
 // se vuelve un tab (así una métrica custom con category nueva, o el catálogo
@@ -70,6 +71,9 @@ export default function Metrics() {
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  // "Crear métrica para cumplir esto" desde FundRequiredMetricsSection —
+  // precarga MetricPropertyPanel y, al guardar, crea+vincula en un solo paso.
+  const [fulfillingRequirement, setFulfillingRequirement] = useState<FundRequiredMetricRow | null>(null);
 
   useEffect(() => {
     localStorage.setItem(VIEW_KEY, view);
@@ -103,15 +107,20 @@ export default function Metrics() {
   const selectedMetric = metricId ? (financial.metrics.find((m) => m.id === metricId) ?? null) : null;
 
   // Link a una métrica que ya no existe (borrada, o typo) — avisar y volver
-  // a la lista en vez de dejar el panel colgado sin nada que mostrar.
+  // a la lista en vez de dejar el panel colgado sin nada que mostrar. Se
+  // espera también a `refreshing` (isFetching): un refetch en curso (ej.
+  // tras crear una métrica nueva y navegar a /metrics/:id de inmediato) deja
+  // financial.metrics con el array viejo por un instante mientras loading ya
+  // es false — sin este chequeo eso disparaba un falso "no encontramos esa
+  // métrica" justo después de crearla (bug real encontrado en vivo 2026-08-17).
   useEffect(() => {
-    if (!metricId || financial.loading) return;
+    if (!metricId || financial.loading || financial.refreshing) return;
     if (!financial.metrics.some((m) => m.id === metricId)) {
       toast.error("No encontramos esa métrica. Puede que se haya eliminado.");
       navigate("/metrics", { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metricId, financial.loading, financial.metrics]);
+  }, [metricId, financial.loading, financial.refreshing, financial.metrics]);
 
   const financialCategoryTabs = useMemo(() => {
     const minOrder = new Map<string, number>();
@@ -355,6 +364,11 @@ export default function Metrics() {
           rows={financial.fundRequired}
           ownMetrics={financial.metrics}
           onChanged={financial.reload}
+          onCreateNew={(row) => {
+            setFulfillingRequirement(row);
+            setCreatingNew(true);
+            setPageMode("manage");
+          }}
         />
 
         {pageMode === "data" && (
@@ -397,6 +411,7 @@ export default function Metrics() {
                     label: "Agregar métrica",
                     onClick: () => {
                       setPageMode("manage");
+                      setFulfillingRequirement(null);
                       setCreatingNew(true);
                     },
                   }}
@@ -484,9 +499,13 @@ export default function Metrics() {
               categories={financialCategoryTabs}
               onSelect={(m) => {
                 setCreatingNew(false);
+                setFulfillingRequirement(null);
                 navigate(`/metrics/${m.id}`);
               }}
-              onCreateNew={() => setCreatingNew(true)}
+              onCreateNew={() => {
+                setFulfillingRequirement(null);
+                setCreatingNew(true);
+              }}
             />
           ))}
       </div>
@@ -533,10 +552,12 @@ export default function Metrics() {
           onTogglePrivacy={financial.togglePrivacy}
           onClose={() => {
             setCreatingNew(false);
+            setFulfillingRequirement(null);
             navigate("/metrics");
           }}
           onSaved={(id) => {
             setCreatingNew(false);
+            setFulfillingRequirement(null);
             financial.reload();
             navigate(`/metrics/${id}`, { replace: true });
           }}
@@ -545,6 +566,18 @@ export default function Metrics() {
             navigate("/metrics");
           }}
           onAgentWrote={financial.reload}
+          fulfillsRequirementId={fulfillingRequirement?.requirement_id ?? null}
+          prefill={
+            fulfillingRequirement
+              ? {
+                  name: fulfillingRequirement.name,
+                  unit: fulfillingRequirement.unit,
+                  value_type: fulfillingRequirement.value_type,
+                  description: fulfillingRequirement.description ?? "",
+                  why_it_matters: fulfillingRequirement.why_it_matters ?? "",
+                }
+              : undefined
+          }
         />
       )}
     </AppLayout>

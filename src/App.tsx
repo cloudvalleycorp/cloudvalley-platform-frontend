@@ -37,6 +37,7 @@ const AdminRoadmap = lazy(() => import("./pages/AdminRoadmap"));
 const InvestorPortfolio = lazy(() => import("./pages/InvestorPortfolio"));
 const InvestorCompany = lazy(() => import("./pages/InvestorCompany"));
 const FundMetricRequirements = lazy(() => import("./pages/FundMetricRequirements"));
+const InvestorDashboard = lazy(() => import("./pages/InvestorDashboard"));
 
 const queryClient = new QueryClient();
 
@@ -74,6 +75,7 @@ const App = () => (
             <Route path="/portfolio" element={<InvestorPortfolio />} />
             <Route path="/portfolio/:company_id" element={<InvestorCompany />} />
             <Route path="/requisitos" element={<FundMetricRequirements />} />
+            <Route path="/analiticas" element={<InvestorDashboard />} />
             <Route path="/conexiones" element={<Connections />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

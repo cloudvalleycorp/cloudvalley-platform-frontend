@@ -106,7 +106,7 @@ export function useFinancialMetrics(companyId: string | null, range: PeriodRange
   const [notEnabled, setNotEnabled] = useState(false);
 
   const dataQueryKey = ["financial-metrics", companyId, range.from, range.to] as const;
-  const { data, isLoading: loading } = useQuery({
+  const { data, isLoading: loading, isFetching: refreshing } = useQuery({
     queryKey: dataQueryKey,
     queryFn: () => fetchFinancialData(companyId!, range),
     enabled: !!companyId,
@@ -213,6 +213,7 @@ export function useFinancialMetrics(companyId: string | null, range: PeriodRange
     privacy,
     fundRequired,
     loading,
+    refreshing,
     notEnabled,
     logs,
     loadingLogs,

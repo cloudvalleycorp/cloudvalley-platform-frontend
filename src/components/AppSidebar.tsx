@@ -131,6 +131,7 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 <NavItem to="/portfolio" end={false} icon={Building2} label="Portfolio" />
+                <NavItem to="/analiticas" end icon={LayoutDashboard} label="Dashboard" />
                 <NavItem to="/requisitos" end icon={SlidersHorizontal} label="Gestión" />
                 <NavItem to="/conexiones" end icon={Network} label="Conexiones" />
               </SidebarMenu>

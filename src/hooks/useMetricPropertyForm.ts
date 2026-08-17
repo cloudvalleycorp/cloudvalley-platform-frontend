@@ -46,7 +46,7 @@ export function normalizeCategory(raw: string, existing: { id: string }[]): stri
   return match ? match.id : cleaned;
 }
 
-function emptyDraft(defaultCategory: string): Draft {
+function emptyDraft(defaultCategory: string, prefill?: Partial<Draft>): Draft {
   return {
     name: "",
     category: defaultCategory,
@@ -58,6 +58,7 @@ function emptyDraft(defaultCategory: string): Draft {
     value_type: "count",
     query: null,
     legacyFormulaExpression: null,
+    ...prefill,
   };
 }
 
@@ -85,6 +86,12 @@ type Params = {
   defaultCategory: string;
   onSaved: (id: string, isNew: boolean) => void;
   onDeleted: () => void;
+  // Set solo cuando el panel se abrió desde "Crear métrica para cumplir
+  // esto" (ver FundRequiredMetricsSection) — precarga el draft con lo que
+  // pidió el fondo, y al guardar manda fulfills_requirement_id para crear y
+  // vincular en un solo paso (contrato ampliado 2026-08-16).
+  fulfillsRequirementId?: string | null;
+  prefill?: Partial<Draft>;
 };
 
 // Form state and the save/delete mutations for MetricPropertyPanel — split
@@ -99,17 +106,19 @@ export function useMetricPropertyForm({
   defaultCategory,
   onSaved,
   onDeleted,
+  fulfillsRequirementId = null,
+  prefill,
 }: Params) {
-  const [draft, setDraft] = useState<Draft>(() => emptyDraft(defaultCategory));
+  const [draft, setDraft] = useState<Draft>(() => emptyDraft(defaultCategory, prefill));
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteRecordsToo, setDeleteRecordsToo] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const seedKey = metric?.id ?? (creating ? "__new__" : null);
+  const seedKey = metric?.id ?? (creating ? fulfillsRequirementId ?? "__new__" : null);
   useEffect(() => {
     if (metric) setDraft(draftFromMetric(metric));
-    else if (creating) setDraft(emptyDraft(defaultCategory));
+    else if (creating) setDraft(emptyDraft(defaultCategory, prefill));
     // metric además de seedKey: seedKey por sí solo (el id) no cambia
     // cuando la MISMA métrica trae datos nuevos por un refetch (ej.
     // financial.reload() tras confirmar una edición vía el Asistente) —
@@ -178,15 +187,24 @@ export function useMetricPropertyForm({
       metric_type: draft.metric_type,
       unit: draft.unit.trim() || null,
       display_order: displayOrder,
+      // Antes solo se mandaba para metric_type="input" — una calculada
+      // nunca declaraba su value_type, aunque el draft siempre lo trae
+      // (default "count"). Confirmado en vivo: el backend SÍ lo valida al
+      // vincular con un requisito de fondo ("value_type/periodicity no
+      // coinciden"), sin importar el tipo — bug real, no algo a omitir.
+      value_type: draft.value_type,
     };
     if (draft.metric_type === "input") {
       body.input_key = inputKeySlug;
-      body.value_type = draft.value_type;
     } else {
       body.query = draft.query;
     }
     if (draft.description.trim()) body.description = draft.description.trim();
     if (draft.why_it_matters.trim()) body.why_it_matters = draft.why_it_matters.trim();
+    // Solo al crear — editar una métrica ya vinculada no debe re-disparar el
+    // link (usaría unlink-metric-from-requirement para eso, ver
+    // FundRequiredMetricsSection).
+    if (isNew && fulfillsRequirementId) body.fulfills_requirement_id = fulfillsRequirementId;
 
     setSaving(true);
     try {

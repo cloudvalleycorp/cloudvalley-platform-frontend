@@ -37,6 +37,11 @@ type Props = {
   // pasar por handleSave de este panel — sin esto el catálogo en pantalla
   // queda desactualizado hasta refrescar a mano.
   onAgentWrote?: () => void;
+  // "Crear métrica para cumplir esto" (ver FundRequiredMetricsSection): el
+  // panel se abre en modo creación con el pedido del fondo ya cargado, y al
+  // guardar crea y vincula en un solo paso (fulfills_requirement_id).
+  fulfillsRequirementId?: string | null;
+  prefill?: Partial<Draft>;
 };
 
 // El panel lateral estilo AppSheet: secciones agrupadas en un Accordion.
@@ -66,6 +71,8 @@ export function MetricPropertyPanel({
   onSaved,
   onDeleted,
   onAgentWrote,
+  fulfillsRequirementId = null,
+  prefill,
 }: Props) {
   const [assistantOpen, setAssistantOpen] = useState(false);
 
@@ -90,6 +97,8 @@ export function MetricPropertyPanel({
     defaultCategory,
     onSaved,
     onDeleted,
+    fulfillsRequirementId,
+    prefill,
   });
 
   // Crear/editar/eliminar métricas es para todo el equipo (cualquiera que
@@ -145,20 +154,27 @@ export function MetricPropertyPanel({
             helpText: "El dato crudo que se carga cada mes. Podés reusar uno existente o escribir uno nuevo.",
             datalistOptions: inputKeySuggestions,
           },
-          {
-            key: "value_type",
-            label: "Tipo de valor",
-            type: "select",
-            options: [
-              { value: "money", label: "Moneda" },
-              { value: "count", label: "Entero" },
-              { value: "percentage", label: "Porcentaje" },
-              { value: "text", label: "Texto" },
-            ],
-            helpText: "Define el formulario de carga que se ve todos los meses.",
-          },
         ] as PropertyFieldDef[])
       : []),
+    // Antes solo se pedía para "Dato crudo" (define el formulario de carga
+    // mensual) — ahora se pide siempre: una calculada también lo necesita
+    // para poder vincularse a un requisito de fondo (el backend valida que
+    // coincida, ver useMetricPropertyForm.handleSave).
+    {
+      key: "value_type",
+      label: "Tipo de valor",
+      type: "select",
+      options: [
+        { value: "money", label: "Moneda" },
+        { value: "count", label: "Entero" },
+        { value: "percentage", label: "Porcentaje" },
+        { value: "text", label: "Texto" },
+      ],
+      helpText:
+        draft.metric_type === "input"
+          ? "Define el formulario de carga que se ve todos los meses."
+          : "Necesario para que esta métrica pueda vincularse a un requisito de un fondo.",
+    },
   ];
 
   const syncedFrom = metric ? sourceLabel(metric.source) : null;
@@ -189,7 +205,11 @@ export function MetricPropertyPanel({
               </div>
             </div>
             <SheetDescription>
-              {creating ? "Se agrega solo para tu startup, no afecta a las demás." : "Los cambios aplican solo para tu startup."}
+              {fulfillsRequirementId
+                ? "Al guardar, esta métrica queda vinculada automáticamente al pedido del fondo — el fondo solo va a ver el valor, nunca esta fórmula."
+                : creating
+                  ? "Se agrega solo para tu startup, no afecta a las demás."
+                  : "Los cambios aplican solo para tu startup."}
             </SheetDescription>
           </SheetHeader>
 
