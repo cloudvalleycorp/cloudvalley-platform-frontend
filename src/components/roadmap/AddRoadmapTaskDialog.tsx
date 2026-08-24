@@ -14,10 +14,45 @@ type Draft = {
   criticality: Criticality;
   requires_doc: boolean;
   requires_report: boolean;
+  due_date: string; // "YYYY-MM-DD", "" = sin fecha
   targetIds: string[];
 };
 function emptyDraft(pillarId: string): Draft {
-  return { pillar_id: pillarId, title: "", criticality: "recommended", requires_doc: false, requires_report: false, targetIds: [] };
+  return {
+    pillar_id: pillarId,
+    title: "",
+    criticality: "recommended",
+    requires_doc: false,
+    requires_report: false,
+    due_date: "",
+    targetIds: [],
+  };
+}
+
+// Tarea existente a editar — solo aplica a scope="fund" del propio fondo
+// (upsert-roadmap-task da 403 en cualquier otro caso). Un subset mínimo,
+// no el RoadmapTask/PortfolioTask completo, para no acoplar este dialog a
+// esos tipos.
+export type EditableTask = {
+  task_id: string;
+  pillar_id: string;
+  title: string;
+  criticality: Criticality;
+  requires_doc: boolean;
+  requires_report: boolean;
+  due_date: string | null;
+};
+
+function draftFromTask(task: EditableTask): Draft {
+  return {
+    pillar_id: task.pillar_id,
+    title: task.title,
+    criticality: task.criticality,
+    requires_doc: task.requires_doc,
+    requires_report: task.requires_report,
+    due_date: task.due_date ?? "",
+    targetIds: [],
+  };
 }
 
 type Props = {
@@ -35,12 +70,20 @@ type Props = {
   // siquiera se muestra el checklist, se manda directo.
   companies?: { id: string; name: string }[];
   hideTargetPicker?: boolean;
+  // Presente = modo edición (Tasks, /companies/:id?tab=tasks) — precarga el
+  // draft y manda task_id al guardar en vez de crear una nueva.
+  task?: EditableTask | null;
+  // Solo en modo edición: campo de fecha, oculto al crear desde los flujos
+  // de "requisito" existentes para no cambiarles la forma.
+  showDueDate?: boolean;
 };
 
-// Compartido entre "Agregar tarea propia" (Roadmap.tsx, founder) y "Agregar
-// requisito" (InvestorPortfolio.tsx / InvestorCompany.tsx, inversor) — misma
-// mecánica de guardado (upsertTask, ya funciona para ambos roles), difiere
-// solo en si hay selector de empresas destino y en la copy.
+// Compartido entre "Agregar tarea propia" (Roadmap.tsx, founder), "Agregar
+// requisito" (InvestorPortfolio.tsx / InvestorCompany.tsx, inversor, modo
+// creación) y ahora también edición de una tarea de fondo ya creada (Tasks,
+// /companies/:id?tab=tasks) — misma mecánica de guardado (upsertTask, ya
+// funciona para ambos roles), difiere en si hay selector de empresas
+// destino, si hay fecha, y en la copy.
 export function AddRoadmapTaskDialog({
   open,
   onOpenChange,
@@ -51,13 +94,15 @@ export function AddRoadmapTaskDialog({
   onSaved,
   companies,
   hideTargetPicker,
+  task,
+  showDueDate,
 }: Props) {
   const { upsertTask } = useRoadmapCatalogMutations();
-  const [draft, setDraft] = useState<Draft>(() => emptyDraft(defaultPillarId));
+  const [draft, setDraft] = useState<Draft>(() => (task ? draftFromTask(task) : emptyDraft(defaultPillarId)));
   const [saving, setSaving] = useState(false);
 
   const resetAndOpenChange = (o: boolean) => {
-    if (o) setDraft(emptyDraft(defaultPillarId));
+    if (o) setDraft(task ? draftFromTask(task) : emptyDraft(defaultPillarId));
     onOpenChange(o);
   };
 
@@ -74,6 +119,7 @@ export function AddRoadmapTaskDialog({
           ? draft.targetIds
           : undefined;
     const ok = await upsertTask({
+      task_id: task?.task_id,
       pillar_id: draft.pillar_id,
       title: draft.title.trim(),
       criticality: draft.criticality,
@@ -81,6 +127,7 @@ export function AddRoadmapTaskDialog({
       requires_report: draft.requires_report,
       order_index: 0,
       target_startup_ids,
+      due_date: draft.due_date || undefined,
     });
     setSaving(false);
     if (ok) {
@@ -96,10 +143,19 @@ export function AddRoadmapTaskDialog({
       title={title}
       description={description}
       onSubmit={save}
-      submitLabel="Agregar"
+      submitLabel={task ? "Guardar" : "Agregar"}
       busy={saving}
       contentClassName="sm:max-w-lg"
     >
+      {showDueDate && (
+        <FormField label="Vence">
+          <Input
+            type="date"
+            value={draft.due_date}
+            onChange={(e) => setDraft({ ...draft, due_date: e.target.value })}
+          />
+        </FormField>
+      )}
       <FormField label="Pilar">
         <Select value={draft.pillar_id} onValueChange={(v) => setDraft({ ...draft, pillar_id: v })}>
           <SelectTrigger>

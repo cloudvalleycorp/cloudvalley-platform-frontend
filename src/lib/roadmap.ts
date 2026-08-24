@@ -40,6 +40,15 @@ export type RoadmapScope = "admin" | "startup" | "fund";
 // completa solo (server-side) al crear/compartir un reporte, no hay acción
 // de frontend para eso — con requires_doc y requires_report ambos true,
 // cualquiera de las dos evidencias marca done.
+//
+// Campos agregados en el rediseño Investor (2026-08-23): due_date/is_overdue
+// habilitan el ordenamiento "vencidas primero" de la pantalla Tasks;
+// related_report_id/related_document_id son de solo lectura (nunca se
+// mandan en upsert-roadmap-task, se resuelven server-side) y permiten que
+// una tarea deep-linkee al artefacto puntual que la satisface en vez de a
+// una lista genérica; requested_by_user_id/requested_by_name/created_at son
+// trazabilidad — vienen null en tareas scope="admin" (catálogo global, no
+// pedidas por un investor puntual).
 export type RoadmapTask = {
   startup_task_id: string;
   task_id: string;
@@ -55,6 +64,13 @@ export type RoadmapTask = {
   stage_required: string | null;
   document_id: string | null;
   document_status: "uploaded" | "verified" | null;
+  due_date: string | null; // "YYYY-MM-DD"
+  is_overdue: boolean;
+  related_report_id: string | null;
+  related_document_id: string | null;
+  requested_by_user_id: string | null;
+  requested_by_name: string | null;
+  created_at: string | null;
 };
 
 export type ListRoadmapResponse = {
@@ -110,6 +126,10 @@ export type UpsertRoadmapPillarRequest = {
   target_startup_ids?: string[];
 };
 
+// task_id presente = editar una tarea existente (scope="fund", 403 si no es
+// del fondo del investor autenticado o si es scope="admin"/"startup");
+// ausente = crear. related_report_id/related_document_id NUNCA se mandan
+// acá — son derivados server-side, se leen en list-portfolio-tasks.
 export type UpsertRoadmapTaskRequest = {
   task_id?: string;
   pillar_id: string;
@@ -123,6 +143,7 @@ export type UpsertRoadmapTaskRequest = {
   stage_required?: string;
   order_index: number;
   target_startup_ids?: string[];
+  due_date?: string; // "YYYY-MM-DD", 400 si el formato no matchea
 };
 
 export const CRITICALITY_LABELS: Record<Criticality, string> = {

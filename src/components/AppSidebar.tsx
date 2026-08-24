@@ -10,7 +10,8 @@ import {
   Landmark,
   DollarSign,
   FileBarChart,
-  SlidersHorizontal,
+  Compass,
+  ListTodo,
   type LucideIcon,
 } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router-dom";
@@ -130,9 +131,16 @@ export function AppSidebar() {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
+                {/* Rediseño Investor 2026-08-23: Portfolio+Dashboard se
+                    fusionan en una sola pantalla (modos Lista/Comparar) —
+                    ver documento de diseño "Portfolio Intelligence".
+                    Gestión (antes en el sidebar) se degrada a una acción
+                    secundaria dentro de Portfolio, no ocupa lugar acá. */}
+                <NavItem to="/overview" end icon={Compass} label="Overview" />
                 <NavItem to="/portfolio" end={false} icon={Building2} label="Portfolio" />
-                <NavItem to="/analiticas" end icon={LayoutDashboard} label="Dashboard" />
-                <NavItem to="/requisitos" end icon={SlidersHorizontal} label="Gestión" />
+                <NavItem to="/reporting" end={false} icon={FileBarChart} label="Reporting" />
+                <NavItem to="/data-room" end icon={FolderOpen} label="Data Room" />
+                <NavItem to="/tasks" end icon={ListTodo} label="Tasks" />
                 <NavItem to="/conexiones" end icon={Network} label="Conexiones" />
               </SidebarMenu>
             </SidebarGroupContent>

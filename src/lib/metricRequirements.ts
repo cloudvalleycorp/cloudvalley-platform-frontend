@@ -26,6 +26,34 @@ export const SET_METRIC_APPLICABILITY_URL = `${API_BASE_URL}/set-metric-applicab
 export type MetricValueType = "money" | "count" | "percentage" | "text";
 export type MetricPeriodicity = "monthly" | "quarterly" | "annual";
 
+// standard: comparable entre empresas (Revenue/ARR/MRR/Growth/Cash/Burn/
+// Runway/Gross Margin — ver standard_key). custom: KPI propio de un negocio
+// (NRR/CAC/GMV/DAU/etc.), sin comparabilidad implícita. Default "custom" si
+// se omite al crear.
+export type MetricClass = "standard" | "custom";
+export type TargetOperator = "gte" | "lte" | "eq";
+
+// Enum sugerido por backend para standard_key (prompt de backend, ítem 3) —
+// las 8 métricas que Overview/Performance tratan como comparables entre
+// startups. Cualquier otro valor server-side no está mapeado acá, pero
+// igual se muestra (fallback al nombre crudo).
+export const STANDARD_KEY_LABELS: Record<string, string> = {
+  arr: "ARR",
+  mrr: "MRR",
+  revenue: "Revenue",
+  growth: "Growth",
+  cash: "Cash",
+  burn: "Burn",
+  runway: "Runway",
+  gross_margin: "Gross Margin",
+};
+
+export const TARGET_OPERATOR_LABELS: Record<TargetOperator, string> = {
+  gte: "mayor o igual a",
+  lte: "menor o igual a",
+  eq: "igual a",
+};
+
 export type MetricRequirement = {
   requirement_id: string;
   fund_id: string;
@@ -39,13 +67,20 @@ export type MetricRequirement = {
   mandatory: boolean;
   effective_from: string | null; // "YYYY-MM"
   target_startup_ids: string[] | null; // null/[] = todas las conectadas
+  metric_class: MetricClass;
+  standard_key: string | null; // solo si metric_class="standard"
+  target_value: number | null;
+  target_operator: TargetOperator | null;
+  created_by_name: string | null;
+  created_at: string | null;
 };
 
 export type ListMetricRequirementsResponse = { requirements: MetricRequirement[] };
 
 // Nunca lleva query/metric_type/input_key — el fondo no calcula. mandatory/
 // target_startup_ids/effective_from se ignoran acá aunque se manden, viven
-// en SetMetricRequirementMandatoryRequest.
+// en SetMetricRequirementMandatoryRequest. target_operator es requerido
+// (400) si target_value viene presente.
 export type UpsertMetricRequirementRequest = {
   requirement_id?: string; // ausente = crear
   name: string;
@@ -54,6 +89,10 @@ export type UpsertMetricRequirementRequest = {
   unit: string;
   value_type: MetricValueType;
   periodicity: MetricPeriodicity;
+  metric_class?: MetricClass; // default "custom"
+  standard_key?: string; // requerido si metric_class="standard", se descarta si no
+  target_value?: number;
+  target_operator?: TargetOperator;
 };
 
 export type SetMetricRequirementMandatoryRequest = {
@@ -88,15 +127,32 @@ export type MetricRequirementCoverage = {
 
 export type ListMetricRequirementCoverageResponse = { coverage: MetricRequirementCoverage[] };
 
+// origin distingue si la fila viene de un requisito del fondo
+// (requirement_id presente, metric_id null) o de un KPI propio de la
+// startup pedido por metric_id (metric_id presente, requirement_id null) —
+// contrato ampliado 2026-08-23 para habilitar comparar KPIs custom entre
+// empresas, no solo requisitos obligatorios.
 export type PortfolioDashboardRow = {
   company_id: string;
   company_name: string;
-  requirement_id: string;
+  origin: "requirement" | "own_metric";
+  requirement_id: string | null;
+  metric_id: string | null;
   values: Record<string, number | null>; // período -> valor
   compliance_status: Record<string, ComplianceStatus>; // período -> estado
 };
 
-export type PortfolioAggregateEntry = { sum?: number; count_with_data?: number; avg?: number };
+export type PortfolioAggregateEntry = { sum?: number; count_with_data?: number; avg?: number; median?: number };
+
+// Selección de período: 3 modos mutuamente excluyentes, mandar solo uno.
+// "range" reemplaza el selector de mes fijo (no escalable) por un rango
+// relativo — habilita el modo Trend de Portfolio Compare, que con un solo
+// período puntual no es viable.
+export type PortfolioMetricsDashboardParams =
+  | { range: "last_30_days" | "current_quarter" | "last_6_months" | "last_12_months" }
+  | { range: "custom"; from: string; to: string } // "YYYY-MM"
+  | { period: string } // puntual, "YYYY-MM"
+  | { period_from: string; period_to: string };
 
 // portfolio_aggregates solo existe para requisitos con value_type en
 // money/count/percentage (nunca text). skipped documenta requisitos que no

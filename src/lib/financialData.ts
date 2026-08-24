@@ -147,6 +147,21 @@ export type FinancialMetricDef = {
   is_mandatory?: boolean;
   linked_own_metric_id?: string | null;
   compliance_status?: "ok" | "pending" | "no_data" | "not_applicable" | "error" | "unfulfilled" | "not_required_then";
+  // Contrato ampliado 2026-08-23 (rediseño Investor): distingue métrica
+  // "estándar" (comparable entre empresas, ver standard_key) de "custom"
+  // (KPI propio). Presente tanto en filas origin="own" como
+  // origin="fund_required". Default "custom" si el backend no lo manda.
+  metric_class?: "standard" | "custom";
+  standard_key?: string | null;
+};
+
+// list-metrics agrega esto cuando una company tiene 2+ métricas con el
+// mismo standard_key — advertencia visual, nunca bloquea nada.
+export type MetricClassWarning = {
+  standard_key: string;
+  count: number;
+  metric_ids: string[];
+  requirement_ids: string[];
 };
 
 // Shape returned by GET /list-records — one row per period. Values are

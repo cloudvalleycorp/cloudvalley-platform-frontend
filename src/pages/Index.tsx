@@ -16,7 +16,7 @@ export default function Index() {
       return;
     }
     if (isOrgViewer) {
-      navigate("/portfolio", { replace: true });
+      navigate("/overview", { replace: true });
       return;
     }
     if (isAdmin) {

@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -34,10 +34,19 @@ const AdminFunds = lazy(() => import("./pages/AdminFunds"));
 const AdminFinancialData = lazy(() => import("./pages/AdminFinancialData"));
 const AdminRoadmap = lazy(() => import("./pages/AdminRoadmap"));
 
+const InvestorOverview = lazy(() => import("./pages/InvestorOverview"));
 const InvestorPortfolio = lazy(() => import("./pages/InvestorPortfolio"));
 const InvestorCompany = lazy(() => import("./pages/InvestorCompany"));
 const FundMetricRequirements = lazy(() => import("./pages/FundMetricRequirements"));
-const InvestorDashboard = lazy(() => import("./pages/InvestorDashboard"));
+const InvestorTasks = lazy(() => import("./pages/InvestorTasks"));
+
+// /portfolio/:company_id es la ruta vieja (previa al rediseño Investor
+// 2026-08-23) — se mantiene funcionando para links ya compartidos,
+// redirige al Company Workspace nuevo en vez de 404.
+function RedirectToCompanyWorkspace() {
+  const { company_id } = useParams<{ company_id: string }>();
+  return <Navigate to={`/companies/${company_id}`} replace />;
+}
 
 const queryClient = new QueryClient();
 
@@ -72,10 +81,15 @@ const App = () => (
             <Route path="/admin/funds" element={<AdminFunds />} />
             <Route path="/admin/financial-data" element={<AdminFinancialData />} />
             <Route path="/admin/roadmap" element={<AdminRoadmap />} />
+            <Route path="/overview" element={<InvestorOverview />} />
             <Route path="/portfolio" element={<InvestorPortfolio />} />
-            <Route path="/portfolio/:company_id" element={<InvestorCompany />} />
+            <Route path="/companies/:company_id" element={<InvestorCompany />} />
+            <Route path="/tasks" element={<InvestorTasks />} />
             <Route path="/requisitos" element={<FundMetricRequirements />} />
-            <Route path="/analiticas" element={<InvestorDashboard />} />
+            {/* Rutas viejas, previas al rediseño Investor 2026-08-23 — se
+                mantienen como redirect para no romper links compartidos. */}
+            <Route path="/analiticas" element={<Navigate to="/portfolio?mode=compare" replace />} />
+            <Route path="/portfolio/:company_id" element={<RedirectToCompanyWorkspace />} />
             <Route path="/conexiones" element={<Connections />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

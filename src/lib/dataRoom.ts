@@ -32,6 +32,16 @@ export type DataRoomDocument = {
   is_public: boolean;
   verified_at: string | null;
   verified_by: string | null;
+  // Trazabilidad (contrato ampliado 2026-08-23) — confirmar con backend si
+  // ya vienen o hay que agregarlos (ver prompt de backend, ítem 9b).
+  uploaded_by_name?: string | null;
+  uploaded_at?: string | null;
+  verified_by_name?: string | null;
+  // Solo presentes en el modo portfolio-wide de list-shared-documents
+  // (company_ids/segment_id/sin filtro) — ausentes en el modo legacy de una
+  // sola company_id.
+  company_id?: string;
+  company_name?: string;
 };
 
 // Una tarea de Roadmap que requiere documento — para el selector "Vincular

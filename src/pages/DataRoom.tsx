@@ -20,6 +20,7 @@ import {
   type DataRoomDocument,
   type DocumentCategory,
 } from "@/lib/dataRoom";
+import InvestorDataRoom from "@/pages/InvestorDataRoom";
 
 export default function DataRoom() {
   const { company_id, role, is_owner, loading: authLoading } = useAuth();
@@ -33,6 +34,11 @@ export default function DataRoom() {
   const [deleting, setDeleting] = useState(false);
 
   if (authLoading) return null;
+  // Rediseño Investor (2026-08-23): misma ruta /data-room, role-branched —
+  // useDocuments/useDataRoomTasks arriba no pisan nada del lado investor
+  // (company_id es null para ese rol, quedan deshabilitados solos). Cero
+  // cambios al resto de este archivo, 100% experiencia del founder.
+  if (role === "investor") return <InvestorDataRoom />;
   if (role !== "user") return <Navigate to="/dashboard" replace />;
 
   const totalUploaded = documents.filter((d) => d.status !== "missing").length;

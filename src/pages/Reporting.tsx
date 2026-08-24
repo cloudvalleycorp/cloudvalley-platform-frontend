@@ -24,6 +24,7 @@ import {
 } from "@/lib/financialReports";
 import { toast } from "sonner";
 import { Plus, FileText, Pencil, Trash2, Share2, Sparkles } from "lucide-react";
+import InvestorReporting from "@/pages/InvestorReporting";
 
 export default function Reporting() {
   const { user, loading, role, company_id, email, is_owner } = useAuth();
@@ -138,6 +139,11 @@ export default function Reporting() {
 
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
+  // Rediseño Investor (2026-08-23): misma ruta /reporting, role-branched —
+  // mismo criterio que Connections.tsx. Va después de todos los hooks de
+  // arriba (rules-of-hooks) — cero cambios al resto de este archivo, que
+  // sigue siendo 100% la experiencia del founder.
+  if (role === "investor") return <InvestorReporting />;
   if (role !== "user") return <Navigate to="/dashboard" replace />;
 
   if (!company_id) {

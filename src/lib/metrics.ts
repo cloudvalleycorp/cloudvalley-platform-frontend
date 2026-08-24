@@ -47,6 +47,12 @@ export type MetricDef = {
   why_it_matters: string | null;
   benchmark: string | null;
   order_index: number;
+  // Contrato ampliado 2026-08-23 (rediseño Investor): distingue métrica
+  // "estándar" (comparable entre empresas) de "custom" (KPI propio) —
+  // separa las pestañas Performance/KPIs del Company Workspace. Default
+  // "custom" cuando el backend no lo manda.
+  metric_class: "standard" | "custom";
+  standard_key: string | null;
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -140,6 +146,8 @@ export function toMetricDef(d: FinancialMetricDef): MetricDef {
     why_it_matters: d.why_it_matters ?? null,
     benchmark: d.benchmark ?? null,
     order_index: d.display_order,
+    metric_class: d.metric_class ?? "custom",
+    standard_key: d.standard_key ?? null,
   };
 }
 

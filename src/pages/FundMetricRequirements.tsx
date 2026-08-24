@@ -23,13 +23,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useMetricRequirements, useMetricRequirementMutations } from "@/hooks/useMetricRequirements";
 import { useMetricRequirementCoverage } from "@/hooks/useMetricRequirementCoverage";
+import { useSegments, useSegmentMutations } from "@/hooks/useSegments";
 import {
   VALUE_TYPE_LABELS,
   PERIODICITY_LABELS,
+  STANDARD_KEY_LABELS,
+  TARGET_OPERATOR_LABELS,
   type MetricRequirement,
   type MetricValueType,
   type MetricPeriodicity,
   type MetricRequirementCoverage,
+  type MetricClass,
+  type TargetOperator,
 } from "@/lib/metricRequirements";
 import { SlidersHorizontal, Plus, MoreVertical, Pencil, Trash2, Building2 } from "lucide-react";
 
@@ -46,9 +51,24 @@ type Draft = {
   unit: string;
   value_type: MetricValueType;
   periodicity: MetricPeriodicity;
+  metric_class: MetricClass;
+  standard_key: string;
+  target_value: string; // string en el form, se parsea a number al guardar
+  target_operator: TargetOperator;
 };
 function emptyDraft(): Draft {
-  return { name: "", description: "", why_it_matters: "", unit: "", value_type: "money", periodicity: "monthly" };
+  return {
+    name: "",
+    description: "",
+    why_it_matters: "",
+    unit: "",
+    value_type: "money",
+    periodicity: "monthly",
+    metric_class: "custom",
+    standard_key: "",
+    target_value: "",
+    target_operator: "gte",
+  };
 }
 function draftFromRequirement(r: MetricRequirement): Draft {
   return {
@@ -59,6 +79,10 @@ function draftFromRequirement(r: MetricRequirement): Draft {
     unit: r.unit,
     value_type: r.value_type,
     periodicity: r.periodicity,
+    metric_class: r.metric_class ?? "custom",
+    standard_key: r.standard_key ?? "",
+    target_value: r.target_value !== null && r.target_value !== undefined ? String(r.target_value) : "",
+    target_operator: r.target_operator ?? "gte",
   };
 }
 
@@ -101,6 +125,8 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
   const { requirements, loading } = useMetricRequirements();
   const { coverage } = useMetricRequirementCoverage();
   const { upsertRequirement, setMandatory, deleteRequirement, saving } = useMetricRequirementMutations();
+  const { segments, loading: segmentsLoading } = useSegments();
+  const { upsertSegment, deleteSegment, saving: savingSegment } = useSegmentMutations();
 
   const coverageById = useMemo(() => {
     const map = new Map<string, MetricRequirementCoverage>();
@@ -115,12 +141,37 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
   const [unmarking, setUnmarking] = useState<MetricRequirement | null>(null);
   const [deleting, setDeleting] = useState<MetricRequirement | null>(null);
 
+  const [editingSegment, setEditingSegment] = useState<{ segment_id?: string; name: string; company_ids: string[] } | null>(null);
+  const [deletingSegment, setDeletingSegment] = useState<{ segment_id: string; name: string } | null>(null);
+
+  const openCreateSegment = () => setEditingSegment({ name: "", company_ids: [] });
+  const openEditSegment = (s: { segment_id: string; name: string; company_ids: string[] }) =>
+    setEditingSegment({ segment_id: s.segment_id, name: s.name, company_ids: s.company_ids });
+
+  const saveSegment = async () => {
+    if (!editingSegment || !editingSegment.name.trim()) return;
+    const ok = await upsertSegment({
+      segment_id: editingSegment.segment_id,
+      name: editingSegment.name.trim(),
+      company_ids: editingSegment.company_ids,
+    });
+    if (ok) setEditingSegment(null);
+  };
+
+  const confirmDeleteSegment = async () => {
+    if (!deletingSegment) return;
+    const ok = await deleteSegment(deletingSegment.segment_id);
+    if (ok) setDeletingSegment(null);
+  };
+
   const openCreate = () => setEditing(emptyDraft());
   const openEdit = (r: MetricRequirement) => setEditing(draftFromRequirement(r));
 
   const save = async () => {
     if (!editing) return;
     if (!editing.name.trim() || !editing.unit.trim()) return;
+    if (editing.metric_class === "standard" && !editing.standard_key) return;
+    const target_value = editing.target_value.trim() ? Number(editing.target_value) : undefined;
     const id = await upsertRequirement({
       requirement_id: editing.requirement_id,
       name: editing.name.trim(),
@@ -129,6 +180,10 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
       unit: editing.unit.trim(),
       value_type: editing.value_type,
       periodicity: editing.periodicity,
+      metric_class: editing.metric_class,
+      standard_key: editing.metric_class === "standard" ? editing.standard_key : undefined,
+      target_value,
+      target_operator: target_value !== undefined ? editing.target_operator : undefined,
     });
     if (id) setEditing(null);
   };
@@ -201,6 +256,11 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-foreground truncate">{r.name}</span>
+                        {r.metric_class === "standard" && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            Estándar{r.standard_key ? ` · ${STANDARD_KEY_LABELS[r.standard_key] ?? r.standard_key}` : ""}
+                          </Badge>
+                        )}
                         {r.mandatory && (
                           <Badge variant="default" className="text-[10px]">
                             Obligatorio
@@ -210,6 +270,8 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
                         {r.unit} · {PERIODICITY_LABELS[r.periodicity]}
                         {r.mandatory && ` · ${cov?.ok_count ?? 0}/${target} al día`}
+                        {r.target_value !== null && r.target_value !== undefined && r.target_operator &&
+                          ` · Meta: ${TARGET_OPERATOR_LABELS[r.target_operator]} ${r.target_value}${r.unit ? ` ${r.unit}` : ""}`}
                         {r.description ? ` · ${r.description}` : ""}
                       </p>
                     </div>
@@ -245,7 +307,117 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
             })}
           </div>
         )}
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-4">
+          <h2 className="text-sm font-medium text-foreground">Segmentos</h2>
+          <Button onClick={openCreateSegment} size="sm" variant="outline">
+            <Plus size={14} strokeWidth={1.5} className="mr-2" /> Nuevo segmento
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground -mt-4">
+          Agrupá startups para comparar y filtrar por grupo en Portfolio, Reporting, Data Room y Tasks — ej. "SaaS", "Cohort 2025".
+        </p>
+
+        {segmentsLoading ? null : segments.length === 0 ? (
+          <EmptyState
+            icon={Building2}
+            title="Todavía no armaste ningún segmento."
+            description="Un segmento es un grupo de startups (ej. por vertical o cohort) que después podés usar como filtro en Portfolio y Reporting."
+            action={{ label: "Crear el primero", onClick: openCreateSegment }}
+          />
+        ) : (
+          <div className="border border-border rounded-lg bg-card divide-y divide-border overflow-hidden">
+            {segments.map((s) => (
+              <div key={s.segment_id} className="flex items-center gap-4 px-5 py-4">
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-foreground truncate">{s.name}</span>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {s.company_ids.length} empresa{s.company_ids.length === 1 ? "" : "s"}
+                    {s.created_by_name ? ` · creado por ${s.created_by_name}` : ""}
+                  </p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label={`Más acciones para ${s.name}`}>
+                      <MoreVertical size={16} strokeWidth={1.5} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => openEditSegment(s)}>
+                      <Pencil size={14} strokeWidth={1.5} className="mr-2" /> Editar
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setDeletingSegment({ segment_id: s.segment_id, name: s.name })}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 size={14} strokeWidth={1.5} className="mr-2" /> Eliminar
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Crear / editar segmento */}
+      <FormDialog
+        open={!!editingSegment}
+        onOpenChange={(o) => !o && setEditingSegment(null)}
+        title={editingSegment?.segment_id ? "Editar segmento" : "Nuevo segmento"}
+        description="Agrupá startups de tu portfolio para poder filtrarlas juntas después."
+        onSubmit={saveSegment}
+        submitLabel={editingSegment?.segment_id ? "Guardar" : "Crear"}
+        busy={savingSegment}
+      >
+        {editingSegment && (
+          <>
+            <FormField label="Nombre">
+              <Input
+                autoFocus
+                value={editingSegment.name}
+                onChange={(e) => setEditingSegment({ ...editingSegment, name: e.target.value })}
+                placeholder="Ej: SaaS Growth"
+              />
+            </FormField>
+            <FormField label="Startups en este segmento">
+              {companies.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Todavía no tenés startups conectadas.</p>
+              ) : (
+                <div className="max-h-40 overflow-y-auto border border-border rounded-md divide-y divide-border">
+                  {companies.map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={editingSegment.company_ids.includes(c.id)}
+                        onCheckedChange={() =>
+                          setEditingSegment({
+                            ...editingSegment,
+                            company_ids: editingSegment.company_ids.includes(c.id)
+                              ? editingSegment.company_ids.filter((x) => x !== c.id)
+                              : [...editingSegment.company_ids, c.id],
+                          })
+                        }
+                      />
+                      {c.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </FormField>
+          </>
+        )}
+      </FormDialog>
+
+      <ConfirmationDialog
+        open={!!deletingSegment}
+        onOpenChange={(o) => !o && setDeletingSegment(null)}
+        title={`¿Eliminar el segmento "${deletingSegment?.name ?? ""}"?`}
+        description="Deja de estar disponible como filtro. Las startups del grupo no se ven afectadas."
+        confirmLabel="Eliminar"
+        variant="destructive"
+        onConfirm={confirmDeleteSegment}
+        busy={savingSegment}
+      />
 
       {/* Crear / editar definición — nunca pide fórmula, el fondo no calcula */}
       <FormDialog
@@ -317,6 +489,57 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
                 </Select>
               </FormField>
             </div>
+            <FormField
+              label="Tipo de métrica"
+              helpText="Estándar es comparable entre todas tus startups (ARR, Burn, Runway...). Propia es un KPI específico de esa empresa."
+            >
+              <Select
+                value={editing.metric_class}
+                onValueChange={(v: MetricClass) => setEditing({ ...editing, metric_class: v })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="custom">Propia de cada startup</SelectItem>
+                  <SelectItem value="standard">Estándar (comparable entre startups)</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            {editing.metric_class === "standard" && (
+              <FormField label="Cuál métrica estándar es">
+                <Select
+                  value={editing.standard_key}
+                  onValueChange={(v) => setEditing({ ...editing, standard_key: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Elegí una" /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(STANDARD_KEY_LABELS).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
+            <FormField label="Meta" helpText="Opcional — habilita comparar cada startup contra tu objetivo, no solo contra el promedio del portfolio.">
+              <div className="grid grid-cols-2 gap-3">
+                <Select
+                  value={editing.target_operator}
+                  onValueChange={(v: TargetOperator) => setEditing({ ...editing, target_operator: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(TARGET_OPERATOR_LABELS) as TargetOperator[]).map((op) => (
+                      <SelectItem key={op} value={op}>{TARGET_OPERATOR_LABELS[op]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  value={editing.target_value}
+                  onChange={(e) => setEditing({ ...editing, target_value: e.target.value })}
+                  placeholder="Ej: 100"
+                />
+              </div>
+            </FormField>
           </>
         )}
       </FormDialog>

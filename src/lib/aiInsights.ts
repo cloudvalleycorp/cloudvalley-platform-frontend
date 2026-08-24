@@ -69,13 +69,33 @@ export type PlatformAgentSurface =
   // UNA sola conversación continua para toda la pantalla, distinta de las
   // conversaciones por-company del resto de la app — resuelto server-side
   // a partir del JWT, no hace falta mandar fund_id a mano.
-  | "investor_portfolio";
+  | "investor_portfolio"
+  // 4 superficies nuevas del rediseño Investor (contrato confirmado
+  // 2026-08-23) — Overview/Reporting/Data Room/Tasks, las 4 pantallas
+  // portfolio-wide que antes no tenían contexto propio para el agente. No
+  // necesitan company_id (mismo criterio que investor_portfolio).
+  | "investor_overview"
+  | "investor_reporting"
+  | "investor_data_room"
+  | "investor_tasks";
 
+// Campos plurales agregados en el rediseño Investor (2026-08-23) — el
+// agente ahora puede responder sobre una selección activa de varias
+// empresas/métricas/un rango de período/un segmento, sin que el investor
+// tenga que repetirlo en texto. Los 4 singulares NO se deprecan — siguen
+// siendo lo que mandan metrics/metric_property_panel/report_editor.
+// Confirmado por backend: el agente resuelve solo comparaciones de
+// portfolio incluso en surface investor_company (una sola empresa abierta)
+// — no hace falta mandar nada distinto para que funcione ahí.
 export type PlatformAgentUiContext = {
   selectedMetricId: string | null;
   selectedCategoryId: string | null;
   selectedReportId: string | null;
   currentPeriodId: string | null;
+  selectedCompanyIds?: string[] | null;
+  selectedMetricIds?: string[] | null;
+  selectedRange?: string | null; // RelativeRangeKind, ver lib/portfolioIntelligence.ts
+  selectedSegmentId?: string | null;
 };
 
 // Mismo shape que useMetricPropertyForm.Draft/upsert-metric-definition — se
@@ -169,7 +189,13 @@ export type PlatformAgentRequest = {
 // result.existing_metric_id (+ opcional result.proposed_query) en vez de
 // pending_confirmation directo, y pending_clarifications explica la
 // situación en texto. Ver duplicateSuggestion() en PlatformAgentPanel.tsx.
-export type ObservabilityTraceEntry = { tool: string; result: Record<string, unknown> };
+// company_id (contrato ampliado 2026-08-23): null en surfaces multi-company
+// (investor_portfolio y las 4 nuevas) — ahí el company_id real vive dentro
+// de result, fila por fila (ej. result.values[metric_id][company_id]), no a
+// nivel de la entrada del trace. Presente y único en surfaces de una sola
+// empresa (investor_company). Se usa para armar el deep-link
+// /companies/:id?tab=... de las acciones del agente, ver PlatformAgentPanel.tsx.
+export type ObservabilityTraceEntry = { tool: string; company_id?: string | null; result: Record<string, unknown> };
 
 export type PlatformAgentResponse = {
   // Puede venir "metadata_edit" (cambio de contrato 2026-08-14) cuando el

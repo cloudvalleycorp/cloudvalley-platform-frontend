@@ -22,3 +22,49 @@ export function useSharedDocuments(companyId: string | null) {
   });
   return { documents: data?.documents ?? [], loading, forbidden: data?.forbidden ?? false };
 }
+
+type PortfolioResult = { documents: DataRoomDocument[]; total: number; page: number; page_size: number };
+const EMPTY_PORTFOLIO: PortfolioResult = { documents: [], total: 0, page: 1, page_size: 50 };
+
+async function fetchPortfolioDocuments(
+  companyIds: string[] | undefined,
+  segmentId: string | undefined,
+  category: string | undefined,
+  page: number,
+  pageSize: number
+): Promise<PortfolioResult> {
+  const query = new URLSearchParams();
+  if (companyIds && companyIds.length > 0) query.set("company_ids", companyIds.join(","));
+  if (segmentId) query.set("segment_id", segmentId);
+  if (category) query.set("category", category);
+  query.set("page", String(page));
+  query.set("page_size", String(pageSize));
+  const res = await fetch(`${LIST_SHARED_DOCUMENTS_URL}?${query.toString()}`, { credentials: "include" });
+  // Modo portfolio-wide nunca da 403 (empresas sin conexión simplemente no
+  // aparecen) — a diferencia del modo legacy de una sola company_id.
+  if (!res.ok) return EMPTY_PORTFOLIO;
+  const data = await res.json();
+  return {
+    documents: Array.isArray(data?.documents) ? data.documents : [],
+    total: typeof data?.total === "number" ? data.total : 0,
+    page: typeof data?.page === "number" ? data.page : page,
+    page_size: typeof data?.page_size === "number" ? data.page_size : pageSize,
+  };
+}
+
+/** Data Room portfolio-wide (nuevo, /data-room) — company_ids/segment_id u omitido = todas las conectadas. Modo distinto y paginado, no confundir con useSharedDocuments (una sola empresa, sin paginar). */
+export function usePortfolioDocuments(opts: {
+  companyIds?: string[];
+  segmentId?: string;
+  category?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const key = JSON.stringify(opts);
+  const { data = EMPTY_PORTFOLIO, isLoading: loading } = useQuery({
+    queryKey: ["portfolio-documents", key],
+    queryFn: () =>
+      fetchPortfolioDocuments(opts.companyIds, opts.segmentId, opts.category, opts.page ?? 1, opts.pageSize ?? 50),
+  });
+  return { ...data, loading };
+}

@@ -7,7 +7,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
 import { CompleteProfileScreen } from "@/components/CompleteProfileScreen";
-import { LogOut, Settings as SettingsIcon, UserCircle, Moon, Sun, Sparkles } from "lucide-react";
+import { LogOut, Settings as SettingsIcon, UserCircle, Moon, Sun, Sparkles, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,9 +18,44 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
+import type { PlatformAgentSurface } from "@/lib/aiInsights";
+import { GlobalSearch, useGlobalSearchShortcut } from "@/components/investor/GlobalSearch";
+
+// Superficie por ruta portfolio-wide — todas comparten UNA sola
+// conversación continua (ver key={assistantCompanyId ?? "portfolio"} más
+// abajo, sin cambios respecto de antes del rediseño): navegar entre
+// Overview/Portfolio/Reporting/Data Room/Tasks no reinicia el historial,
+// solo cambia el surface que se manda en cada turno como pista de dónde
+// está parado el investor. Company Workspace (/companies/:id) sigue
+// teniendo su propio hilo por empresa, aparte.
+const PORTFOLIO_WIDE_SURFACE_BY_PATH: { prefix: string; surface: PlatformAgentSurface }[] = [
+  { prefix: "/overview", surface: "investor_overview" },
+  { prefix: "/reporting", surface: "investor_reporting" },
+  { prefix: "/data-room", surface: "investor_data_room" },
+  { prefix: "/tasks", surface: "investor_tasks" },
+];
+
+function portfolioWideSurfaceForPath(pathname: string): PlatformAgentSurface {
+  const match = PORTFOLIO_WIDE_SURFACE_BY_PATH.find((s) => pathname.startsWith(s.prefix));
+  return match?.surface ?? "investor_portfolio";
+}
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading, isOrgViewer, isAdmin, role, company_id, company_name, fund_name, email, full_name, signOut } = useAuth();
+  const {
+    user,
+    loading: authLoading,
+    isOrgViewer,
+    isAdmin,
+    role,
+    company_id,
+    company_name,
+    fund_name,
+    email,
+    full_name,
+    signOut,
+    portfolio_company_ids,
+    portfolio_company_names,
+  } = useAuth();
   const { startup, loading: startupLoading } = useStartup();
   const navigate = useNavigate();
   const location = useLocation();
@@ -29,32 +64,54 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [mountedTheme, setMountedTheme] = useState(false);
   // Global, no por-página — pero el contexto que le manda al agente SÍ
   // depende de dónde se lo abre: parado en el detalle de una company puntual
-  // (/portfolio/:id) le manda esa company (surface investor_company); en
-  // cualquier otra pantalla de investor (Portfolio, Requisitos, Conexiones)
-  // es cross-company (surface investor_portfolio, companyId null). Resuelto
-  // por URL, no por props del children — así no hay que enchufar el botón
-  // pantalla por pantalla.
+  // (/companies/:id) le manda esa company (surface investor_company); en
+  // cualquier otra pantalla portfolio-wide de investor (Overview, Portfolio,
+  // Reporting, Data Room, Tasks, Requisitos, Conexiones) es cross-company
+  // (una de las surfaces de PORTFOLIO_WIDE_SURFACE_BY_PATH, companyId null).
+  // Resuelto por URL, no por props del children — así no hay que enchufar
+  // el botón pantalla por pantalla.
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const companyDetailMatch = matchPath("/portfolio/:companyId", location.pathname);
+  const companyDetailMatch = matchPath("/companies/:companyId", location.pathname);
   const assistantCompanyId = companyDetailMatch?.params.companyId ?? null;
+  const assistantSurface: PlatformAgentSurface = assistantCompanyId
+    ? "investor_company"
+    : portfolioWideSurfaceForPath(location.pathname);
+
+  // Global Search (⌘K) — investor-only, mismo criterio de alcance que el
+  // Asistente. MVP client-side, ver GlobalSearch.tsx.
+  const [searchOpen, setSearchOpen] = useState(false);
+  useGlobalSearchShortcut(role === "investor" ? setSearchOpen : () => {});
+  const searchCompanies = (portfolio_company_ids ?? []).map((id, i) => ({
+    id,
+    name: portfolio_company_names?.[i] ?? "—",
+  }));
 
   useEffect(() => {
     setMountedTheme(true);
   }, []);
 
   useEffect(() => {
-    // Los inversores viven en modo lectura dentro de /portfolio, pero igual
-    // necesitan poder editar su perfil (/account) y la configuración de su
-    // fondo (/settings) — no solo navegar el portfolio.
+    // Los inversores viven en modo lectura dentro de estas pantallas, pero
+    // igual necesitan poder editar su perfil (/account) y la configuración
+    // de su fondo (/settings) — no solo navegar el portfolio. /reporting y
+    // /data-room son las mismas rutas del founder, role-branched
+    // internamente (ver Reporting.tsx/DataRoom.tsx) — no hacen falta acá
+    // como excepción, ya las cubre startsWith implícito... salvo que si
+    // están explícitas es más legible, así que se listan igual.
     const allowedForOrgViewer =
+      location.pathname.startsWith("/overview") ||
       location.pathname.startsWith("/portfolio") ||
+      location.pathname.startsWith("/companies") ||
+      location.pathname.startsWith("/reporting") ||
+      location.pathname.startsWith("/data-room") ||
+      location.pathname.startsWith("/tasks") ||
       location.pathname === "/account" ||
       location.pathname === "/settings" ||
       location.pathname === "/conexiones" ||
       location.pathname === "/requisitos" ||
-      location.pathname === "/analiticas";
+      location.pathname === "/analiticas"; // ruta vieja, redirige sola (ver App.tsx)
     if (!authLoading && user && isOrgViewer && !allowedForOrgViewer) {
-      navigate("/portfolio", { replace: true });
+      navigate("/overview", { replace: true });
     }
     // Los usuarios sin company_id ahora ven la pantalla "sin empresa" dentro del
     // Dashboard en lugar de ser redirigidos al onboarding público.
@@ -107,6 +164,18 @@ export function AppLayout({ children }: { children: ReactNode }) {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {role === "investor" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearchOpen(true)}
+                  aria-label="Buscar (Ctrl/Cmd K)"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Search size={14} className="sm:mr-1.5" aria-hidden="true" />
+                  <span className="hidden sm:inline">Buscar</span>
+                </Button>
+              )}
               {role === "investor" && (
                 <Button variant="outline" size="sm" onClick={() => setAssistantOpen(true)} aria-label="Asistente">
                   <Sparkles size={14} className="sm:mr-1.5" aria-hidden="true" />
@@ -163,13 +232,30 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </div>
 
       {role === "investor" && (
+        <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} companies={searchCompanies} />
+      )}
+
+      {role === "investor" && (
         <PlatformAgentPanel
           key={assistantCompanyId ?? "portfolio"}
           open={assistantOpen}
           onOpenChange={setAssistantOpen}
           companyId={assistantCompanyId}
-          surface={assistantCompanyId ? "investor_company" : "investor_portfolio"}
-          uiContext={{ selectedMetricId: null, selectedCategoryId: null, selectedReportId: null, currentPeriodId: null }}
+          surface={assistantSurface}
+          uiContext={{
+            selectedMetricId: null,
+            selectedCategoryId: null,
+            selectedReportId: null,
+            currentPeriodId: null,
+            // Confirmado por backend: el agente resuelve comparaciones de
+            // portfolio incluso en investor_company sin mandar nada
+            // distinto acá — no hace falta poblar estos campos solo para
+            // habilitar esa pregunta.
+            selectedCompanyIds: null,
+            selectedMetricIds: null,
+            selectedRange: null,
+            selectedSegmentId: null,
+          }}
         />
       )}
     </SidebarProvider>
