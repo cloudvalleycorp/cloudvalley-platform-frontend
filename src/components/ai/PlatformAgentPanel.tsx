@@ -148,6 +148,52 @@ function duplicateSuggestions(trace: ObservabilityTraceEntry[]) {
     .filter((x): x is { index: number; existingMetricId: string; proposedQuery: QuerySpec | null } => !!x);
 }
 
+// Copy por surface — extendido con las 4 superficies nuevas del rediseño
+// Investor (2026-08-24), que antes caían en el copy genérico de founder
+// ("creá una métrica de churn...", sin sentido parado en Overview/Reporting/
+// Data Room/Tasks). investor_company y el resto de founder quedan igual que
+// antes, sin tocar comportamiento ya verificado.
+function surfaceDescription(surface: PlatformAgentSurface): string {
+  switch (surface) {
+    case "investor_portfolio":
+    case "investor_overview":
+      return "Contame qué necesitás saber sobre las empresas de tu portfolio.";
+    case "investor_reporting":
+      return "Preguntame sobre el estado de reporting de tus startups.";
+    case "investor_data_room":
+      return "Preguntame sobre los documentos de tu portfolio.";
+    case "investor_tasks":
+      return "Preguntame sobre las tareas pendientes de tu portfolio.";
+    default:
+      return "Contame qué necesitás: puedo responder dudas, proponer una métrica o armarte un reporte.";
+  }
+}
+
+function surfaceExample(surface: PlatformAgentSurface, companyIds?: string[]) {
+  switch (surface) {
+    case "investor_portfolio":
+    case "investor_overview":
+      return companyIds && companyIds.length > 0 ? (
+        <>Ej: "compará el Revenue de estas empresas" o "¿cuál viene quemando más caja este trimestre?".</>
+      ) : (
+        <>Ej: "¿cómo viene mi portfolio este trimestre?" o "¿qué empresa necesita más atención ahora?".</>
+      );
+    case "investor_reporting":
+      return <>Ej: "¿quién no reportó este trimestre?" o "¿qué startups tienen datos faltantes?".</>;
+    case "investor_data_room":
+      return <>Ej: "¿qué documentos financieros subió Acme este mes?" o "¿a quién le falta el cap table?".</>;
+    case "investor_tasks":
+      return <>Ej: "¿qué tengo vencido?" o "resumime mis tareas de esta semana".</>;
+    default:
+      return (
+        <>
+          Ej: "¿por qué bajó el churn en marzo?", "creá una métrica de churn mensual sobre clientes activos" o "hacé
+          el reporte del mes".
+        </>
+      );
+  }
+}
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -295,29 +341,12 @@ export function PlatformAgentPanel({
               </Button>
             )}
           </div>
-          <SheetDescription>
-            {surface === "investor_portfolio"
-              ? "Contame qué necesitás saber sobre las empresas de tu portfolio."
-              : "Contame qué necesitás: puedo responder dudas, proponer una métrica o armarte un reporte."}
-          </SheetDescription>
+          <SheetDescription>{surfaceDescription(surface)}</SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {exchanges.length === 0 && !pendingQuestion && (
-            <p className="text-sm text-muted-foreground">
-              {surface === "investor_portfolio" ? (
-                companyIds && companyIds.length > 0 ? (
-                  <>Ej: "compará el Revenue de estas empresas" o "¿cuál viene quemando más caja este trimestre?".</>
-                ) : (
-                  <>Ej: "¿cómo viene mi portfolio este trimestre?" o "¿qué empresa necesita más atención ahora?".</>
-                )
-              ) : (
-                <>
-                  Ej: "¿por qué bajó el churn en marzo?", "creá una métrica de churn mensual sobre clientes activos" o
-                  "hacé el reporte del mes".
-                </>
-              )}
-            </p>
+            <p className="text-sm text-muted-foreground">{surfaceExample(surface, companyIds)}</p>
           )}
 
           {exchanges.map((ex, exchangeIdx) => {

@@ -10,6 +10,21 @@ import {
   type PlatformAgentResponse,
 } from "@/lib/aiInsights";
 
+// Surfaces cross-company (investor, sin un companyId singular — ver
+// company_ids opcional más abajo). Bug real encontrado en vivo 2026-08-24:
+// al agregar las 4 superficies nuevas del rediseño (investor_overview/
+// reporting/data_room/tasks) a aiInsights.ts, este set se quedó con solo
+// "investor_portfolio" — el guard de abajo bloqueaba el pedido en silencio
+// (ni siquiera llamaba a fetch) para las 4 nuevas, porque companyId es null
+// en todas ellas igual que en investor_portfolio.
+const CROSS_COMPANY_SURFACES: PlatformAgentSurface[] = [
+  "investor_portfolio",
+  "investor_overview",
+  "investor_reporting",
+  "investor_data_room",
+  "investor_tasks",
+];
+
 export type AskOptions = {
   uiContext: PlatformAgentUiContext;
   formulaSyntax?: FormulaSyntaxEntry[];
@@ -42,10 +57,10 @@ export function usePlatformAgent(companyId: string | null, surface: PlatformAgen
   const [asking, setAsking] = useState(false);
 
   const ask = async (question: string, opts: AskOptions): Promise<PlatformAgentResponse | null> => {
-    // investor_portfolio es cross-company — no tiene un companyId singular,
-    // así que no bloquea acá (company_ids es opcional, ver abajo). El resto
-    // de surfaces sí necesita un companyId real.
-    if (!companyId && surface !== "investor_portfolio") return null;
+    // Las surfaces cross-company no tienen un companyId singular, así que no
+    // bloquean acá (company_ids es opcional, ver abajo). El resto de
+    // surfaces sí necesita un companyId real.
+    if (!companyId && !CROSS_COMPANY_SURFACES.includes(surface)) return null;
     setAsking(true);
     try {
       const res = await fetch(PLATFORM_AGENT_URL, {
