@@ -102,6 +102,13 @@ function InvestorTasksContent({ hasCompanies }: { hasCompanies: boolean }) {
         task_id: editing.startup_task_id,
         pillar_id: "", // no viene en PortfolioTask — se elige de nuevo al editar
         title: editing.title,
+        // list-portfolio-tasks no trae descripción/pilar completo (a
+        // diferencia de list-shared-roadmap, ver Company Workspace) — se
+        // edita desde acá con estos campos en blanco, no se pisa nada que
+        // ya estuviera cargado.
+        description: null,
+        why_it_matters: null,
+        how_to_do_it: null,
         criticality: editing.criticality,
         requires_doc: false,
         requires_report: false,
@@ -198,7 +205,6 @@ function InvestorTasksContent({ hasCompanies }: { hasCompanies: boolean }) {
             queryClient.invalidateQueries({ queryKey: ["portfolio-tasks"] });
           }}
           task={editableTask}
-          showDueDate
         />
       )}
     </AppLayout>

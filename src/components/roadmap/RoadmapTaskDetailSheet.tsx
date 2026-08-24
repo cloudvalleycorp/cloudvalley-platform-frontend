@@ -31,6 +31,9 @@ export function RoadmapTaskDetailSheet({ task, onClose }: Props) {
                 <p className="text-sm">{task.how_to_do_it}</p>
               </div>
             )}
+            {!task.description && !task.why_it_matters && !task.how_to_do_it && (
+              <p className="text-sm text-muted-foreground">Esta tarea todavía no tiene más detalle cargado.</p>
+            )}
           </div>
         )}
       </SheetContent>

@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Info, Upload, RefreshCw, ChevronDown, FileBarChart, CheckCircle2, Circle } from "lucide-react";
+import { Info, Upload, RefreshCw, ChevronDown, FileBarChart, CheckCircle2, Circle, Pencil } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RoadmapPillar, RoadmapTask, RoadmapTaskStatus } from "@/lib/roadmap";
 
@@ -16,13 +17,18 @@ type Props = {
   readOnly?: boolean;
   onToggleStatus?: (startupTaskId: string, next: RoadmapTaskStatus) => void;
   onUpload?: (task: RoadmapTask, file: File) => void;
+  // Lado inversor, solo tareas que el propio fondo pidió (requested_by_user_id
+  // presente — nunca las del catálogo admin/founder): lápiz de editar junto
+  // al de info, sin tener que ir a /tasks. Ausente = sin acción de editar
+  // acá (ej. Roadmap.tsx del founder, que edita por otro lado).
+  onEditTask?: (task: RoadmapTask) => void;
 };
 
 // Pillar tabs + lista de tareas agrupadas, extraído de Roadmap.tsx para que
 // founder (edición) e investor (solo lectura) compartan el mismo render —
 // mismo criterio que DocumentRow.tsx reusado entre las dos vistas con un
 // prop canEdit.
-export function RoadmapTaskList({ pillars, tasks, onOpenTask, readOnly = false, onToggleStatus, onUpload }: Props) {
+export function RoadmapTaskList({ pillars, tasks, onOpenTask, readOnly = false, onToggleStatus, onUpload, onEditTask }: Props) {
   const [activePillar, setActivePillar] = useState<string>("all");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -144,6 +150,17 @@ export function RoadmapTaskList({ pillars, tasks, onOpenTask, readOnly = false, 
                           {t.document_id ? <RefreshCw size={14} strokeWidth={1.5} /> : <Upload size={14} strokeWidth={1.5} />}
                           <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && onUpload?.(t, e.target.files[0])} />
                         </label>
+                      )}
+                      {onEditTask && t.requested_by_user_id && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 -m-1.5 shrink-0"
+                          onClick={() => onEditTask(t)}
+                          aria-label={`Editar ${t.title}`}
+                        >
+                          <Pencil size={13} strokeWidth={1.5} />
+                        </Button>
                       )}
                       <button
                         onClick={() => onOpenTask(t)}

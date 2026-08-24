@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { FormDialog } from "@/components/FormDialog";
 import { FormField } from "@/components/FormField";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRoadmapCatalogMutations } from "@/hooks/useRoadmapCatalogMutations";
@@ -11,6 +12,9 @@ import { CRITICALITY_LABELS, type Criticality, type RoadmapPillar } from "@/lib/
 type Draft = {
   pillar_id: string;
   title: string;
+  description: string;
+  why_it_matters: string;
+  how_to_do_it: string;
   criticality: Criticality;
   requires_doc: boolean;
   requires_report: boolean;
@@ -21,6 +25,9 @@ function emptyDraft(pillarId: string): Draft {
   return {
     pillar_id: pillarId,
     title: "",
+    description: "",
+    why_it_matters: "",
+    how_to_do_it: "",
     criticality: "recommended",
     requires_doc: false,
     requires_report: false,
@@ -32,11 +39,17 @@ function emptyDraft(pillarId: string): Draft {
 // Tarea existente a editar — solo aplica a scope="fund" del propio fondo
 // (upsert-roadmap-task da 403 en cualquier otro caso). Un subset mínimo,
 // no el RoadmapTask/PortfolioTask completo, para no acoplar este dialog a
-// esos tipos.
+// esos tipos. description/why_it_matters/how_to_do_it/pillar_id vienen
+// null/"" cuando se edita desde /tasks (list-portfolio-tasks no los trae,
+// a diferencia de list-shared-roadmap) — el usuario los completa de nuevo
+// si hace falta, no se pierde nada que no estuviera ya vacío.
 export type EditableTask = {
   task_id: string;
   pillar_id: string;
   title: string;
+  description: string | null;
+  why_it_matters: string | null;
+  how_to_do_it: string | null;
   criticality: Criticality;
   requires_doc: boolean;
   requires_report: boolean;
@@ -47,6 +60,9 @@ function draftFromTask(task: EditableTask): Draft {
   return {
     pillar_id: task.pillar_id,
     title: task.title,
+    description: task.description ?? "",
+    why_it_matters: task.why_it_matters ?? "",
+    how_to_do_it: task.how_to_do_it ?? "",
     criticality: task.criticality,
     requires_doc: task.requires_doc,
     requires_report: task.requires_report,
@@ -73,17 +89,14 @@ type Props = {
   // Presente = modo edición (Tasks, /companies/:id?tab=tasks) — precarga el
   // draft y manda task_id al guardar en vez de crear una nueva.
   task?: EditableTask | null;
-  // Solo en modo edición: campo de fecha, oculto al crear desde los flujos
-  // de "requisito" existentes para no cambiarles la forma.
-  showDueDate?: boolean;
 };
 
 // Compartido entre "Agregar tarea propia" (Roadmap.tsx, founder), "Agregar
 // requisito" (InvestorPortfolio.tsx / InvestorCompany.tsx, inversor, modo
-// creación) y ahora también edición de una tarea de fondo ya creada (Tasks,
+// creación) y edición de una tarea de fondo ya creada (Tasks,
 // /companies/:id?tab=tasks) — misma mecánica de guardado (upsertTask, ya
 // funciona para ambos roles), difiere en si hay selector de empresas
-// destino, si hay fecha, y en la copy.
+// destino y en la copy.
 export function AddRoadmapTaskDialog({
   open,
   onOpenChange,
@@ -95,7 +108,6 @@ export function AddRoadmapTaskDialog({
   companies,
   hideTargetPicker,
   task,
-  showDueDate,
 }: Props) {
   const { upsertTask } = useRoadmapCatalogMutations();
   const [draft, setDraft] = useState<Draft>(() => (task ? draftFromTask(task) : emptyDraft(defaultPillarId)));
@@ -122,6 +134,9 @@ export function AddRoadmapTaskDialog({
       task_id: task?.task_id,
       pillar_id: draft.pillar_id,
       title: draft.title.trim(),
+      description: draft.description.trim() || undefined,
+      why_it_matters: draft.why_it_matters.trim() || undefined,
+      how_to_do_it: draft.how_to_do_it.trim() || undefined,
       criticality: draft.criticality,
       requires_doc: draft.requires_doc,
       requires_report: draft.requires_report,
@@ -147,15 +162,6 @@ export function AddRoadmapTaskDialog({
       busy={saving}
       contentClassName="sm:max-w-lg"
     >
-      {showDueDate && (
-        <FormField label="Vence">
-          <Input
-            type="date"
-            value={draft.due_date}
-            onChange={(e) => setDraft({ ...draft, due_date: e.target.value })}
-          />
-        </FormField>
-      )}
       <FormField label="Pilar">
         <Select value={draft.pillar_id} onValueChange={(v) => setDraft({ ...draft, pillar_id: v })}>
           <SelectTrigger>
@@ -176,6 +182,35 @@ export function AddRoadmapTaskDialog({
           value={draft.title}
           onChange={(e) => setDraft({ ...draft, title: e.target.value })}
           placeholder="Ej: Subir cap table actualizada"
+        />
+      </FormField>
+      <FormField label="Descripción" helpText="Opcional — se ve al abrir el detalle de la tarea.">
+        <Textarea
+          value={draft.description}
+          onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+          placeholder="Qué tiene que hacer la startup"
+          rows={2}
+        />
+      </FormField>
+      <FormField label="Por qué importa" helpText="Opcional">
+        <Textarea
+          value={draft.why_it_matters}
+          onChange={(e) => setDraft({ ...draft, why_it_matters: e.target.value })}
+          rows={2}
+        />
+      </FormField>
+      <FormField label="Cómo hacerlo" helpText="Opcional">
+        <Textarea
+          value={draft.how_to_do_it}
+          onChange={(e) => setDraft({ ...draft, how_to_do_it: e.target.value })}
+          rows={2}
+        />
+      </FormField>
+      <FormField label="Vence" helpText="Opcional">
+        <Input
+          type="date"
+          value={draft.due_date}
+          onChange={(e) => setDraft({ ...draft, due_date: e.target.value })}
         />
       </FormField>
       <FormField label="Criticidad">

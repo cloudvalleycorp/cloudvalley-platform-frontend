@@ -145,6 +145,7 @@ export default function InvestorCompany() {
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
   const [openRoadmapTask, setOpenRoadmapTask] = useState<RoadmapTask | null>(null);
+  const [editingTask, setEditingTask] = useState<RoadmapTask | null>(null);
   const [addingRequirement, setAddingRequirement] = useState(false);
   // 24 meses de margen sobre el período elegido para que SUMLAST/AVGLAST/YTD
   // sigan calculando — se recalcula (y refetchea) al cambiar de período.
@@ -564,6 +565,7 @@ export default function InvestorCompany() {
                       pillars={roadmap.pillars}
                       tasks={roadmap.tasks}
                       onOpenTask={setOpenRoadmapTask}
+                      onEditTask={setEditingTask}
                       readOnly
                     />
                   )}
@@ -617,6 +619,33 @@ export default function InvestorCompany() {
           onSaved={() => queryClient.invalidateQueries({ queryKey: ["shared-roadmap", company_id] })}
           companies={company_id ? [{ id: company_id, name: profile.name }] : []}
           hideTargetPicker
+        />
+      )}
+
+      {editingTask && (
+        <AddRoadmapTaskDialog
+          open={!!editingTask}
+          onOpenChange={(o) => !o && setEditingTask(null)}
+          pillars={roadmapPillars}
+          defaultPillarId={roadmapPillars[0]?.id ?? ""}
+          title={`Editar "${editingTask.title}"`}
+          description="Solo vos podés editar esta tarea — la pediste desde tu fondo."
+          onSaved={() => {
+            setEditingTask(null);
+            queryClient.invalidateQueries({ queryKey: ["shared-roadmap", company_id] });
+          }}
+          task={{
+            task_id: editingTask.startup_task_id,
+            pillar_id: editingTask.pillar_id,
+            title: editingTask.title,
+            description: editingTask.description,
+            why_it_matters: editingTask.why_it_matters,
+            how_to_do_it: editingTask.how_to_do_it,
+            criticality: editingTask.criticality,
+            requires_doc: editingTask.requires_doc,
+            requires_report: editingTask.requires_report,
+            due_date: editingTask.due_date,
+          }}
         />
       )}
     </AppLayout>
