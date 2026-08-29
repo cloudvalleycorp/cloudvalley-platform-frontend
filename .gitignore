@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Variables de entorno: nunca se commitean (incidente 2026-08-29, ver
+# docs/security-env-vars.md). Solo .env.example queda versionado.
+.env
+.env.*
+!.env.example
+
 # Playwright MCP: storageState.json contiene la cookie de sesión real
 # (HttpOnly, viva) capturada por scripts/playwright/login.mjs — nunca se commitea.
 playwright/.auth/

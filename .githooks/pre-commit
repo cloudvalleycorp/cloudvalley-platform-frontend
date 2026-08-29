@@ -1,0 +1,24 @@
+#!/bin/sh
+# Bloquea commits que agreguen archivos .env o secretos obvios.
+# Activar una vez por clone: git config core.hooksPath .githooks
+
+staged_env=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)\.env(\..*)?$' | grep -v '\.env\.example$')
+if [ -n "$staged_env" ]; then
+  echo "ERROR: estas intentando commitear un archivo de entorno:"
+  echo "$staged_env"
+  echo "Los .env nunca se commitean (ver docs/security-env-vars.md). Sacalo del staging con: git restore --staged <archivo>"
+  exit 1
+fi
+
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact -v
+  if [ $? -ne 0 ]; then
+    echo "ERROR: gitleaks detecto un posible secreto en el staged diff. Revisa el output de arriba."
+    exit 1
+  fi
+else
+  echo "Aviso: gitleaks no esta instalado localmente, solo se corrio el chequeo basico de archivos .env."
+  echo "Instalalo desde https://github.com/gitleaks/gitleaks para un chequeo mas completo (tambien corre en CI)."
+fi
+
+exit 0
