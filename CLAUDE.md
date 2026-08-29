@@ -149,6 +149,32 @@ redundantes con lo que ya existe.
 
 ---
 
+## Secretos y variables de entorno
+
+`.env` estuvo commiteado y público en GitHub desde el commit inicial del repo
+hasta que se detectó y se limpió el 2026-08-29 (historial reescrito con
+`git filter-repo` + force-push). No vuelvas a introducir ese error:
+
+- `.env` nunca se commitea. Ya está en `.gitignore` (`.env` y `.env.*`, con
+  excepción de `.env.example`) — si en algún punto ves `.env` como archivo
+  nuevo en `git status` listo para trackear, algo se rompió en esa regla, no
+  lo agregues igual.
+- Activá el pre-commit que lo bloquea una vez por clone:
+  `git config core.hooksPath .githooks`. Hay además un workflow de gitleaks
+  (`.github/workflows/secret-scan.yml`) que corre en cada push/PR a `main`.
+- Toda variable con prefijo `VITE_` termina en el bundle del browser, la
+  hayas commiteado o no — nunca le pongas ahí una credencial que deba ser
+  privada. Si necesitás agregar un secreto real (API key de un servicio de
+  terceros, credencial de service_role, etc.), va como secret de Supabase
+  Edge Functions (`Deno.env.get(...)`, server-side) o detrás de un endpoint
+  propio del backend — nunca en una env var que Vite exponga al cliente.
+- Si agregás una variable nueva a `.env`, sumala también a `.env.example`
+  con un valor ficticio (nunca el real).
+- Detalle completo de qué variable es pública y por qué, y qué hacer si se
+  vuelve a commitear un secreto: `docs/security-env-vars.md`.
+
+---
+
 ## Verificación
 
 Todo cambio se valida con:
