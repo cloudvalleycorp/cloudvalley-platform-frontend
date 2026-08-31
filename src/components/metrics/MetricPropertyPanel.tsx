@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link2, Sparkles, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
@@ -10,10 +10,10 @@ import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PropertyField, type PropertyFieldDef } from "@/components/metrics/PropertyField";
 import { QueryBuilder } from "@/components/metrics/query-builder/QueryBuilder";
+import { SimpleSourceList, flattenSimpleSources } from "@/components/metrics/query-builder/SimpleSourceList";
 import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { type MetricDef, type RawField, sourceLabel, sourceSettingsPath } from "@/lib/metrics";
 import { blankAggregationNode } from "@/lib/querySpec";
-import { resolveMetricSources } from "@/lib/metricLineage";
 import { cn } from "@/lib/utils";
 import { useMetricPropertyForm, type Draft } from "@/hooks/useMetricPropertyForm";
 
@@ -124,13 +124,14 @@ export function MetricPropertyPanel({
     [reusableCalcDefs, allInputDefs]
   );
 
-  // Mismo cálculo que ya usa MetricLineagePanel (solo lectura) — acá también
-  // en el panel de edición/creación, para que "combina varias fuentes" sea
-  // visible sin tener que salir a otro panel a verlo (ver plan, sección 8/10).
-  const currentSources = useMemo(
-    () => (draft.query ? resolveMetricSources({ query: draft.query } as MetricDef, allMetrics, rawFields) : []),
-    [draft.query, allMetrics, rawFields]
-  );
+  // Vista simple (lista plana de fuentes) vs. editor avanzado (árbol crudo,
+  // filtros, ventana, otra métrica referenciada) — null cuando la query
+  // actual no es representable como lista simple, ver flattenSimpleSources.
+  const simpleLeaves = useMemo(() => flattenSimpleSources(draft.query), [draft.query]);
+  const [advancedMode, setAdvancedMode] = useState(false);
+  useEffect(() => {
+    setAdvancedMode(false);
+  }, [metric?.id, creating]);
 
   const generalFields: PropertyFieldDef[] = [
     { key: "name", label: "Nombre", type: "text", placeholder: "Ej: Revenue por empleado" },
@@ -354,30 +355,6 @@ export function MetricPropertyPanel({
                 <AccordionItem value="formula">
                   <AccordionTrigger>Consulta</AccordionTrigger>
                   <AccordionContent>
-                    {draft.query && (
-                      <div className="mb-4 rounded-md border border-border bg-surface p-3">
-                        <p className="text-xs font-medium mb-1">
-                          {currentSources.length === 0
-                            ? "Esta métrica todavía no combina ninguna fuente."
-                            : currentSources.length === 1
-                              ? "Esta métrica combina valores de:"
-                              : `Esta métrica combina valores de ${currentSources.length} fuentes:`}
-                        </p>
-                        {currentSources.length > 0 && (
-                          <ul className="space-y-0.5">
-                            {currentSources.map((s) => (
-                              <li key={s.connectionId} className="text-xs text-muted-foreground">
-                                {s.connectionLabel}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        <p className="text-[11px] text-tertiary mt-1.5">
-                          Para sumar otra fuente más, usá "Combinar con…" abajo — cada una se suma tal cual, nunca en
-                          silencio.
-                        </p>
-                      </div>
-                    )}
                     {!draft.query && draft.legacyFormulaExpression ? (
                       <div className="space-y-3">
                         <div className="rounded-md border border-border bg-surface p-3">
@@ -393,8 +370,26 @@ export function MetricPropertyPanel({
                           No se convierte automáticamente: hay que reconstruirla desde cero.
                         </p>
                       </div>
+                    ) : simpleLeaves && !advancedMode ? (
+                      <SimpleSourceList
+                        leaves={simpleLeaves}
+                        onChange={setQuery}
+                        rawFields={rawFields}
+                        onSwitchToAdvanced={() => setAdvancedMode(true)}
+                      />
                     ) : (
-                      <QueryBuilder value={draft.query} onChange={setQuery} rawFields={rawFields} metricOptions={metricOptions} />
+                      <div className="space-y-2">
+                        {simpleLeaves && (
+                          <button
+                            type="button"
+                            onClick={() => setAdvancedMode(false)}
+                            className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                          >
+                            ← Volver a la vista simple
+                          </button>
+                        )}
+                        <QueryBuilder value={draft.query} onChange={setQuery} rawFields={rawFields} metricOptions={metricOptions} />
+                      </div>
                     )}
                   </AccordionContent>
                 </AccordionItem>
