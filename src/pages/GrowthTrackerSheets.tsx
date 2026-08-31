@@ -37,6 +37,8 @@ import { useMetricInsights } from "@/hooks/useMetricInsights";
 import { handleMembershipError } from "@/lib/membership";
 import { periodRange } from "@/lib/metricPeriod";
 import { groupRowErrors } from "@/lib/financialData";
+import { findMetricsUsingField } from "@/lib/metricLineage";
+import type { MetricDef } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type { SuggestedMetric, MetricNeedingMoreData } from "@/lib/aiInsights";
 import { SuggestedMetricsReview } from "@/components/metrics/SuggestedMetricsReview";
@@ -227,6 +229,9 @@ export default function GrowthTrackerSheets() {
   // new connection" (null) from "editing an existing one".
   const [wizardAccountId, setWizardAccountId] = useState<string | null>(null);
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
+  // Confirmación previa cuando editar un mapeo desmapea o retipa un campo
+  // que 1+ métricas calculadas ya usan — sin esto se rompían en silencio.
+  const [pendingBreakingChange, setPendingBreakingChange] = useState<MetricDef[] | null>(null);
   const [step, setStep] = useState<WizardStep>(1);
   const [sheets, setSheets] = useState<SheetSummary[]>([]);
   const [loadingSheets, setLoadingSheets] = useState(false);
@@ -954,15 +959,48 @@ export default function GrowthTrackerSheets() {
     }
   };
 
+  // Compara el mapeo existente de la conexión (si estamos editando una) contra
+  // el draft actual — cualquier field_key que desaparece o cambia de
+  // value_type puede romper una métrica calculada que ya lo referencia
+  // (FIELDSUM/etc.). findMetricsUsingField ya existía para esto y no se
+  // llamaba desde ningún lado.
+  const findBreakingChanges = (): MetricDef[] => {
+    if (!editingConnectionId) return [];
+    const existing = connections.find((c) => c.connection_id === editingConnectionId);
+    if (!existing) return [];
+    const newByKey = new Map(Object.values(fieldMappings).map((m) => [m.field_key.trim(), m.value_type]));
+    const atRiskKeys = existing.field_mappings
+      .filter((old) => {
+        const newType = newByKey.get(old.field_key);
+        return newType === undefined || newType !== old.value_type;
+      })
+      .map((old) => old.field_key);
+    const affected = new Map<string, MetricDef>();
+    for (const key of atRiskKeys) {
+      for (const m of findMetricsUsingField(key, financial.metrics)) affected.set(m.id, m);
+    }
+    return Array.from(affected.values());
+  };
+
   const handleSaveMapping = async () => {
-    if (!company_id || !selectedSheetName || !periodColumn) return;
-    if (!excelMode && !wizardAccountId) return;
-    if (!excelMode && !selectedSpreadsheetId) return;
-    if (excelMode && !excelUploadId) return;
     if (!canSaveMapping) {
       toast.error("Revisá el mapeo: hay campos sin nombre o repetidos.");
       return;
     }
+    const breaking = findBreakingChanges();
+    if (breaking.length > 0) {
+      setPendingBreakingChange(breaking);
+      return;
+    }
+    await doSaveMapping();
+  };
+
+  const doSaveMapping = async () => {
+    if (!company_id || !selectedSheetName || !periodColumn) return;
+    if (!excelMode && !wizardAccountId) return;
+    if (!excelMode && !selectedSpreadsheetId) return;
+    if (excelMode && !excelUploadId) return;
+    setPendingBreakingChange(null);
     setSavingMapping(true);
     setDuplicateConnectionId(null);
     try {
@@ -1186,39 +1224,43 @@ export default function GrowthTrackerSheets() {
         <PageHeader
           title="Fuentes de datos"
           subtitle="Conectá Google Sheets o subí un Excel para sincronizar tus métricas automáticamente, en vez de cargarlas a mano."
-          action={
-            !showWizard && !loadingAccounts ? (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                {anyConnections && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => runSyncAll(false)}
-                    disabled={syncAllBusy || sourcePaused}
-                  >
-                    <RefreshCw size={13} className={cn("mr-1.5", syncAllBusy && "animate-spin")} />
-                    {syncAllBusy ? "Sincronizando…" : "Sincronizar todo"}
-                  </Button>
-                )}
-                {anyConnections && (
-                  <Button variant="outline" size="sm" onClick={() => setEntityAliasesOpen(true)}>
-                    Gestionar entidades
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" onClick={() => openExcelUpload()} disabled={sourcePaused}>
-                  <Upload size={13} className="mr-1.5" />
-                  Subir Excel
-                </Button>
-                {accounts.length > 0 && (
-                  <Button size="sm" onClick={handleConnect} disabled={connecting || sourcePaused}>
-                    <Plus size={13} className="mr-1.5" />
-                    {connecting ? "Conectando…" : "Conectar otra cuenta"}
-                  </Button>
-                )}
-              </div>
-            ) : undefined
-          }
         />
+
+        {/* Estos 4 botones no van en el `action` de PageHeader a propósito: ese
+            slot es `shrink-0` y, con 4 botones, se queda con su ancho completo
+            sin ceder nada — eso angostaba el título de arriba a una columna de
+            una palabra. Como fila propia, con todo el ancho de la página, el
+            flex-wrap tiene margen real para envolver. */}
+        {!showWizard && !loadingAccounts && (
+          <div className="flex flex-wrap items-center gap-2 mb-8 -mt-4">
+            {anyConnections && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => runSyncAll(false)}
+                disabled={syncAllBusy || sourcePaused}
+              >
+                <RefreshCw size={13} className={cn("mr-1.5", syncAllBusy && "animate-spin")} />
+                {syncAllBusy ? "Sincronizando…" : "Sincronizar todo"}
+              </Button>
+            )}
+            {anyConnections && (
+              <Button variant="outline" size="sm" onClick={() => setEntityAliasesOpen(true)}>
+                Gestionar entidades
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => openExcelUpload()} disabled={sourcePaused}>
+              <Upload size={13} className="mr-1.5" />
+              Subir Excel
+            </Button>
+            {accounts.length > 0 && (
+              <Button size="sm" onClick={handleConnect} disabled={connecting || sourcePaused}>
+                <Plus size={13} className="mr-1.5" />
+                {connecting ? "Conectando…" : "Conectar otra cuenta"}
+              </Button>
+            )}
+          </div>
+        )}
 
         {(loadingAccounts || loadingConnections) && !showWizard && <LoadingState variant="centered" className="py-16" />}
 
@@ -1309,11 +1351,10 @@ export default function GrowthTrackerSheets() {
                           <div key={conn.connection_id} className="border border-border rounded-md p-3">
                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                               <div className="min-w-0">
-                                <p className="text-sm font-medium flex items-center gap-1.5 min-w-0">
+                                <p className="text-sm font-medium flex items-center gap-1.5 min-w-0" title={`${conn.spreadsheet_name} · ${conn.sheet_name}`}>
                                   <FileSpreadsheet size={13} strokeWidth={1.5} className="text-muted-foreground shrink-0" />
-                                  <span className="truncate">
-                                    {conn.spreadsheet_name} · {conn.sheet_name}
-                                  </span>
+                                  <span className="shrink-0">{conn.sheet_name}</span>
+                                  <span className="truncate min-w-0 text-muted-foreground font-normal">· {conn.spreadsheet_name}</span>
                                 </p>
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                   {conn.field_mappings.length} campo{conn.field_mappings.length === 1 ? "" : "s"} · última
@@ -1342,7 +1383,7 @@ export default function GrowthTrackerSheets() {
                                   </Badge>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1 shrink-0">
+                              <div className="flex flex-wrap items-center gap-1">
                                 {conn.source === "excel" ? (
                                   <Button
                                     variant="outline"
@@ -1380,6 +1421,7 @@ export default function GrowthTrackerSheets() {
                                   size="sm"
                                   className="h-7 px-2 text-xs"
                                   onClick={() => setEntityResolutionConnection(conn)}
+                                  title="Agrupa nombres distintos que son la misma entidad (ej: 'Acme Inc' y 'Acme Inc.') para que no se cuenten dos veces."
                                 >
                                   Resolver entidades
                                 </Button>
@@ -1517,11 +1559,10 @@ export default function GrowthTrackerSheets() {
                     <div key={conn.connection_id} className="border border-border rounded-md p-3">
                       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium flex items-center gap-1.5 min-w-0">
+                          <p className="text-sm font-medium flex items-center gap-1.5 min-w-0" title={`${conn.spreadsheet_name} · ${conn.sheet_name}`}>
                             <FileSpreadsheet size={13} strokeWidth={1.5} className="text-muted-foreground shrink-0" />
-                            <span className="truncate">
-                              {conn.spreadsheet_name} · {conn.sheet_name}
-                            </span>
+                            <span className="truncate min-w-0">{conn.spreadsheet_name}</span>
+                            <span className="shrink-0 text-muted-foreground font-normal">· {conn.sheet_name}</span>
                           </p>
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {conn.field_mappings.length} campo{conn.field_mappings.length === 1 ? "" : "s"} · subido{" "}
@@ -1538,12 +1579,18 @@ export default function GrowthTrackerSheets() {
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex flex-wrap items-center gap-1">
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => openExcelUpload(conn.connection_id)}>
                             <Upload size={11} className="mr-1" />
                             Subir nueva versión
                           </Button>
-                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEntityResolutionConnection(conn)}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setEntityResolutionConnection(conn)}
+                            title="Agrupa nombres distintos que son la misma entidad (ej: 'Acme Inc' y 'Acme Inc.') para que no se cuenten dos veces."
+                          >
                             Resolver entidades
                           </Button>
                           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setDuplicatesConnection(conn)}>
@@ -2046,6 +2093,21 @@ export default function GrowthTrackerSheets() {
         onConfirm={handleRemoveConnection}
       />
 
+      <ConfirmationDialog
+        open={!!pendingBreakingChange}
+        onOpenChange={(o) => !o && setPendingBreakingChange(null)}
+        title="Este cambio puede romper métricas existentes"
+        description={
+          pendingBreakingChange
+            ? `Estás por sacar o cambiar el tipo de una columna que ${pendingBreakingChange.length === 1 ? "esta métrica ya usa" : "estas métricas ya usan"} para calcularse: ${pendingBreakingChange.map((m) => m.name).join(", ")}. Si guardás, ${pendingBreakingChange.length === 1 ? "va a dejar" : "van a dejar"} de calcular hasta que corrijas su fórmula o vuelvas a mapear la columna.`
+            : ""
+        }
+        confirmLabel="Guardar de todas formas"
+        variant="destructive"
+        busy={savingMapping}
+        onConfirm={doSaveMapping}
+      />
+
       {entityResolutionConnection && company_id && (
         <EntityResolutionDialog
           open={!!entityResolutionConnection}
@@ -2126,6 +2188,10 @@ function ConnectionSettingsPanel({
             ))}
           </SelectContent>
         </Select>
+        <p className="text-[11px] text-muted-foreground mt-1.5">
+          Solo importa si vas a conectar otra fuente que mida lo mismo. Si en algún momento no coinciden, la marcada
+          "Fuente de verdad" es la que gana.
+        </p>
       </div>
       <div>
         <label className="text-xs font-medium block mb-1.5">Sincronización</label>
@@ -2163,11 +2229,11 @@ function ConnectionSettingsPanel({
             </SelectContent>
           </Select>
         </div>
-        {connection.next_sync_at && (
-          <p className="text-[11px] text-muted-foreground mt-1">
-            Próxima sincronización: {new Date(connection.next_sync_at).toLocaleString("es-AR")}
-          </p>
-        )}
+        <p className="text-[11px] text-muted-foreground mt-1.5">
+          {connection.next_sync_at
+            ? `Próxima sincronización automática: ${new Date(connection.next_sync_at).toLocaleString("es-AR")}. Podés apretar "Sincronizar" cuando quieras igual.`
+            : "Define cada cuánto buscamos datos nuevos sin que hagas nada. Podés apretar \"Sincronizar\" a mano en cualquier momento."}
+        </p>
       </div>
     </div>
   );

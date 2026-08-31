@@ -4,7 +4,6 @@ import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
-import { cn } from "@/lib/utils";
 import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { Button } from "@/components/ui/button";
 import { Sparkles } from "lucide-react";
@@ -19,11 +18,15 @@ import { MetricsDataSourcesTab } from "@/components/metrics/MetricsDataSourcesTa
 import { MetricsDataHealthTab } from "@/components/metrics/MetricsDataHealthTab";
 import { MetricsExplorerTab } from "@/components/metrics/MetricsExplorerTab";
 
-const TAB_LABELS: Record<MetricsTab, string> = {
-  overview: "Overview",
-  sources: "Fuentes de datos",
-  health: "Salud de datos",
-  explorer: "Explorador",
+// La navegación entre secciones vive en el grupo colapsable "Métricas" del
+// sidebar (AppSidebar.tsx) — este título/subtítulo por tab reemplaza al tab
+// bar que antes se repetía acá arriba, duplicando exactamente esos mismos 4
+// destinos.
+const TAB_HEADER: Record<MetricsTab, { title: string; subtitle: string }> = {
+  overview: { title: "Overview", subtitle: "Tus KPIs principales, con tendencia real y el origen de cada número a un clic." },
+  sources: { title: "Fuentes de datos", subtitle: "Revisá qué tan al día está cada fuente y cuántas métricas dependen de ella." },
+  health: { title: "Salud de datos", subtitle: "Problemas reales agrupados por severidad — nada inventado." },
+  explorer: { title: "Explorador", subtitle: "Creá, editá y entendé de dónde sale cada métrica." },
 };
 
 const now = new Date();
@@ -35,11 +38,6 @@ export default function Metrics() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab: MetricsTab = metricId ? "explorer" : parseMetricsTab(searchParams);
   const [assistantOpen, setAssistantOpen] = useState(false);
-
-  const setTab = (tab: MetricsTab) => {
-    if (tab === "explorer" && metricId) return; // ya estamos en explorer, no perder el metricId de la URL
-    setSearchParams(tab === "overview" ? {} : { tab }, { replace: false });
-  };
 
   // Rango compartido por Overview/Fuentes/Salud — no depende de navegación
   // de período como Explorador (que tiene su propio year/period, ver
@@ -99,32 +97,14 @@ export default function Metrics() {
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12">
         <PageHeader
-          title="Métricas"
-          subtitle="Tu capa de datos financieros: fuentes conectadas, salud de los datos, y cada métrica con su origen."
+          title={TAB_HEADER[activeTab].title}
+          subtitle={TAB_HEADER[activeTab].subtitle}
           action={
             <Button variant="outline" onClick={() => setAssistantOpen(true)}>
               <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
             </Button>
           }
         />
-
-        <div className="flex gap-1 border-b border-border mb-8 overflow-x-auto">
-          {(Object.keys(TAB_LABELS) as MetricsTab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setTab(tab)}
-              aria-pressed={activeTab === tab}
-              className={cn(
-                "px-3 py-2 text-sm rounded-md transition-all duration-150 shrink-0 whitespace-nowrap",
-                activeTab === tab
-                  ? "bg-surface text-foreground font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-surface/60"
-              )}
-            >
-              {TAB_LABELS[tab]}
-            </button>
-          ))}
-        </div>
 
         {activeTab === "overview" && (
           <MetricsOverviewTab
@@ -141,6 +121,7 @@ export default function Metrics() {
               const params = fulfillRequirementId ? { tab: "explorer", fulfill: fulfillRequirementId } : { tab: "explorer" };
               setSearchParams(params);
             }}
+            onOpenMetric={(id) => navigate(`/metrics/${id}`)}
           />
         )}
 

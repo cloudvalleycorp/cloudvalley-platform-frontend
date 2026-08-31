@@ -13,6 +13,8 @@ import { QueryBuilder } from "@/components/metrics/query-builder/QueryBuilder";
 import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { type MetricDef, type RawField, sourceLabel, sourceSettingsPath } from "@/lib/metrics";
 import { blankAggregationNode } from "@/lib/querySpec";
+import { resolveMetricSources } from "@/lib/metricLineage";
+import { cn } from "@/lib/utils";
 import { useMetricPropertyForm, type Draft } from "@/hooks/useMetricPropertyForm";
 
 type Props = {
@@ -122,6 +124,14 @@ export function MetricPropertyPanel({
     [reusableCalcDefs, allInputDefs]
   );
 
+  // Mismo cálculo que ya usa MetricLineagePanel (solo lectura) — acá también
+  // en el panel de edición/creación, para que "combina varias fuentes" sea
+  // visible sin tener que salir a otro panel a verlo (ver plan, sección 8/10).
+  const currentSources = useMemo(
+    () => (draft.query ? resolveMetricSources({ query: draft.query } as MetricDef, allMetrics, rawFields) : []),
+    [draft.query, allMetrics, rawFields]
+  );
+
   const generalFields: PropertyFieldDef[] = [
     { key: "name", label: "Nombre", type: "text", placeholder: "Ej: Revenue por empleado" },
     {
@@ -193,19 +203,19 @@ export function MetricPropertyPanel({
           },
         ] as PropertyFieldDef[])
       : []),
-    {
-      key: "source_role",
-      label: "Rol de esta métrica",
-      type: "select",
-      options: [
-        { value: "", label: "Sin asignar" },
-        { value: "primary", label: "Primaria (fuente de verdad)" },
-        { value: "secondary", label: "Secundaria" },
-        { value: "derived", label: "Derivada" },
-        { value: "reporting", label: "De reporte" },
-      ],
-      helpText: "Si otra métrica tuya ya mide lo mismo (mismo standard_key), esto decide cuál se muestra en Overview.",
-    },
+  ];
+
+  // Fuera del array genérico de typeFields a propósito: a diferencia de un
+  // <select> simple (categoría, moneda), estas opciones son jerga que no se
+  // entiende sola por el nombre — cada una necesita su propia descripción
+  // visible sin tener que abrir nada (mismo criterio que el resto del
+  // rediseño de esta pasada).
+  const SOURCE_ROLE_OPTIONS: { value: Draft["source_role"]; label: string; description: string }[] = [
+    { value: "", label: "Sin asignar", description: "No hace falta elegir nada si esta es tu única métrica para este concepto." },
+    { value: "primary", label: "Primaria (fuente de verdad)", description: "Es la que se va a mostrar en Overview. Elegí esta para tu número más confiable." },
+    { value: "secondary", label: "Secundaria", description: "Existe y la podés consultar, pero no se muestra en Overview mientras haya una Primaria." },
+    { value: "derived", label: "Derivada", description: "Se calcula a partir de otras métricas tuyas, no a partir de una fuente conectada." },
+    { value: "reporting", label: "De reporte", description: "Solo se usa para armar reportes a inversores, no aparece en el día a día de Overview." },
   ];
 
   const syncedFrom = metric ? sourceLabel(metric.source) : null;
@@ -271,6 +281,39 @@ export function MetricPropertyPanel({
                       onChange={setField}
                     />
                   ))}
+                  <div>
+                    <p className="text-sm font-medium mb-1">Rol de esta métrica</p>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Usalo solo si tenés más de una métrica midiendo lo mismo y no coinciden. Si es tu única métrica
+                      de este tipo, dejalo en "Sin asignar".
+                    </p>
+                    <div className="space-y-1.5">
+                      {SOURCE_ROLE_OPTIONS.map((opt) => (
+                        <button
+                          type="button"
+                          key={opt.value || "none"}
+                          onClick={() => setField("source_role", opt.value)}
+                          className={cn(
+                            "w-full flex items-start gap-2.5 text-left border rounded-md px-3 py-2 transition-colors",
+                            draft.source_role === opt.value ? "border-primary ring-1 ring-primary bg-primary/5" : "border-border hover:border-muted-foreground"
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "mt-0.5 shrink-0 w-3.5 h-3.5 rounded-full border flex items-center justify-center",
+                              draft.source_role === opt.value ? "border-primary" : "border-muted-foreground"
+                            )}
+                          >
+                            {draft.source_role === opt.value && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                          </span>
+                          <span>
+                            <span className="block text-sm font-medium">{opt.label}</span>
+                            <span className="block text-xs text-muted-foreground mt-0.5">{opt.description}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </AccordionContent>
               </AccordionItem>
 
@@ -311,6 +354,30 @@ export function MetricPropertyPanel({
                 <AccordionItem value="formula">
                   <AccordionTrigger>Consulta</AccordionTrigger>
                   <AccordionContent>
+                    {draft.query && (
+                      <div className="mb-4 rounded-md border border-border bg-surface p-3">
+                        <p className="text-xs font-medium mb-1">
+                          {currentSources.length === 0
+                            ? "Esta métrica todavía no combina ninguna fuente."
+                            : currentSources.length === 1
+                              ? "Esta métrica combina valores de:"
+                              : `Esta métrica combina valores de ${currentSources.length} fuentes:`}
+                        </p>
+                        {currentSources.length > 0 && (
+                          <ul className="space-y-0.5">
+                            {currentSources.map((s) => (
+                              <li key={s.connectionId} className="text-xs text-muted-foreground">
+                                {s.connectionLabel}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <p className="text-[11px] text-tertiary mt-1.5">
+                          Para sumar otra fuente más, usá "Combinar con…" abajo — cada una se suma tal cual, nunca en
+                          silencio.
+                        </p>
+                      </div>
+                    )}
                     {!draft.query && draft.legacyFormulaExpression ? (
                       <div className="space-y-3">
                         <div className="rounded-md border border-border bg-surface p-3">

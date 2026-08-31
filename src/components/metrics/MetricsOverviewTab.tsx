@@ -5,11 +5,13 @@ import { SectionCard } from "@/components/SectionCard";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { FundRequiredMetricsSection } from "@/components/metrics/FundRequiredMetricsSection";
 import { MetricValueCard } from "@/components/metrics/MetricValueCard";
 import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
 import { STANDARD_KEY_LABELS, STANDARD_KEY_ORDER, type FundRequiredMetricRow } from "@/lib/metricRequirements";
 import { formatMetricValue, type MetricDef } from "@/lib/metrics";
+import { cn } from "@/lib/utils";
 import type { MetricClassWarning, MetricScenario } from "@/lib/financialData";
 import { EXPLAIN_METRIC_DISCREPANCY_URL, LIST_METRIC_HIGHLIGHTS_URL, type ExplainMetricDiscrepancyResponse, type MetricHighlight } from "@/lib/metricIntelligence";
 import { toPeriodString } from "@/lib/metricPeriod";
@@ -24,12 +26,42 @@ type Props = {
   loading: boolean;
   onChanged: () => void;
   onGoToExplorer: (fulfillRequirementId?: string) => void;
+  // Deep-link directo a una métrica puntual (/metrics/:id) — antes cualquier
+  // click en "info" de una card llevaba al Explorador genérico, sin la
+  // métrica preseleccionada.
+  onOpenMetric: (metricId: string) => void;
 };
 
-function last6PeriodSpec() {
+// Presets relativos, no meses calendario hardcodeados (se rompería con el
+// tiempo) — mismo criterio que el resto del rediseño de esta pasada.
+const RANGE_PRESETS = [
+  { months: 3, label: "3 meses" },
+  { months: 6, label: "6 meses" },
+  { months: 12, label: "12 meses" },
+] as const;
+
+function currentValueOf(m: MetricDef, values: Record<string, Record<string, number>>): number | null {
+  const series = values[m.id] ?? {};
+  const periods = Object.keys(series).sort();
+  return periods.length > 0 ? (series[periods[periods.length - 1]] ?? null) : null;
+}
+
+// Diferencia entre el mínimo y el máximo del grupo en conflicto — mismo dato
+// que ya evalúa el grid principal (useEvaluatedMetrics), sin un request más.
+function diffPctLabel(group: MetricDef[], values: Record<string, Record<string, number>>): string | null {
+  const nums = group.map((m) => currentValueOf(m, values)).filter((v): v is number => v != null);
+  if (nums.length < 2) return null;
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  if (min === 0) return null;
+  const pct = ((max - min) / Math.abs(min)) * 100;
+  return `${pct.toFixed(1)}% de diferencia`;
+}
+
+function lastNPeriodSpec(months: number) {
   const now = new Date();
   const to = toPeriodString(now.getMonth() + 1, now.getFullYear());
-  const fromDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+  const fromDate = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
   const from = toPeriodString(fromDate.getMonth() + 1, fromDate.getFullYear());
   return { period_from: from, period_to: to };
 }
@@ -39,7 +71,7 @@ function last6PeriodSpec() {
 // lista aspiracional de 14 del spec original), requisitos de fondos, y
 // Destacados real (list-metric-highlights, ver Notas generales del handoff
 // de backend — no bloqueante por rate limit, puede volver sin `description`).
-export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired, loading, onChanged, onGoToExplorer }: Props) {
+export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired, loading, onChanged, onGoToExplorer, onOpenMetric }: Props) {
   const standardMetrics = useMemo(() => metrics.filter((m) => m.metric_class === "standard"), [metrics]);
   const byKey = useMemo(() => {
     const map = new Map<string, MetricDef[]>();
@@ -52,7 +84,8 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
     return map;
   }, [standardMetrics]);
 
-  const periodSpec = useMemo(() => last6PeriodSpec(), []);
+  const [rangeMonths, setRangeMonths] = useState<number>(6);
+  const periodSpec = useMemo(() => lastNPeriodSpec(rangeMonths), [rangeMonths]);
   const metricIds = useMemo(() => standardMetrics.map((m) => m.id), [standardMetrics]);
   const [scenario, setScenario] = useState<MetricScenario>("actual");
   const { values, valuesActual, loading: loadingValues } = useEvaluatedMetrics(companyId, metricIds, periodSpec, scenario);
@@ -116,18 +149,32 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
       <SectionCard
         title="KPIs principales"
         action={
-          <Select value={scenario} onValueChange={(v) => setScenario(v as MetricScenario)}>
-            <SelectTrigger className="h-8 w-36 text-xs" aria-label="Escenario">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(SCENARIO_LABELS) as MetricScenario[]).map((s) => (
-                <SelectItem key={s} value={s}>
-                  {SCENARIO_LABELS[s]}
-                </SelectItem>
+          <div className="flex items-center gap-2 flex-wrap">
+            <ToggleGroup
+              type="single"
+              value={String(rangeMonths)}
+              onValueChange={(v) => v && setRangeMonths(Number(v))}
+              className="justify-start"
+            >
+              {RANGE_PRESETS.map((p) => (
+                <ToggleGroupItem key={p.months} value={String(p.months)} size="sm" aria-label={p.label} className="text-xs px-2.5">
+                  {p.label}
+                </ToggleGroupItem>
               ))}
-            </SelectContent>
-          </Select>
+            </ToggleGroup>
+            <Select value={scenario} onValueChange={(v) => setScenario(v as MetricScenario)}>
+              <SelectTrigger className="h-8 w-36 text-xs" aria-label="Escenario">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(SCENARIO_LABELS) as MetricScenario[]).map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {SCENARIO_LABELS[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         }
       >
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -156,16 +203,27 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
                     <h3 className="text-sm font-medium">{STANDARD_KEY_LABELS[key]} — {group.length} métricas en conflicto</h3>
                   </div>
                   <div className="space-y-1 mb-3">
-                    {group.map((m) => (
-                      <p key={m.id} className="text-xs text-muted-foreground">
-                        {m.name}
-                        {m.source_role && <span className="ml-1.5 text-[10px] uppercase tracking-wide">({m.source_role})</span>}
-                      </p>
-                    ))}
+                    {group.map((m) => {
+                      const gCurrent = currentValueOf(m, values);
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => onOpenMetric(m.id)}
+                          className="flex items-center justify-between gap-3 w-full text-left hover:underline underline-offset-2"
+                        >
+                          <span className="text-xs text-muted-foreground">
+                            {m.name}
+                            {m.source_role && <span className="ml-1.5 text-[10px] uppercase tracking-wide">({m.source_role})</span>}
+                          </span>
+                          <span className="text-xs font-medium shrink-0">{formatMetricValue(gCurrent, m.unit)}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                   {!result && (
                     <Button variant="outline" size="sm" onClick={() => explainDiscrepancy(key)}>
-                      ¿Por qué difieren?
+                      ¿Por qué difieren?{diffPctLabel(group, values) ? ` (${diffPctLabel(group, values)})` : ""}
                     </Button>
                   )}
                   {result === "loading" && <p className="text-xs text-muted-foreground">Investigando…</p>}
@@ -211,7 +269,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
                     ? `${SCENARIO_LABELS[scenario]} vs. real: ${formatMetricValue(actualCurrent, m.unit)}`
                     : undefined
                 }
-                onInfo={() => onGoToExplorer()}
+                onInfo={() => onOpenMetric(m.id)}
                 current={current}
                 missing={loadingValues ? ["cargando"] : current == null ? ["sin datos"] : []}
                 missingMessage={loadingValues ? "Cargando…" : "Sin datos para este período."}

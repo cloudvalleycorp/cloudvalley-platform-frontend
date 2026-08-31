@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronsUpDown, Sigma } from "lucide-react";
+import { ChevronsUpDown, Info, Sigma } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
@@ -87,7 +87,12 @@ export function RawFieldPicker({ value, onChange, rawFields, placeholder = "Eleg
                   >
                     <div className="flex items-center justify-between gap-3 w-full">
                       <span className="truncate">{f.sample_column}</span>
-                      <span className="text-[10px] font-mono text-tertiary shrink-0">{f.field_key}</span>
+                      {/* No se muestra el field_key técnico por default (un founder
+                          no lo necesita para elegir un campo) — queda en un
+                          tooltip nativo para quien sí lo necesite (debug, soporte). */}
+                      <span title={`ID interno: ${f.field_key}`} className="shrink-0">
+                        <Info size={11} strokeWidth={1.5} className="text-tertiary" aria-hidden="true" />
+                      </span>
                     </div>
                     {f.connection_label && (
                       <span className="text-[11px] text-muted-foreground truncate w-full">{f.connection_label}</span>

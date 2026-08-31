@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { FileSpreadsheet, AlertTriangle, ArrowRight } from "lucide-react";
+import { FileSpreadsheet, AlertTriangle, ArrowRight, Info } from "lucide-react";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingState } from "@/components/LoadingState";
@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { SheetConnection, GoogleAccount, DataRole } from "@/lib/sheetsIntegration";
 import type { MetricDef, RawField } from "@/lib/metrics";
-import { computeFreshness, FRESHNESS_LABELS, freshnessBadgeVariant } from "@/lib/dataFreshness";
+import { computeSourceStatus } from "@/lib/dataFreshness";
+import { SourceStatusPill } from "@/components/metrics/SourceStatusPill";
 import { resolveMetricSources } from "@/lib/metricLineage";
 
 const DATA_ROLE_LABELS: Record<DataRole, string> = {
@@ -56,7 +57,14 @@ export function MetricsDataSourcesTab({ connections, accounts, metrics, rawField
       cell: (c) => <Badge variant="outline">{c.source === "excel" ? "Excel" : "Google Sheets"}</Badge>,
     },
     {
-      header: "Rol",
+      header: (
+        <span className="inline-flex items-center gap-1">
+          Rol
+          <span title="Qué tan confiable es esta fuente si otra mide lo mismo y no coincide. 'Fuente de verdad' gana en caso de conflicto.">
+            <Info size={11} strokeWidth={1.5} className="text-muted-foreground" aria-hidden="true" />
+          </span>
+        </span>
+      ),
       cell: (c) => (c.data_role ? <Badge variant="secondary">{DATA_ROLE_LABELS[c.data_role]}</Badge> : <span className="text-muted-foreground text-xs">—</span>),
     },
     {
@@ -64,19 +72,10 @@ export function MetricsDataSourcesTab({ connections, accounts, metrics, rawField
       cell: (c) => <span className="text-xs text-muted-foreground">{c.last_synced_at ? new Date(c.last_synced_at).toLocaleString("es-AR") : "Nunca"}</span>,
     },
     {
-      header: "Frescura",
-      cell: (c) => {
-        const { label } = computeFreshness(c.last_synced_at);
-        return <Badge variant={freshnessBadgeVariant(label)}>{FRESHNESS_LABELS[label]}</Badge>;
-      },
-    },
-    {
       header: "Estado",
       cell: (c) => {
         const account = accounts.find((a) => a.account_id === c.account_id);
-        if (account?.reconnect_required) return <Badge variant="destructive">Reconectar</Badge>;
-        if (c.last_sync_status && c.last_sync_status !== "success") return <Badge variant="destructive">{c.last_sync_status}</Badge>;
-        return <Badge variant="success">Al día</Badge>;
+        return <SourceStatusPill status={computeSourceStatus(c, account)} />;
       },
     },
     {

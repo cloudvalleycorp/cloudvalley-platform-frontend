@@ -441,6 +441,8 @@ export function MetricsExplorerTab({ companyId, isOwner, metricId, navigate, raw
           <MetricsManager
             metrics={financial.metrics}
             categories={financialCategoryTabs}
+            allMetrics={financial.metrics}
+            rawFields={rawFields}
             onSelect={(m) => {
               setCreatingNew(false);
               setFulfillingRequirement(null);
