@@ -11,6 +11,8 @@ import {
   SUBMIT_FINANCIAL_RECORD_URL,
   type FinancialMetricDef,
   type ImportLogEntry,
+  type MetricClassWarning,
+  type MetricScenario,
 } from "@/lib/financialData";
 import { toMetricDef, type MetricDef } from "@/lib/metrics";
 import { periodKey, buildEntriesFromRecords } from "@/lib/metricPeriod";
@@ -23,6 +25,10 @@ type FinancialData = {
   entries: Record<string, Record<string, number>>;
   privacy: Record<string, boolean>;
   fundRequired: FundRequiredMetricRow[];
+  // Conflicto real: 2+ métricas propias comparten standard_key (ver
+  // financialData.ts). Backend ya arma el agrupamiento y, cuando puede, una
+  // sugerencia de source_role — no se recalcula client-side.
+  warnings: MetricClassWarning[];
 };
 
 async function fetchFinancialData(companyId: string, range: PeriodRange): Promise<FinancialData> {
@@ -35,9 +41,11 @@ async function fetchFinancialData(companyId: string, range: PeriodRange): Promis
   ]);
 
   let defs: FinancialMetricDef[] = [];
+  let warnings: MetricClassWarning[] = [];
   if (defsRes.ok) {
     const data = await defsRes.json();
     defs = Array.isArray(data?.metrics) ? data.metrics : [];
+    warnings = Array.isArray(data?.warnings) ? data.warnings : [];
   }
   // Contrato ampliado 2026-08-16: list-metrics ahora también trae filas
   // origin="fund_required" (metric_id null, no son MetricDefinition propias
@@ -78,7 +86,7 @@ async function fetchFinancialData(companyId: string, range: PeriodRange): Promis
     for (const p of list) privacy[p.metric_id] = p.is_public;
   }
 
-  return { metrics: mapped, entries, privacy, fundRequired };
+  return { metrics: mapped, entries, privacy, fundRequired, warnings };
 }
 
 async function fetchImportLog(companyId: string): Promise<ImportLogEntry[]> {
@@ -115,6 +123,7 @@ export function useFinancialMetrics(companyId: string | null, range: PeriodRange
   const entries = data?.entries ?? {};
   const privacy = data?.privacy ?? {};
   const fundRequired = data?.fundRequired ?? [];
+  const warnings = data?.warnings ?? [];
 
   const logsQueryKey = ["financial-import-log", companyId] as const;
   const { data: logs = [], isLoading: loadingLogs } = useQuery({
@@ -134,15 +143,24 @@ export function useFinancialMetrics(companyId: string | null, range: PeriodRange
   const reload = () => queryClient.invalidateQueries({ queryKey: dataQueryKey });
   const reloadLogs = () => queryClient.invalidateQueries({ queryKey: logsQueryKey });
 
-  /** POST submit-financial-record for one period. Returns false on failure (already toasted, except the "not enabled" case — see `notEnabled`). */
-  const submitValues = async (periodStr: string, values: Record<string, number>): Promise<boolean> => {
+  /** POST submit-financial-record for one período. Returns false on failure (already toasted, except the "not enabled" case — see `notEnabled`). scenario default "actual" (comportamiento idéntico a siempre). */
+  const submitValues = async (
+    periodStr: string,
+    values: Record<string, number>,
+    scenario: MetricScenario = "actual"
+  ): Promise<boolean> => {
     if (!companyId) return false;
     try {
       const res = await fetch(SUBMIT_FINANCIAL_RECORD_URL, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_id: companyId, period: periodStr, ...values }),
+        body: JSON.stringify({
+          company_id: companyId,
+          period: periodStr,
+          ...(scenario !== "actual" ? { scenario } : {}),
+          ...values,
+        }),
       });
       if (res.status === 400) {
         const data = await res.json().catch(() => ({}));
@@ -212,6 +230,7 @@ export function useFinancialMetrics(companyId: string | null, range: PeriodRange
     entries,
     privacy,
     fundRequired,
+    warnings,
     loading,
     refreshing,
     notEnabled,

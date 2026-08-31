@@ -155,6 +155,8 @@ function duplicateSuggestions(trace: ObservabilityTraceEntry[]) {
 // antes, sin tocar comportamiento ya verificado.
 function surfaceDescription(surface: PlatformAgentSurface): string {
   switch (surface) {
+    case "metrics":
+      return "Preguntame sobre el estado financiero de tu empresa.";
     case "investor_portfolio":
     case "investor_overview":
       return "Contame qué necesitás saber sobre las empresas de tu portfolio.";
@@ -171,6 +173,13 @@ function surfaceDescription(surface: PlatformAgentSurface): string {
 
 function surfaceExample(surface: PlatformAgentSurface, companyIds?: string[]) {
   switch (surface) {
+    case "metrics":
+      return (
+        <>
+          Ej: "¿por qué subió el burn este mes?", "prepará mi próximo board update" o "¿cuál es mi mayor riesgo
+          financiero ahora?".
+        </>
+      );
     case "investor_portfolio":
     case "investor_overview":
       return companyIds && companyIds.length > 0 ? (

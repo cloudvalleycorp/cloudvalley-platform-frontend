@@ -22,6 +22,9 @@ dist-ssr
 # (HttpOnly, viva) capturada por scripts/playwright/login.mjs — nunca se commitea.
 playwright/.auth/
 playwright/.output/
+# Archivos de prueba (ej. .xlsx generados para probar el flujo de Excel) —
+# scratch local, nunca deberían terminar versionados.
+playwright/fixtures/
 
 # Editor directories and files
 .vscode/*
@@ -33,3 +36,5 @@ playwright/.output/
 *.njsproj
 *.sln
 *.sw?
+
+.docs/*

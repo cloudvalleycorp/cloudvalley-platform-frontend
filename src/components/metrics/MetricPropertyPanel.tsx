@@ -88,6 +88,9 @@ export function MetricPropertyPanel({
     deleting,
     handleSave,
     confirmDeleteMetric,
+    pendingDuplicate,
+    dismissPendingDuplicate,
+    confirmCreateDuplicate,
   } = useMetricPropertyForm({
     metric,
     creating,
@@ -174,6 +177,34 @@ export function MetricPropertyPanel({
         draft.metric_type === "input"
           ? "Define el formulario de carga que se ve todos los meses."
           : "Necesario para que esta métrica pueda vincularse a un requisito de un fondo.",
+    },
+    // Contrato ampliado 2026-08-30 (Metrics AI-native) — metadata pura, no
+    // cambia cómo se evalúa la métrica. currency solo tiene sentido para
+    // value_type="money" (backend rechaza mezclar monedas distintas en una
+    // misma calculada, ver useMetricPropertyForm.ts).
+    ...(draft.value_type === "money"
+      ? ([
+          {
+            key: "currency",
+            label: "Moneda",
+            type: "text",
+            placeholder: "USD, ARS, EUR…",
+            helpText: "Código ISO de 3 letras. Dejalo vacío si no aplica.",
+          },
+        ] as PropertyFieldDef[])
+      : []),
+    {
+      key: "source_role",
+      label: "Rol de esta métrica",
+      type: "select",
+      options: [
+        { value: "", label: "Sin asignar" },
+        { value: "primary", label: "Primaria (fuente de verdad)" },
+        { value: "secondary", label: "Secundaria" },
+        { value: "derived", label: "Derivada" },
+        { value: "reporting", label: "De reporte" },
+      ],
+      helpText: "Si otra métrica tuya ya mide lo mismo (mismo standard_key), esto decide cuál se muestra en Overview.",
     },
   ];
 
@@ -380,6 +411,28 @@ export function MetricPropertyPanel({
         variant="destructive"
         busy={deleting}
         onConfirm={confirmDeleteMetric}
+      />
+
+      <ConfirmationDialog
+        open={!!pendingDuplicate}
+        onOpenChange={(o) => !o && dismissPendingDuplicate()}
+        title="Ya existe una métrica parecida"
+        description={
+          pendingDuplicate && (
+            <div className="space-y-2">
+              <p>{pendingDuplicate.message}</p>
+              <a
+                href={`/metrics/${pendingDuplicate.existingMetricId}`}
+                className="text-sm text-primary hover:underline inline-block"
+              >
+                Ver la métrica existente
+              </a>
+            </div>
+          )
+        }
+        confirmLabel="Crear de todas formas"
+        busy={saving}
+        onConfirm={confirmCreateDuplicate}
       />
 
       <PlatformAgentPanel

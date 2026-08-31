@@ -11,6 +11,8 @@ import {
   ChevronsUpDown,
   Plus,
   Trash2,
+  Upload,
+  Sparkles,
 } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -38,6 +40,9 @@ import { groupRowErrors } from "@/lib/financialData";
 import { cn } from "@/lib/utils";
 import type { SuggestedMetric, MetricNeedingMoreData } from "@/lib/aiInsights";
 import { SuggestedMetricsReview } from "@/components/metrics/SuggestedMetricsReview";
+import { EntityResolutionDialog } from "@/components/metrics/EntityResolutionDialog";
+import { EntityAliasesDialog } from "@/components/metrics/EntityAliasesDialog";
+import { DuplicateTransactionsDialog } from "@/components/metrics/DuplicateTransactionsDialog";
 import {
   LIST_GOOGLE_ACCOUNTS_URL,
   CONNECT_SHEETS_URL,
@@ -49,6 +54,14 @@ import {
   REMOVE_SHEET_CONNECTION_URL,
   SYNC_SHEETS_URL,
   DISCONNECT_SHEETS_URL,
+  REQUEST_WORKBOOK_UPLOAD_URL,
+  CONFIRM_WORKBOOK_UPLOAD_URL,
+  GET_UPLOAD_STATUS_URL,
+  DELETE_WORKBOOK_UPLOAD_URL,
+  CLASSIFY_WORKBOOK_URL,
+  SET_CONNECTION_DATA_ROLE_URL,
+  SET_CONNECTION_SYNC_SETTINGS_URL,
+  EXCEL_CONTENT_TYPE,
   parseSheetsError,
   type GoogleAccount,
   type GoogleAccountsResponse,
@@ -56,6 +69,11 @@ import {
   type FieldMapping,
   type SheetConnection,
   type SyncResult,
+  type WorkbookSheetPreview,
+  type ClassifiedSheet,
+  type DataRole,
+  type SyncMode,
+  type SyncFrequency,
 } from "@/lib/sheetsIntegration";
 
 const PERIOD_PATTERNS = ["periodo", "period", "mes", "month", "fecha", "date"];
@@ -133,6 +151,41 @@ function autoMapHeaders(headers: string[]): { periodColumn: string | null; field
   return { periodColumn, fieldMappings };
 }
 
+const DATA_ROLE_LABELS: Record<DataRole, string> = {
+  source_of_truth: "Fuente de verdad",
+  operational_input: "Input operativo",
+  financial_model: "Modelo financiero",
+  historical_snapshot: "Snapshot histórico",
+  report_export: "Exportación de reporte",
+};
+
+const SYNC_MODE_LABELS: Record<SyncMode, string> = {
+  live: "En vivo",
+  scheduled: "Programado",
+  event_based: "Por evento",
+  manual: "Manual",
+  snapshot: "Snapshot",
+};
+
+const SYNC_FREQUENCY_LABELS: Record<SyncFrequency, string> = {
+  every_15_min: "Cada 15 min",
+  hourly: "Cada hora",
+  every_6_hours: "Cada 6 horas",
+  daily: "Diario",
+  weekly: "Semanal",
+  monthly: "Mensual",
+  manual: "Manual",
+};
+
+const SPREADSHEET_TYPE_LABELS: Record<string, string> = {
+  time_series: "Serie temporal",
+  transaction_ledger: "Libro de transacciones",
+  entity_table: "Tabla de entidades",
+  financial_model: "Modelo financiero",
+  historical_snapshot: "Snapshot histórico",
+  report_export: "Exportación de reporte",
+};
+
 function timeAgo(iso: string | null) {
   if (!iso) return "todavía no sincronizó";
   const diff = Date.now() - new Date(iso).getTime();
@@ -185,6 +238,12 @@ export default function GrowthTrackerSheets() {
   const [tabSearch, setTabSearch] = useState("");
   const [selectedSheetName, setSelectedSheetName] = useState<string | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
+  // Vista previa de datos reales: get-sheet-headers/confirm-workbook-upload
+  // ya devuelven sample_rows y hasta esta pasada nunca se mostraban en
+  // ningún lado (solo se usaban para auto-mapear). Mostrarlas ayuda a
+  // confirmar "así se ve tu data" antes de mapear, en vez de confiar a
+  // ciegas en nombres de columna.
+  const [sampleRows, setSampleRows] = useState<string[][]>([]);
   const [loadingHeaders, setLoadingHeaders] = useState(false);
   const [periodColumn, setPeriodColumn] = useState<string | null>(null);
   // Keyed por columna — cada columna de la hoja se usa (con su field_key +
@@ -222,6 +281,45 @@ export default function GrowthTrackerSheets() {
   const [syncAllBusy, setSyncAllBusy] = useState(false);
   const [syncResults, setSyncResults] = useState<Record<string, { result: SyncResult; wasDryRun: boolean }>>({});
   const [missingHeadersByConnection, setMissingHeadersByConnection] = useState<Record<string, string[]>>({});
+  // save-sheet-mapping, 400 (contrato 2026-08-30): guard server-side contra
+  // mapear la misma hoja+pestaña dos veces — complementa (no reemplaza) el
+  // chequeo client-side ya hecho antes de llegar a este paso (ver el onClick
+  // del paso 2 más abajo), por si dos pestañas del navegador crean una
+  // conexión al mismo tiempo.
+  const [duplicateConnectionId, setDuplicateConnectionId] = useState<string | null>(null);
+
+  // ---- Subida de Excel (2026-08-30) — flujo aparte del wizard de Sheets:
+  // no hay account_id/spreadsheet_id, hay un upload_id. Reusa el mismo paso
+  // de mapeo de columnas (headers/periodColumn/fieldMappings de arriba) una
+  // vez que el archivo terminó de subirse y parsearse.
+  const [excelMode, setExcelMode] = useState(false);
+  const [excelStep, setExcelStep] = useState<"pick_file" | "uploading" | "pick_sheet">("pick_file");
+  const [excelUploadId, setExcelUploadId] = useState<string | null>(null);
+  const [excelFileName, setExcelFileName] = useState("");
+  const [excelSheets, setExcelSheets] = useState<WorkbookSheetPreview[]>([]);
+  const [excelReuploadConnectionId, setExcelReuploadConnectionId] = useState<string | null>(null);
+  const excelFileInputRef = useRef<HTMLInputElement>(null);
+
+  // ---- Clasificación automática (classify-workbook, 2026-08-30) — corre
+  // junto con analyze-transactional-sheet para una hoja/tab nueva (Sheets o
+  // Excel), nunca al editar una conexión ya existente.
+  const [classifying, setClassifying] = useState(false);
+  const [classification, setClassification] = useState<ClassifiedSheet | null>(null);
+
+  // ---- Rol de fuente / configuración de sync por conexión — panel
+  // secundario dentro de cada card de conexión, no un wizard aparte.
+  const [settingsConnectionId, setSettingsConnectionId] = useState<string | null>(null);
+  const [savingDataRole, setSavingDataRole] = useState(false);
+  const [savingSyncSettings, setSavingSyncSettings] = useState(false);
+
+  // ---- Entity resolution (resolve-entities, 2026-08-30) — dialog aparte,
+  // abierto contra una conexión puntual (necesita sus field_mappings).
+  const [entityResolutionConnection, setEntityResolutionConnection] = useState<SheetConnection | null>(null);
+  // list-entity-aliases es company-wide (no toma connection_id) — un solo
+  // dialog, no uno por conexión, a diferencia del de arriba.
+  const [entityAliasesOpen, setEntityAliasesOpen] = useState(false);
+  // list-duplicate-transactions sí es por conexión.
+  const [duplicatesConnection, setDuplicatesConnection] = useState<SheetConnection | null>(null);
 
   const usedFieldKeys = Object.values(fieldMappings).map((m) => m.field_key);
   const usedColumnsCount = Object.keys(fieldMappings).length;
@@ -250,15 +348,18 @@ export default function GrowthTrackerSheets() {
   }, [financial.metrics]);
 
   const wizardAccount = accounts.find((a) => a.account_id === wizardAccountId) ?? null;
+  const sheetConnections = useMemo(() => connections.filter((c) => c.source !== "excel"), [connections]);
+  const excelConnections = useMemo(() => connections.filter((c) => c.source === "excel"), [connections]);
   const connectionsByAccount = useMemo(() => {
     const map = new Map<string, SheetConnection[]>();
-    for (const c of connections) {
+    for (const c of sheetConnections) {
+      if (!c.account_id) continue;
       const list = map.get(c.account_id) ?? [];
       list.push(c);
       map.set(c.account_id, list);
     }
     return map;
-  }, [connections]);
+  }, [sheetConnections]);
 
   const loadAccounts = async () => {
     if (!company_id) return;
@@ -340,7 +441,12 @@ export default function GrowthTrackerSheets() {
     if (!company_id) return;
     setLoadingSheets(true);
     try {
-      const qs = `?company_id=${encodeURIComponent(company_id)}&account_id=${encodeURIComponent(accountId)}`;
+      // order_by=modified_time (2026-08-30): sin esto, list-sheets devuelve
+      // TODAS las planillas del Drive personal sin ranking — confirmado en
+      // vivo: ~200 archivos sin relación con la empresa. Ordenar por
+      // modificación reciente es un proxy barato de relevancia mientras no
+      // exista clasificación real por IA de "cuál es tu planilla financiera".
+      const qs = `?company_id=${encodeURIComponent(company_id)}&account_id=${encodeURIComponent(accountId)}&order_by=modified_time`;
       const res = await fetch(`${LIST_SHEETS_URL}${qs}`, { credentials: "include" });
       if (res.status === 400) {
         const err = await parseSheetsError(res);
@@ -418,6 +524,7 @@ export default function GrowthTrackerSheets() {
       const hs: string[] = Array.isArray(data?.headers) ? data.headers : [];
       const sampleRowsData: string[][] = Array.isArray(data?.sample_rows) ? data.sample_rows : [];
       setHeaders(hs);
+      setSampleRows(sampleRowsData);
       if (seed) {
         const missing: string[] = [];
         const seededPeriod = hs.includes(seed.period_column) ? seed.period_column : null;
@@ -454,6 +561,13 @@ export default function GrowthTrackerSheets() {
     }
 
     if (!autoMapped) return;
+    // classify-workbook corre en paralelo (cupo de IA "onboarding", separado
+    // del cupo "regular" de analyze-transactional-sheet) — puramente
+    // informativo esta pasada (spreadsheet_type + suggested_data_role), no
+    // bloquea el mapeo si falla o se agota el cupo.
+    setClassifying(true);
+    classifyWorkbook(sheetName, autoMapped.hs, autoMapped.sampleRows).finally(() => setClassifying(false));
+
     const analysis = await analyzeTransactionalSheet({
       accountId,
       spreadsheetId,
@@ -490,6 +604,30 @@ export default function GrowthTrackerSheets() {
     }
   };
 
+  // classify-workbook — puramente informativo (spreadsheet_type +
+  // suggested_data_role con confidence real), nunca bloquea el mapeo si
+  // falla o se agota el cupo de IA "onboarding". Se llama tanto desde
+  // loadHeaders (Sheets) como desde el flujo de Excel, una sola vez por
+  // hoja/tab nueva — nunca al editar una conexión existente.
+  const classifyWorkbook = async (sheetName: string, hs: string[], sampleRows: string[][]) => {
+    if (!company_id) return;
+    setClassification(null);
+    try {
+      const res = await fetch(CLASSIFY_WORKBOOK_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_id, sheets: [{ sheet_name: sheetName, headers: hs, sample_rows: sampleRows }] }),
+      });
+      if (!res.ok) return; // no bloqueante — 429/503/400 se ignoran en silencio, es solo una sugerencia
+      const data = await res.json();
+      const sheets: ClassifiedSheet[] = Array.isArray(data?.sheets) ? data.sheets : [];
+      setClassification(sheets.find((s) => s.sheet_name === sheetName) ?? null);
+    } catch {
+      // silencioso — puramente informativo
+    }
+  };
+
   // loadTabs/loadHeaders are deliberately called directly from the click
   // (or from openEditConnection) instead of a useEffect keyed off the
   // selected spreadsheet/sheet: picking the same one twice in a row (e.g.
@@ -505,12 +643,25 @@ export default function GrowthTrackerSheets() {
     setTabs([]);
     setSelectedSheetName(null);
     setHeaders([]);
+    setSampleRows([]);
     setPeriodColumn(null);
     setFieldMappings({});
     setStaleHeaders([]);
     setCrossConnectionDuplicateKeys([]);
+    setDuplicateConnectionId(null);
     setSheetSearch("");
     setTabSearch("");
+    setClassification(null);
+  };
+
+  const resetExcelWizard = () => {
+    setExcelMode(false);
+    setExcelStep("pick_file");
+    setExcelUploadId(null);
+    setExcelFileName("");
+    setExcelSheets([]);
+    setExcelReuploadConnectionId(null);
+    if (excelFileInputRef.current) excelFileInputRef.current.value = "";
   };
 
   // Limpia sugerencias de una hoja NUEVA analizada antes de arrancar un
@@ -536,25 +687,144 @@ export default function GrowthTrackerSheets() {
   };
 
   const openEditConnection = (conn: SheetConnection) => {
+    // Excel connections nunca llegan acá (no tienen account_id/spreadsheet_id
+    // — se editan resubiendo una versión nueva, ver openExcelUpload).
+    if (!conn.account_id || !conn.spreadsheet_id) return;
+    const accountId = conn.account_id;
+    const spreadsheetId = conn.spreadsheet_id;
     resetWizardData();
     resetSuggestedMetrics();
     setEditingConnectionId(conn.connection_id);
-    setWizardAccountId(conn.account_id);
-    setSelectedSpreadsheetId(conn.spreadsheet_id);
+    setWizardAccountId(accountId);
+    setSelectedSpreadsheetId(spreadsheetId);
     setSelectedSpreadsheetName(conn.spreadsheet_name);
     setSelectedSheetName(conn.sheet_name);
     setStep(3);
     setLoadingEditConnection(true);
     Promise.all([
-      loadSheets(conn.account_id),
-      loadTabs(conn.account_id, conn.spreadsheet_id),
-      loadHeaders(conn.account_id, conn.spreadsheet_id, conn.sheet_name, conn),
+      loadSheets(accountId),
+      loadTabs(accountId, spreadsheetId),
+      loadHeaders(accountId, spreadsheetId, conn.sheet_name, conn),
     ]).finally(() => setLoadingEditConnection(false));
   };
 
   const cancelWizard = () => {
     setWizardAccountId(null);
     setEditingConnectionId(null);
+    resetWizardData();
+    resetExcelWizard();
+  };
+
+  const openExcelUpload = (reuploadConnectionId?: string) => {
+    resetWizardData();
+    resetSuggestedMetrics();
+    resetExcelWizard();
+    setExcelMode(true);
+    setExcelReuploadConnectionId(reuploadConnectionId ?? null);
+  };
+
+  const handleExcelFileChange = async (file: File | undefined) => {
+    if (!file || !company_id) return;
+    if (file.type !== EXCEL_CONTENT_TYPE && !file.name.toLowerCase().endsWith(".xlsx")) {
+      toast.error("Solo se soportan archivos .xlsx");
+      return;
+    }
+    setExcelFileName(file.name);
+    setExcelStep("uploading");
+    try {
+      const res = await fetch(REQUEST_WORKBOOK_UPLOAD_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_id,
+          file_name: file.name,
+          content_type: EXCEL_CONTENT_TYPE,
+          ...(excelReuploadConnectionId ? { connection_id: excelReuploadConnectionId } : {}),
+        }),
+      });
+      if (res.status === 400) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err?.error ?? "No se pudo iniciar la subida del archivo");
+        setExcelStep("pick_file");
+        return;
+      }
+      if (await handleMembershipError(res)) {
+        setExcelStep("pick_file");
+        return;
+      }
+      const { upload_id, upload_url } = await res.json();
+      const putRes = await fetch(upload_url, { method: "PUT", headers: { "Content-Type": EXCEL_CONTENT_TYPE }, body: file });
+      if (!putRes.ok) {
+        toast.error("No se pudo subir el archivo. Probá de nuevo.");
+        setExcelStep("pick_file");
+        return;
+      }
+      const confirmRes = await fetch(CONFIRM_WORKBOOK_UPLOAD_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_id, upload_id }),
+      });
+      if (await handleMembershipError(confirmRes)) {
+        setExcelStep("pick_file");
+        return;
+      }
+      const confirmData = await confirmRes.json();
+      if (confirmData?.status === "error") {
+        toast.error("No pudimos leer este archivo como un .xlsx válido. Probá con otro.");
+        setExcelStep("pick_file");
+        return;
+      }
+      // El resultado ya viene en la respuesta de confirm (síncrono) — no
+      // hace falta hacer polling con get-upload-status para el caso feliz.
+      const statusRes = await fetch(`${GET_UPLOAD_STATUS_URL}?upload_id=${encodeURIComponent(upload_id)}`, {
+        credentials: "include",
+      });
+      const statusData = statusRes.ok ? await statusRes.json() : null;
+      const sheets: WorkbookSheetPreview[] = Array.isArray(statusData?.sheets) ? statusData.sheets : [];
+      setExcelUploadId(upload_id);
+      setExcelSheets(sheets);
+      setExcelStep("pick_sheet");
+      if (sheets.length === 1) {
+        handleExcelSheetPicked(sheets[0]);
+      }
+    } catch {
+      toast.error("No se pudo subir el archivo");
+      setExcelStep("pick_file");
+    }
+  };
+
+  const handleExcelSheetPicked = (sheet: WorkbookSheetPreview) => {
+    setSelectedSpreadsheetName(excelFileName);
+    setSelectedSheetName(sheet.sheet_name);
+    setHeaders(sheet.headers);
+    setSampleRows(sheet.sample_rows.map((r) => r.map((c) => String(c ?? ""))));
+    const auto = autoMapHeaders(sheet.headers);
+    setPeriodColumn(auto.periodColumn);
+    setFieldMappings(auto.fieldMappings);
+    setStaleHeaders([]);
+    setStep(3);
+    setClassifying(true);
+    classifyWorkbook(sheet.sheet_name, sheet.headers, sheet.sample_rows.map((r) => r.map((c) => String(c ?? "")))).finally(() =>
+      setClassifying(false)
+    );
+  };
+
+  const cancelExcelUpload = async () => {
+    if (excelUploadId && company_id) {
+      try {
+        await fetch(DELETE_WORKBOOK_UPLOAD_URL, {
+          method: "DELETE",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ company_id, upload_id: excelUploadId }),
+        });
+      } catch {
+        // best-effort — el usuario ya está cancelando, no hace falta bloquear ni avisar
+      }
+    }
+    resetExcelWizard();
     resetWizardData();
   };
 
@@ -636,13 +906,65 @@ export default function GrowthTrackerSheets() {
     }
   };
 
+  const handleSetDataRole = async (connectionId: string, dataRole: DataRole | null) => {
+    if (!company_id) return;
+    setSavingDataRole(true);
+    try {
+      const res = await fetch(SET_CONNECTION_DATA_ROLE_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_id, connection_id: connectionId, data_role: dataRole }),
+      });
+      if (await handleMembershipError(res)) return;
+      toast.success("Rol de la fuente actualizado");
+      await loadConnections();
+    } catch {
+      toast.error("No se pudo actualizar el rol de la fuente");
+    } finally {
+      setSavingDataRole(false);
+    }
+  };
+
+  const handleSetSyncSettings = async (
+    connectionId: string,
+    settings: { sync_mode?: SyncMode | null; sync_frequency?: SyncFrequency | null; freshness_sla?: string | null }
+  ) => {
+    if (!company_id) return;
+    setSavingSyncSettings(true);
+    try {
+      const res = await fetch(SET_CONNECTION_SYNC_SETTINGS_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_id, connection_id: connectionId, ...settings }),
+      });
+      if (res.status === 400) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err?.error ?? "No se pudo actualizar la configuración de sincronización");
+        return;
+      }
+      if (await handleMembershipError(res)) return;
+      toast.success("Configuración de sincronización actualizada");
+      await loadConnections();
+    } catch {
+      toast.error("No se pudo actualizar la configuración de sincronización");
+    } finally {
+      setSavingSyncSettings(false);
+    }
+  };
+
   const handleSaveMapping = async () => {
-    if (!company_id || !wizardAccountId || !selectedSpreadsheetId || !selectedSheetName || !periodColumn) return;
+    if (!company_id || !selectedSheetName || !periodColumn) return;
+    if (!excelMode && !wizardAccountId) return;
+    if (!excelMode && !selectedSpreadsheetId) return;
+    if (excelMode && !excelUploadId) return;
     if (!canSaveMapping) {
       toast.error("Revisá el mapeo: hay campos sin nombre o repetidos.");
       return;
     }
     setSavingMapping(true);
+    setDuplicateConnectionId(null);
     try {
       const field_mappings: FieldMapping[] = Object.values(fieldMappings).map((m) => ({
         column: m.column,
@@ -659,10 +981,10 @@ export default function GrowthTrackerSheets() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           company_id,
-          account_id: wizardAccountId,
-          connection_id: editingConnectionId ?? undefined,
-          spreadsheet_id: selectedSpreadsheetId,
-          spreadsheet_name: selectedSpreadsheetName,
+          connection_id: editingConnectionId ?? excelReuploadConnectionId ?? undefined,
+          ...(excelMode
+            ? { source: "excel", upload_id: excelUploadId, spreadsheet_name: excelFileName }
+            : { source: "sheet", account_id: wizardAccountId, spreadsheet_id: selectedSpreadsheetId, spreadsheet_name: selectedSpreadsheetName }),
           sheet_name: selectedSheetName,
           period_column: periodColumn,
           field_mappings,
@@ -684,12 +1006,37 @@ export default function GrowthTrackerSheets() {
           toast.error("Algunos nombres de campo ya se usan en otra hoja conectada. Elegí otro nombre para poder guardar.");
           return;
         }
+        if (err.duplicateConnectionId) {
+          setDuplicateConnectionId(err.duplicateConnectionId);
+          toast.error("Ya existe otra conexión activa para esta misma hoja y pestaña.");
+          return;
+        }
         toast.error(err.message ?? "No se pudo guardar el mapeo");
         return;
       }
       if (await handleMembershipError(res)) return;
+      const saveData = await res.json();
       toast.success("Mapeo guardado");
       await loadConnections();
+      if (excelMode) {
+        // La ingesta de Excel corre síncrona dentro de este mismo request —
+        // a diferencia de Sheets, no hace falta (ni corresponde) disparar un
+        // sync aparte.
+        const ingest = saveData?.ingest_result;
+        if (ingest) {
+          if (ingest.status === "error") {
+            toast.error("No se pudo procesar ninguna fila del archivo. Revisá el formato.");
+          } else if (ingest.rows_rejected > 0) {
+            toast.error(`Cargado con errores: ${ingest.rows_processed} fila(s) guardada(s), ${ingest.rows_rejected} rechazada(s).`);
+          } else {
+            toast.success(`${ingest.rows_processed} fila(s) cargada(s) desde el Excel.`);
+          }
+        }
+        await financial.reloadLogs();
+        cancelWizard();
+        if (suggestedMetrics.length > 0 || metricsNeedingMoreData.length > 0) setShowMetricsReview(true);
+        return;
+      }
       // El connection_id de una conexión nueva no vuelve en la respuesta de
       // save-sheet-mapping — se busca en la lista recién recargada por la
       // combinación que la identifica unívocamente, para sincronizarla de
@@ -827,7 +1174,7 @@ export default function GrowthTrackerSheets() {
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
 
-  const showWizard = wizardAccountId !== null;
+  const showWizard = wizardAccountId !== null || excelMode;
   const anyConnections = connections.length > 0;
 
   return (
@@ -837,10 +1184,10 @@ export default function GrowthTrackerSheets() {
       <div className="max-w-3xl mx-auto px-8 py-12">
         <BackLink to="/metrics" label="Volver a Growth Tracker" className="mb-6" />
         <PageHeader
-          title="Conectar Google Sheets"
-          subtitle="Sincronizá tus métricas automáticamente desde una o más planillas, en vez de cargarlas a mano."
+          title="Fuentes de datos"
+          subtitle="Conectá Google Sheets o subí un Excel para sincronizar tus métricas automáticamente, en vez de cargarlas a mano."
           action={
-            !showWizard && !loadingAccounts && accounts.length > 0 ? (
+            !showWizard && !loadingAccounts ? (
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 {anyConnections && (
                   <Button
@@ -853,10 +1200,21 @@ export default function GrowthTrackerSheets() {
                     {syncAllBusy ? "Sincronizando…" : "Sincronizar todo"}
                   </Button>
                 )}
-                <Button size="sm" onClick={handleConnect} disabled={connecting || sourcePaused}>
-                  <Plus size={13} className="mr-1.5" />
-                  {connecting ? "Conectando…" : "Conectar otra cuenta"}
+                {anyConnections && (
+                  <Button variant="outline" size="sm" onClick={() => setEntityAliasesOpen(true)}>
+                    Gestionar entidades
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => openExcelUpload()} disabled={sourcePaused}>
+                  <Upload size={13} className="mr-1.5" />
+                  Subir Excel
                 </Button>
+                {accounts.length > 0 && (
+                  <Button size="sm" onClick={handleConnect} disabled={connecting || sourcePaused}>
+                    <Plus size={13} className="mr-1.5" />
+                    {connecting ? "Conectando…" : "Conectar otra cuenta"}
+                  </Button>
+                )}
               </div>
             ) : undefined
           }
@@ -878,19 +1236,20 @@ export default function GrowthTrackerSheets() {
           </div>
         )}
 
-        {!loadingAccounts && !loadingConnections && !showWizard && accounts.length === 0 && sourcePaused && (
+        {!loadingAccounts && !loadingConnections && !showWizard && accounts.length === 0 && excelConnections.length === 0 && sourcePaused && (
           <EmptyState
             icon={FileSpreadsheet}
             title="Google Sheets está pausado para tu startup"
-            description="Un administrador de CloudValley tiene que habilitar esta fuente antes de que puedas conectar una cuenta. Pedile que la active."
+            description="Un administrador de CloudValley tiene que habilitar esta fuente antes de que puedas conectar una cuenta. Podés seguir subiendo archivos Excel mientras tanto."
+            action={{ label: "Subir Excel", onClick: () => openExcelUpload() }}
           />
         )}
 
-        {!loadingAccounts && !loadingConnections && !showWizard && accounts.length === 0 && !sourcePaused && (
+        {!loadingAccounts && !loadingConnections && !showWizard && accounts.length === 0 && excelConnections.length === 0 && !sourcePaused && (
           <EmptyState
             icon={FileSpreadsheet}
-            title="Todavía no conectaste ninguna cuenta de Google"
-            description="Conectá una cuenta, elegís una planilla, mapeás sus columnas a tus métricas, y a partir de ahí se sincroniza sola una vez por día (o cuando quieras, a mano). Podés conectar más de una cuenta y más de una hoja si tus datos están repartidos."
+            title="Todavía no conectaste ninguna fuente de datos"
+            description="Conectá una cuenta de Google o subí un Excel, elegís una hoja, mapeás sus columnas a tus métricas, y a partir de ahí queda disponible en Métricas. Podés conectar más de una fuente si tus datos están repartidos."
             action={{ label: connecting ? "Conectando…" : "Conectar cuenta de Google", onClick: handleConnect }}
           />
         )}
@@ -968,18 +1327,45 @@ export default function GrowthTrackerSheets() {
                                     </>
                                   )}
                                 </p>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {conn.source === "excel" ? "Excel" : "Google Sheets"}
+                                  </Badge>
+                                  {conn.data_role && (
+                                    <Badge variant="secondary" className="text-[10px]">
+                                      {DATA_ROLE_LABELS[conn.data_role]}
+                                    </Badge>
+                                  )}
+                                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                                    {SYNC_MODE_LABELS[conn.sync_mode]}
+                                    {conn.sync_frequency && ` · ${SYNC_FREQUENCY_LABELS[conn.sync_frequency]}`}
+                                  </Badge>
+                                </div>
                               </div>
                               <div className="flex items-center gap-1 shrink-0">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 px-2 text-xs"
-                                  onClick={() => runConnectionSync(conn.connection_id, false)}
-                                  disabled={busy || sourcePaused || needsReconnect}
-                                >
-                                  <RefreshCw size={11} className={cn("mr-1", busy && "animate-spin")} />
-                                  Sincronizar
-                                </Button>
+                                {conn.source === "excel" ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => openExcelUpload(conn.connection_id)}
+                                    disabled={sourcePaused}
+                                  >
+                                    <Upload size={11} className="mr-1" />
+                                    Subir nueva versión
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => runConnectionSync(conn.connection_id, false)}
+                                    disabled={busy || sourcePaused || needsReconnect}
+                                  >
+                                    <RefreshCw size={11} className={cn("mr-1", busy && "animate-spin")} />
+                                    Sincronizar
+                                  </Button>
+                                )}
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -988,6 +1374,30 @@ export default function GrowthTrackerSheets() {
                                   disabled={sourcePaused || needsReconnect}
                                 >
                                   Editar
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => setEntityResolutionConnection(conn)}
+                                >
+                                  Resolver entidades
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => setDuplicatesConnection(conn)}
+                                >
+                                  Ver duplicados
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => setSettingsConnectionId((prev) => (prev === conn.connection_id ? null : conn.connection_id))}
+                                >
+                                  {settingsConnectionId === conn.connection_id ? "Cerrar" : "Configurar"}
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -1000,6 +1410,16 @@ export default function GrowthTrackerSheets() {
                                 </Button>
                               </div>
                             </div>
+
+                            {settingsConnectionId === conn.connection_id && (
+                              <ConnectionSettingsPanel
+                                connection={conn}
+                                savingDataRole={savingDataRole}
+                                savingSyncSettings={savingSyncSettings}
+                                onSetDataRole={(role) => handleSetDataRole(conn.connection_id, role)}
+                                onSetSyncSettings={(settings) => handleSetSyncSettings(conn.connection_id, settings)}
+                              />
+                            )}
 
                             {missing && missing.length > 0 && (
                               <div className="border border-destructive/40 bg-destructive/5 rounded-md p-2.5 mt-2.5 text-xs">
@@ -1044,6 +1464,13 @@ export default function GrowthTrackerSheets() {
                                       {result.rows_rejected > 0 &&
                                         ` · ${result.rows_rejected} rechazada${result.rows_rejected === 1 ? "" : "s"}`}
                                     </p>
+                                    {(result.inserted_rows !== undefined || result.updated_rows !== undefined || result.deleted_rows !== undefined) && (
+                                      <p className="text-muted-foreground mt-0.5">
+                                        {result.inserted_rows ?? 0} nueva{result.inserted_rows === 1 ? "" : "s"} ·{" "}
+                                        {result.updated_rows ?? 0} actualizada{result.updated_rows === 1 ? "" : "s"} ·{" "}
+                                        {result.deleted_rows ?? 0} eliminada{result.deleted_rows === 1 ? "" : "s"}
+                                      </p>
+                                    )}
                                     {grouped.length > 0 && (
                                       <ul className="mt-1.5 space-y-1">
                                         {grouped.map((g, i) => (
@@ -1080,21 +1507,173 @@ export default function GrowthTrackerSheets() {
           </div>
         )}
 
+        {!loadingConnections && !showWizard && excelConnections.length > 0 && (
+          <div className="space-y-4 mt-4">
+            <SectionCard title="Archivos Excel subidos">
+              <div className="space-y-2">
+                {excelConnections.map((conn) => {
+                  const missing = missingHeadersByConnection[conn.connection_id];
+                  return (
+                    <div key={conn.connection_id} className="border border-border rounded-md p-3">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium flex items-center gap-1.5 min-w-0">
+                            <FileSpreadsheet size={13} strokeWidth={1.5} className="text-muted-foreground shrink-0" />
+                            <span className="truncate">
+                              {conn.spreadsheet_name} · {conn.sheet_name}
+                            </span>
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {conn.field_mappings.length} campo{conn.field_mappings.length === 1 ? "" : "s"} · subido{" "}
+                            {timeAgo(conn.last_synced_at)}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                            <Badge variant="outline" className="text-[10px]">
+                              Excel
+                            </Badge>
+                            {conn.data_role && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {DATA_ROLE_LABELS[conn.data_role]}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => openExcelUpload(conn.connection_id)}>
+                            <Upload size={11} className="mr-1" />
+                            Subir nueva versión
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEntityResolutionConnection(conn)}>
+                            Resolver entidades
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setDuplicatesConnection(conn)}>
+                            Ver duplicados
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setSettingsConnectionId((prev) => (prev === conn.connection_id ? null : conn.connection_id))}
+                          >
+                            {settingsConnectionId === conn.connection_id ? "Cerrar" : "Configurar"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => setConfirmRemoveConnection(conn)}
+                            aria-label={`Quitar ${conn.spreadsheet_name} · ${conn.sheet_name}`}
+                          >
+                            <Trash2 size={12} strokeWidth={1.5} />
+                          </Button>
+                        </div>
+                      </div>
+                      {settingsConnectionId === conn.connection_id && (
+                        <ConnectionSettingsPanel
+                          connection={conn}
+                          savingDataRole={savingDataRole}
+                          savingSyncSettings={savingSyncSettings}
+                          onSetDataRole={(role) => handleSetDataRole(conn.connection_id, role)}
+                          onSetSyncSettings={(settings) => handleSetSyncSettings(conn.connection_id, settings)}
+                        />
+                      )}
+                      {missing && missing.length > 0 && (
+                        <div className="border border-destructive/40 bg-destructive/5 rounded-md p-2.5 mt-2.5 text-xs">
+                          <p className="font-medium text-destructive">El archivo cambió de estructura</p>
+                          <p className="text-muted-foreground mt-0.5">Estas columnas ya no existen: {missing.join(", ")}.</p>
+                          <Button size="sm" className="mt-2 h-7 text-xs" onClick={() => openExcelUpload(conn.connection_id)}>
+                            Subir versión corregida
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </SectionCard>
+          </div>
+        )}
+
         {showWizard && (
           <div className="space-y-6">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="truncate">{wizardAccount?.google_account_email}</span>
-              <ChevronRight size={12} strokeWidth={1.5} className="shrink-0" />
-              <span className={cn(step === 1 && "text-foreground font-medium")}>1. Planilla</span>
-              <ChevronRight size={12} strokeWidth={1.5} />
-              <span className={cn(step === 2 && "text-foreground font-medium")}>2. Hoja</span>
-              <ChevronRight size={12} strokeWidth={1.5} />
-              <span className={cn(step === 3 && "text-foreground font-medium")}>3. Mapear columnas</span>
+              {excelMode ? (
+                <>
+                  <span className="truncate">{excelFileName || "Subir Excel"}</span>
+                  <ChevronRight size={12} strokeWidth={1.5} className="shrink-0" />
+                  <span className={cn(step !== 3 && "text-foreground font-medium")}>1. Archivo</span>
+                  <ChevronRight size={12} strokeWidth={1.5} />
+                  <span className={cn(step === 3 && "text-foreground font-medium")}>2. Mapear columnas</span>
+                </>
+              ) : (
+                <>
+                  <span className="truncate">{wizardAccount?.google_account_email}</span>
+                  <ChevronRight size={12} strokeWidth={1.5} className="shrink-0" />
+                  <span className={cn(step === 1 && "text-foreground font-medium")}>1. Planilla</span>
+                  <ChevronRight size={12} strokeWidth={1.5} />
+                  <span className={cn(step === 2 && "text-foreground font-medium")}>2. Hoja</span>
+                  <ChevronRight size={12} strokeWidth={1.5} />
+                  <span className={cn(step === 3 && "text-foreground font-medium")}>3. Mapear columnas</span>
+                </>
+              )}
             </div>
 
-            {loadingEditConnection && <LoadingState variant="centered" className="py-16" />}
+            {excelMode && step !== 3 && excelStep === "pick_file" && (
+              <SectionCard title="Subí tu archivo Excel">
+                <p className="text-xs text-muted-foreground mb-3">
+                  Solo archivos .xlsx. Una vez subido, vas a poder mapear sus columnas igual que con Google Sheets.
+                </p>
+                <input
+                  ref={excelFileInputRef}
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(e) => handleExcelFileChange(e.target.files?.[0])}
+                  aria-label="Elegir archivo Excel"
+                  className="text-sm"
+                />
+                <div className="mt-4">
+                  <Button variant="ghost" onClick={cancelExcelUpload}>
+                    Cancelar
+                  </Button>
+                </div>
+              </SectionCard>
+            )}
 
-            {!loadingEditConnection && step === 1 && (() => {
+            {excelMode && step !== 3 && excelStep === "uploading" && (
+              <SectionCard title="Subiendo y procesando tu archivo">
+                <LoadingState variant="centered" className="py-16" label="Esto puede tardar unos segundos…" />
+              </SectionCard>
+            )}
+
+            {excelMode && step !== 3 && excelStep === "pick_sheet" && (
+              <SectionCard title="Elegí la hoja" description={excelFileName}>
+                {excelSheets.length === 0 ? (
+                  <EmptyState bordered={false} icon={FileSpreadsheet} title="No encontramos hojas con datos en este archivo." />
+                ) : (
+                  <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                    {excelSheets.map((s) => (
+                      <button
+                        key={s.sheet_name}
+                        onClick={() => handleExcelSheetPicked(s)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-md border border-border hover:border-foreground/30 hover:bg-surface transition-colors text-left"
+                      >
+                        <span className="text-sm">{s.sheet_name}</span>
+                        <ChevronRight size={14} strokeWidth={1.5} className="text-muted-foreground shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-4">
+                  <Button variant="ghost" onClick={cancelExcelUpload}>
+                    Cancelar
+                  </Button>
+                </div>
+              </SectionCard>
+            )}
+
+            {!excelMode && loadingEditConnection && <LoadingState variant="centered" className="py-16" />}
+
+            {!excelMode && !loadingEditConnection && step === 1 && (() => {
               const filteredSheets = sheets.filter((s) =>
                 s.name.toLowerCase().includes(sheetSearch.trim().toLowerCase())
               );
@@ -1162,7 +1741,7 @@ export default function GrowthTrackerSheets() {
               );
             })()}
 
-            {!loadingEditConnection && step === 2 && (() => {
+            {!excelMode && !loadingEditConnection && step === 2 && (() => {
               const filteredTabs = tabs.filter((t) => t.toLowerCase().includes(tabSearch.trim().toLowerCase()));
               return (
                 <SectionCard title="Elegí la hoja" description={selectedSpreadsheetName}>
@@ -1191,13 +1770,42 @@ export default function GrowthTrackerSheets() {
                             <button
                               key={t}
                               onClick={() => {
+                                // Bug real encontrado en vivo 2026-08-29: elegir acá una
+                                // planilla+hoja que YA tiene una conexión guardada (de
+                                // cualquier cuenta, no solo la que se está navegando)
+                                // disparaba el análisis de IA de nuevo y generaba
+                                // field_keys distintos a los ya guardados — si el
+                                // usuario guardaba, quedaba una conexión duplicada a la
+                                // misma hoja. Si hay match, se abre directamente en modo
+                                // "Editar" esa conexión existente en vez de tratarla
+                                // como nueva.
+                                const existing = selectedSpreadsheetId
+                                  ? connections.find(
+                                      (c) => c.spreadsheet_id === selectedSpreadsheetId && c.sheet_name === t
+                                    )
+                                  : undefined;
+                                if (existing) {
+                                  toast.message("Ya tenías esta hoja conectada — abrimos su mapeo para editar.");
+                                  openEditConnection(existing);
+                                  return;
+                                }
                                 setSelectedSheetName(t);
                                 setStep(3);
                                 if (wizardAccountId && selectedSpreadsheetId) loadHeaders(wizardAccountId, selectedSpreadsheetId, t);
                               }}
                               className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-md border border-border hover:border-foreground/30 hover:bg-surface transition-colors text-left"
                             >
-                              <span className="text-sm">{t}</span>
+                              <span className="flex items-center gap-2 text-sm min-w-0">
+                                <span className="truncate">{t}</span>
+                                {selectedSpreadsheetId &&
+                                  connections.some(
+                                    (c) => c.spreadsheet_id === selectedSpreadsheetId && c.sheet_name === t
+                                  ) && (
+                                    <Badge variant="secondary" className="shrink-0">
+                                      Ya conectada
+                                    </Badge>
+                                  )}
+                              </span>
                               <ChevronRight size={14} strokeWidth={1.5} className="text-muted-foreground shrink-0" />
                             </button>
                           ))}
@@ -1229,6 +1837,46 @@ export default function GrowthTrackerSheets() {
                     solo lectura de datos acá, nada de sumar ni filtrar, eso se define después con fórmulas en la
                     sección de Métricas (por ejemplo <code className="font-mono">FIELDSUM("monto")</code>).
                   </p>
+                )}
+                {!editingConnectionId && sampleRows.length > 0 && (
+                  <div className="border border-border rounded-md p-3 mb-4">
+                    <p className="text-xs font-medium mb-2 flex items-center gap-1.5">
+                      <Sparkles size={12} strokeWidth={1.5} className="text-muted-foreground" />
+                      Vista previa de tus datos
+                    </p>
+                    {classifying ? (
+                      <p className="text-xs text-muted-foreground mb-2">Identificando qué tipo de datos es esto…</p>
+                    ) : classification ? (
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Parece ser un <span className="font-medium text-foreground">{SPREADSHEET_TYPE_LABELS[classification.spreadsheet_type] ?? classification.spreadsheet_type}</span>
+                        {classification.row_semantics && <>: {classification.row_semantics}</>}
+                      </p>
+                    ) : null}
+                    <div className="overflow-x-auto -mx-1">
+                      <table className="text-[11px] font-mono border-collapse min-w-full">
+                        <thead>
+                          <tr>
+                            {headers.map((h) => (
+                              <th key={h} className="px-1.5 py-1 text-left text-muted-foreground border-b border-border whitespace-nowrap">
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sampleRows.slice(0, 4).map((row, i) => (
+                            <tr key={i}>
+                              {headers.map((_, ci) => (
+                                <td key={ci} className="px-1.5 py-1 border-b border-border/50 whitespace-nowrap">
+                                  {row[ci] ?? ""}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 )}
                 {analyzingSheet && (
                   <LoadingState
@@ -1327,18 +1975,28 @@ export default function GrowthTrackerSheets() {
                             : "Listo para guardar."}
                   </p>
                 )}
+                {duplicateConnectionId && (
+                  <div className="border border-warning/40 bg-warning/10 rounded-md p-3 mb-4 text-xs" aria-live="polite">
+                    <p className="font-medium">Ya tenías esta hoja conectada</p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Otra conexión activa ya mapea la misma hoja y pestaña. Editá esa conexión en vez de crear una duplicada.
+                    </p>
+                  </div>
+                )}
                 <FormActions
                   className="mt-4"
-                  onCancel={() => setStep(2)}
-                  cancelLabel="Atrás"
+                  onCancel={excelMode ? cancelExcelUpload : () => setStep(2)}
+                  cancelLabel={excelMode ? "Cancelar" : "Atrás"}
                   onSubmit={handleSaveMapping}
                   submitLabel="Guardar mapeo"
                   busy={savingMapping}
                   disabled={headers.length === 0 || !canSaveMapping}
                   extra={
-                    <Button variant="ghost" onClick={cancelWizard}>
-                      Cancelar
-                    </Button>
+                    excelMode ? undefined : (
+                      <Button variant="ghost" onClick={cancelWizard}>
+                        Cancelar
+                      </Button>
+                    )
                   }
                 />
               </SectionCard>
@@ -1388,6 +2046,29 @@ export default function GrowthTrackerSheets() {
         onConfirm={handleRemoveConnection}
       />
 
+      {entityResolutionConnection && company_id && (
+        <EntityResolutionDialog
+          open={!!entityResolutionConnection}
+          onOpenChange={(o) => !o && setEntityResolutionConnection(null)}
+          companyId={company_id}
+          connectionId={entityResolutionConnection.connection_id}
+          fields={entityResolutionConnection.field_mappings}
+          onResolved={loadConnections}
+        />
+      )}
+
+      <EntityAliasesDialog open={entityAliasesOpen} onOpenChange={setEntityAliasesOpen} companyId={company_id ?? null} />
+
+      {duplicatesConnection && company_id && (
+        <DuplicateTransactionsDialog
+          open={!!duplicatesConnection}
+          onOpenChange={(o) => !o && setDuplicatesConnection(null)}
+          companyId={company_id}
+          connectionId={duplicatesConnection.connection_id}
+          connectionLabel={`${duplicatesConnection.spreadsheet_name} · ${duplicatesConnection.sheet_name}`}
+        />
+      )}
+
       <SuggestedMetricsReview
         open={showMetricsReview}
         onOpenChange={setShowMetricsReview}
@@ -1400,6 +2081,95 @@ export default function GrowthTrackerSheets() {
         onSaved={financial.reload}
       />
     </AppLayout>
+  );
+}
+
+// Panel inline (no un wizard aparte) para asignar el rol de la fuente y
+// configurar la sincronización de UNA conexión — "source_of_truth" nunca lo
+// sugiere la IA (classify-workbook), es siempre una decisión manual del
+// founder. Excel solo admite sync_mode "manual"/"snapshot" (no tiene API en
+// vivo) — el selector se acota directo acá en vez de dejar que el usuario
+// elija algo que el backend va a rechazar.
+function ConnectionSettingsPanel({
+  connection,
+  savingDataRole,
+  savingSyncSettings,
+  onSetDataRole,
+  onSetSyncSettings,
+}: {
+  connection: SheetConnection;
+  savingDataRole: boolean;
+  savingSyncSettings: boolean;
+  onSetDataRole: (role: DataRole | null) => void;
+  onSetSyncSettings: (settings: { sync_mode?: SyncMode | null; sync_frequency?: SyncFrequency | null }) => void;
+}) {
+  const isExcel = connection.source === "excel";
+  const syncModeOptions: SyncMode[] = isExcel ? ["manual", "snapshot"] : ["live", "scheduled", "event_based", "manual", "snapshot"];
+  return (
+    <div className="border-t border-border mt-3 pt-3 grid sm:grid-cols-2 gap-4">
+      <div>
+        <label className="text-xs font-medium block mb-1.5">Rol de esta fuente</label>
+        <Select
+          value={connection.data_role ?? "__none__"}
+          onValueChange={(v) => onSetDataRole(v === "__none__" ? null : (v as DataRole))}
+          disabled={savingDataRole}
+        >
+          <SelectTrigger className="h-8 text-xs" aria-label="Rol de la fuente">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Sin asignar</SelectItem>
+            {(Object.keys(DATA_ROLE_LABELS) as DataRole[]).map((role) => (
+              <SelectItem key={role} value={role}>
+                {DATA_ROLE_LABELS[role]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <label className="text-xs font-medium block mb-1.5">Sincronización</label>
+        <div className="flex gap-2">
+          <Select
+            value={connection.sync_mode}
+            onValueChange={(v) => onSetSyncSettings({ sync_mode: v as SyncMode })}
+            disabled={savingSyncSettings}
+          >
+            <SelectTrigger className="h-8 text-xs flex-1" aria-label="Modo de sincronización">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {syncModeOptions.map((mode) => (
+                <SelectItem key={mode} value={mode}>
+                  {SYNC_MODE_LABELS[mode]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={connection.sync_frequency ?? "manual"}
+            onValueChange={(v) => onSetSyncSettings({ sync_frequency: v as SyncFrequency })}
+            disabled={savingSyncSettings || isExcel}
+          >
+            <SelectTrigger className="h-8 text-xs flex-1" aria-label="Frecuencia de sincronización">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(SYNC_FREQUENCY_LABELS) as SyncFrequency[]).map((freq) => (
+                <SelectItem key={freq} value={freq}>
+                  {SYNC_FREQUENCY_LABELS[freq]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {connection.next_sync_at && (
+          <p className="text-[11px] text-muted-foreground mt-1">
+            Próxima sincronización: {new Date(connection.next_sync_at).toLocaleString("es-AR")}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 

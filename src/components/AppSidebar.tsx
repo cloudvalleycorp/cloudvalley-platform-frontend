@@ -12,6 +12,7 @@ import {
   FileBarChart,
   Compass,
   ListTodo,
+  ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router-dom";
@@ -26,11 +27,16 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
 import { StageBadge } from "./StageBadge";
 import { cn } from "@/lib/utils";
+import { parseMetricsTab, metricsTabUrl, type MetricsTab } from "@/lib/metricsNavigation";
 
 // `end: false` para las secciones que tienen sub-rutas propias (/metrics/:id,
 // /reporting/:id, /portfolio/:id) — si no, el ítem solo se marca activo en la
@@ -39,11 +45,70 @@ import { cn } from "@/lib/utils";
 const items = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, end: true },
   { title: "Roadmap", url: "/roadmap", icon: Map, end: true },
-  { title: "Métricas", url: "/metrics", icon: BarChart3, end: false },
   { title: "Reporting", url: "/reporting", icon: FileBarChart, end: false },
   { title: "Data Room", url: "/data-room", icon: FolderOpen, end: true },
   { title: "Conexiones", url: "/conexiones", icon: Network, end: true },
 ];
+
+const METRICS_SUB_ITEMS: { tab: MetricsTab; label: string }[] = [
+  { tab: "overview", label: "Overview" },
+  { tab: "sources", label: "Fuentes de datos" },
+  { tab: "health", label: "Salud de datos" },
+  { tab: "explorer", label: "Explorador" },
+];
+
+// /metrics/:metricId no lleva ?tab= (fuerza Explorador desde Metrics.tsx) —
+// se resuelve acá también para que el sub-ítem correcto quede resaltado.
+// /growth-tracker/sheets es la pantalla de gestión detrás de "Fuentes de
+// datos" (ver GrowthTrackerSheets.tsx) — mismo criterio.
+function currentMetricsTab(pathname: string, search: string): MetricsTab | null {
+  if (pathname.startsWith("/growth-tracker/sheets")) return "sources";
+  if (pathname === "/metrics") return parseMetricsTab(new URLSearchParams(search));
+  if (pathname.startsWith("/metrics/")) return "explorer";
+  return null;
+}
+
+// Grupo colapsable en vez de un ítem plano — antes "Fuentes de datos" (el
+// flujo de Sheets/Excel) no tenía ninguna entrada de nav, solo se llegaba
+// por deep link. Mismo patrón Collapsible+SidebarMenuSub que ya trae el
+// design system, sin usar hasta ahora en este sidebar.
+function MetricsNavGroup() {
+  const { pathname, search } = useLocation();
+  const activeTab = currentMetricsTab(pathname, search);
+  const inMetricsArea = activeTab !== null;
+  const [open, setOpen] = useState(inMetricsArea);
+  useEffect(() => {
+    if (inMetricsArea) setOpen(true);
+  }, [inMetricsArea]);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton
+            isActive={inMetricsArea}
+            className="flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 text-muted-foreground hover:text-foreground cursor-pointer"
+          >
+            <BarChart3 size={16} strokeWidth={1.5} />
+            <span className="flex-1 text-left">Métricas</span>
+            <ChevronDown size={14} strokeWidth={1.5} className={cn("transition-transform", open && "rotate-180")} />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+      </SidebarMenuItem>
+      <CollapsibleContent>
+        <SidebarMenuSub>
+          {METRICS_SUB_ITEMS.map((item) => (
+            <SidebarMenuSubItem key={item.tab}>
+              <SidebarMenuSubButton asChild isActive={activeTab === item.tab}>
+                <NavLink to={metricsTabUrl(item.tab)}>{item.label}</NavLink>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          ))}
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 function isNavActive(pathname: string, url: string, end: boolean) {
   return end ? pathname === url : pathname === url || pathname.startsWith(`${url}/`);
@@ -183,7 +248,11 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
+              {items.slice(0, 2).map((item) => (
+                <NavItem key={item.url} to={item.url} end={item.end} icon={item.icon} label={item.title} />
+              ))}
+              <MetricsNavGroup />
+              {items.slice(2).map((item) => (
                 <NavItem key={item.url} to={item.url} end={item.end} icon={item.icon} label={item.title} />
               ))}
 

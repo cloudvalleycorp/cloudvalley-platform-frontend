@@ -12,10 +12,11 @@ import { QuerySummary } from "@/components/metrics/query-builder/QuerySummary";
 import { handleMembershipError } from "@/lib/membership";
 import { normalizeCategory, slugify } from "@/hooks/useMetricPropertyForm";
 import { UPSERT_FINANCIAL_METRIC_DEFINITION_URL } from "@/lib/financialReports";
+import { findPossibleDuplicates } from "@/lib/metricSimilarity";
 import type { SuggestedMetric, MetricNeedingMoreData } from "@/lib/aiInsights";
 import type { MetricDef } from "@/lib/metrics";
 
-type ReviewRow = SuggestedMetric & { approved: boolean };
+type ReviewRow = SuggestedMetric & { approved: boolean; possibleDuplicate: MetricDef | null };
 
 type Props = {
   open: boolean;
@@ -59,8 +60,19 @@ export function SuggestedMetricsReview({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) setRows(suggestions.map((s) => ({ ...s, approved: true, category: s.category?.trim() || defaultCategory })));
-  }, [open, suggestions, defaultCategory]);
+    if (open)
+      setRows(
+        suggestions.map((s) => {
+          // Filtro determinístico previo al 409 real de backend (dedup
+          // universal, ver useMetricPropertyForm.ts) — atrapa variantes de
+          // formato/substring ("Revenue" ⊂ "Revenue USD") ANTES de
+          // desperdiciar un guardado. No atrapa sinónimos entre idiomas
+          // ("Sales"/"Ingresos" vs "Revenue") — eso lo hace el 409 real.
+          const possibleDuplicate = findPossibleDuplicates(s.name, allMetrics)[0] ?? null;
+          return { ...s, approved: !possibleDuplicate, category: s.category?.trim() || defaultCategory, possibleDuplicate };
+        })
+      );
+  }, [open, suggestions, defaultCategory, allMetrics]);
 
   const setRow = (i: number, patch: Partial<ReviewRow>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -175,6 +187,12 @@ export function SuggestedMetricsReview({
                     aria-label="Nombre de la métrica"
                     className="font-medium"
                   />
+                  {row.possibleDuplicate && (
+                    <p className="text-xs text-warning mt-1 flex items-center gap-1">
+                      <AlertTriangle size={11} strokeWidth={1.5} />
+                      Parecida a "{row.possibleDuplicate.name}" — revisá antes de crear otra.
+                    </p>
+                  )}
                 </div>
               </label>
 

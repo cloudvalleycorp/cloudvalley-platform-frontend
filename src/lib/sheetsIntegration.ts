@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/apiConfig";
+import type { Confidence } from "@/lib/financialData";
 
 export const LIST_GOOGLE_ACCOUNTS_URL = `${API_BASE_URL}/list-google-accounts`;
 export const CONNECT_SHEETS_URL = `${API_BASE_URL}/connect-sheets`;
@@ -10,6 +11,32 @@ export const LIST_SHEET_CONNECTIONS_URL = `${API_BASE_URL}/list-sheet-connection
 export const REMOVE_SHEET_CONNECTION_URL = `${API_BASE_URL}/remove-sheet-connection`;
 export const SYNC_SHEETS_URL = `${API_BASE_URL}/sync-sheets`;
 export const DISCONNECT_SHEETS_URL = `${API_BASE_URL}/disconnect-sheets`;
+// Metrics AI-native (2026-08-30) — subida de Excel como fuente de datos,
+// alternativa a Google Sheets. Flujo de 2 pasos client-side: el archivo se
+// sube directo a GCS con una signed URL, nunca pasa por una Cloud Function.
+export const REQUEST_WORKBOOK_UPLOAD_URL = `${API_BASE_URL}/request-workbook-upload-url`;
+export const CONFIRM_WORKBOOK_UPLOAD_URL = `${API_BASE_URL}/confirm-workbook-upload`;
+export const GET_UPLOAD_STATUS_URL = `${API_BASE_URL}/get-upload-status`;
+export const DELETE_WORKBOOK_UPLOAD_URL = `${API_BASE_URL}/delete-workbook-upload`;
+// Clasificación automática de tipo de spreadsheet + rol de la fuente (source
+// of truth/operational input/etc.) y configuración de sync — todo nuevo,
+// mismo lanzamiento.
+export const CLASSIFY_WORKBOOK_URL = `${API_BASE_URL}/classify-workbook`;
+export const SET_CONNECTION_DATA_ROLE_URL = `${API_BASE_URL}/set-connection-data-role`;
+export const SET_CONNECTION_SYNC_SETTINGS_URL = `${API_BASE_URL}/set-connection-sync-settings`;
+
+export const EXCEL_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+export type DataRole = "source_of_truth" | "operational_input" | "financial_model" | "historical_snapshot" | "report_export";
+export type SyncMode = "live" | "scheduled" | "event_based" | "manual" | "snapshot";
+export type SyncFrequency = "every_15_min" | "hourly" | "every_6_hours" | "daily" | "weekly" | "monthly" | "manual";
+export type SpreadsheetType =
+  | "time_series"
+  | "transaction_ledger"
+  | "entity_table"
+  | "financial_model"
+  | "historical_snapshot"
+  | "report_export";
 // Datos crudos: listado de campos disponibles (autocomplete de fórmulas) y
 // consulta agregada bajo demanda — reemplazan el modelo viejo de
 // agregación/filtros configurados en la conexión, ver formulaEngine.ts.
@@ -44,7 +71,12 @@ export type GoogleAccountsResponse = {
   accounts: GoogleAccount[];
 };
 
-export type SheetSummary = { spreadsheet_id: string; name: string };
+// modified_time (2026-08-30): ISO 8601 de Drive, o null. Sin esto una company
+// ve TODAS sus planillas personales sin relación mezcladas sin ranking — con
+// order_by=modified_time (ver LIST_SHEETS_URL) se puede ordenar por más
+// reciente como proxy barato de relevancia mientras no exista clasificación
+// real de la company (ver classify-workbook).
+export type SheetSummary = { spreadsheet_id: string; name: string; modified_time?: string | null };
 
 // Una columna de la planilla mapeada a un campo crudo propio de ESTA
 // conexión — nada de agregación ni filtros acá (eso vive en las fórmulas de
@@ -63,24 +95,42 @@ export type FieldMapping = {
   description?: string | null;
 };
 
+// Solo distinto de null cuando source="excel" — la ingesta de TODAS las
+// filas corre síncronamente dentro del mismo request de save-sheet-mapping
+// (puede tardar más que antes con archivos grandes). Para source="sheet"
+// sigue siendo null, el sync real lo dispara sync-sheets aparte.
+export type IngestResult = {
+  status: "success" | "partial_success" | "error";
+  rows_processed: number;
+  rows_rejected: number;
+  row_errors: unknown[];
+};
+
 // save-sheet-mapping ahora también devuelve field_mappings (antes solo
 // {success, connection_id}) — cada uno con su description ya resuelta
 // (generada o la que mandó el founder), para poder mostrarla sin un
-// segundo request. 2026-08-11.
+// segundo request. 2026-08-11. ingest_result: contrato 2026-08-30 (ver
+// arriba).
 export type SaveSheetMappingResponse = {
   success: boolean;
   connection_id: string;
   field_mappings: FieldMapping[];
+  ingest_result: IngestResult | null;
 };
 
-// One spreadsheet+sheet mapped to raw fields, belonging to one Google
-// account. A company can have several of these active at once, across one
-// or more accounts — replaces the old singular get-sheet-mapping.
+// One spreadsheet+sheet (o, desde 2026-08-30, un workbook Excel subido)
+// mapped to raw fields. A company can have several of these active at once,
+// across one or more accounts/uploads — replaces the old singular
+// get-sheet-mapping.
 export type SheetConnection = {
   connection_id: string;
-  account_id: string;
-  google_account_email: string; // denormalizado, para no tener que cruzar con list-google-accounts al listar
-  spreadsheet_id: string;
+  // "excel" ausente en Firestore se normaliza a "sheet" — conexiones de
+  // antes de este campo (2026-08-30) son siempre "sheet".
+  source: "sheet" | "excel";
+  account_id: string | null;
+  google_account_email: string | null; // denormalizado; null cuando source="excel"
+  spreadsheet_id: string | null; // null cuando source="excel"
+  upload_id: string | null; // solo cuando source="excel"
   spreadsheet_name: string;
   sheet_name: string;
   period_column: string;
@@ -88,6 +138,14 @@ export type SheetConnection = {
   last_synced_at: string | null;
   last_sync_status: string | null;
   created_at: string;
+  // Todo lo de acá abajo es contrato 2026-08-30 — ausente/null en
+  // conexiones creadas antes de esta feature, comportamiento esperado, no
+  // un dato faltante por error.
+  data_role: DataRole | null;
+  sync_mode: SyncMode;
+  sync_frequency: SyncFrequency | null;
+  next_sync_at: string | null;
+  freshness_sla: string | null;
 };
 
 export type SyncRowError = { field: string; reason: string; row?: number; period?: string };
@@ -104,6 +162,13 @@ export type SyncResult = {
   rows_processed: number;
   rows_rejected: number;
   row_errors: SyncRowError[];
+  // Contrato 2026-08-30 — delta real de esta corrida, no solo "sincronizado
+  // con éxito". changed_formulas siempre 0 en la práctica hoy (el pipeline
+  // no captura fórmulas crudas, solo valores ya resueltos) — no es un bug.
+  inserted_rows?: number;
+  updated_rows?: number;
+  deleted_rows?: number;
+  changed_formulas?: number;
 };
 
 // A 400 from list-sheets/get-sheet-tabs/get-sheet-headers/save-sheet-mapping/
@@ -123,6 +188,11 @@ export type SheetsApiError = {
   // sumaban entre sí sin que nadie lo supiera (bug real, no solo validación
   // nueva) — ver GrowthTrackerSheets.tsx handleSaveMapping.
   duplicateFieldKeys?: Record<string, string[]>;
+  // save-sheet-mapping, 400 (contrato 2026-08-30): ya existe OTRA conexión
+  // activa para esta misma hoja+pestaña — guard server-side, complementa el
+  // chequeo client-side ya hecho antes de llegar acá (ver
+  // GrowthTrackerSheets.tsx, bug real encontrado en vivo 2026-08-29).
+  duplicateConnectionId?: string;
 };
 
 export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
@@ -137,11 +207,44 @@ export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
         data?.duplicate_field_keys_across_connections && typeof data.duplicate_field_keys_across_connections === "object"
           ? data.duplicate_field_keys_across_connections
           : undefined,
+      duplicateConnectionId: typeof data?.duplicate_connection_id === "string" ? data.duplicate_connection_id : undefined,
     };
   } catch {
     return { reconnectRequired: false, sourceDisabled: false, message: null };
   }
 }
+
+// ---- Subida de Excel (2026-08-30) ----
+
+export type WorkbookSheetPreview = { sheet_name: string; headers: string[]; sample_rows: unknown[][] };
+
+export type RequestWorkbookUploadUrlResponse = { upload_id: string; upload_url: string; storage_path: string };
+
+export type ConfirmWorkbookUploadResponse = { upload_id: string; status: "done" | "error" };
+
+export type GetUploadStatusResponse = {
+  status: "pending_upload" | "done" | "error";
+  sheets: WorkbookSheetPreview[] | null;
+  error: string | null;
+};
+
+// ---- Clasificación de spreadsheet + rol de fuente + sync (2026-08-30) ----
+
+export type ClassifiedSheet = {
+  sheet_name: string;
+  spreadsheet_type: SpreadsheetType;
+  row_semantics: string;
+  confidence: Confidence;
+  suggested_data_role: Exclude<DataRole, "source_of_truth">;
+};
+
+export type SetConnectionSyncSettingsResponse = {
+  connection_id: string;
+  sync_mode: SyncMode | null;
+  sync_frequency: SyncFrequency | null;
+  next_sync_at: string | null;
+  freshness_sla: string | null;
+};
 
 // ---- Datos crudos: consulta agregada bajo demanda (formulaEngine.ts) ----
 

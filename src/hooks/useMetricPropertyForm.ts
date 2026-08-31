@@ -24,7 +24,17 @@ export type Draft = {
   // builder. Nunca se manda de vuelta al guardar; no hay conversión
   // automática a query (mandato de backend, se reconstruye a mano).
   legacyFormulaExpression: string | null;
+  // Contrato ampliado 2026-08-30 (Metrics AI-native). "" = sin moneda (solo
+  // tiene sentido si value_type="money"); "" en source_role = sin asignar.
+  currency: string;
+  source_role: "" | "primary" | "secondary" | "derived" | "reporting";
 };
+
+// upsert-metric-definition, 409: ya existe una métrica que representa el
+// mismo concepto — dedup universal (ahora también para metric_type="input",
+// antes solo calculadas tenían algún chequeo). El usuario decide: ir a
+// verla, o confirmar la creación igual (confirm_duplicate:true).
+export type PendingDuplicate = { existingMetricId: string; message: string };
 
 const DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
 export function slugify(s: string): string {
@@ -58,6 +68,8 @@ function emptyDraft(defaultCategory: string, prefill?: Partial<Draft>): Draft {
     value_type: "count",
     query: null,
     legacyFormulaExpression: null,
+    currency: "",
+    source_role: "",
     ...prefill,
   };
 }
@@ -74,6 +86,8 @@ function draftFromMetric(m: MetricDef): Draft {
     value_type: m.value_type ?? "count",
     query: m.query,
     legacyFormulaExpression: m.query ? null : m.formula_expression,
+    currency: m.currency ?? "",
+    source_role: m.source_role ?? "",
   };
 }
 
@@ -114,6 +128,7 @@ export function useMetricPropertyForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteRecordsToo, setDeleteRecordsToo] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [pendingDuplicate, setPendingDuplicate] = useState<PendingDuplicate | null>(null);
 
   const seedKey = metric?.id ?? (creating ? fulfillsRequirementId ?? "__new__" : null);
   useEffect(() => {
@@ -132,7 +147,7 @@ export function useMetricPropertyForm({
   const setField = (key: string, value: string | boolean) => setDraft((prev) => ({ ...prev, [key]: value }));
   const setQuery = (query: QuerySpec | null) => setDraft((prev) => ({ ...prev, query }));
 
-  const handleSave = async () => {
+  const handleSave = async (confirmDuplicate = false) => {
     if (!companyId) return;
     const category = normalizeCategory(draft.category, categories);
     if (!draft.name.trim() || !category) {
@@ -201,10 +216,13 @@ export function useMetricPropertyForm({
     }
     if (draft.description.trim()) body.description = draft.description.trim();
     if (draft.why_it_matters.trim()) body.why_it_matters = draft.why_it_matters.trim();
+    if (draft.currency.trim()) body.currency = draft.currency.trim();
+    if (draft.source_role) body.source_role = draft.source_role;
     // Solo al crear — editar una métrica ya vinculada no debe re-disparar el
     // link (usaría unlink-metric-from-requirement para eso, ver
     // FundRequiredMetricsSection).
     if (isNew && fulfillsRequirementId) body.fulfills_requirement_id = fulfillsRequirementId;
+    if (confirmDuplicate) body.confirm_duplicate = true;
 
     setSaving(true);
     try {
@@ -214,7 +232,25 @@ export function useMetricPropertyForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      // Dedup universal (contrato 2026-08-30): un 409 acá no es un error de
+      // membresía/validación genérico — es una decisión que le toca al
+      // usuario (ir a ver la existente, o confirmar igual). Se intercepta
+      // ANTES de handleMembershipError, que trataría cualquier status no
+      // reconocido como "Error inesperado".
+      if (res.status === 409) {
+        const data = await res.json().catch(() => null);
+        if (data?.pending_confirmation && typeof data?.existing_metric_id === "string") {
+          setPendingDuplicate({
+            existingMetricId: data.existing_metric_id,
+            message: typeof data?.error === "string" ? data.error : "Ya existe una métrica que representa lo mismo.",
+          });
+          return;
+        }
+        toast.error(typeof data?.error === "string" ? data.error : "Ya existe un registro en conflicto.");
+        return;
+      }
       if (await handleMembershipError(res)) return;
+      setPendingDuplicate(null);
       toast.success(isNew ? "Métrica agregada" : "Métrica actualizada");
       onSaved(slug, isNew);
     } catch {
@@ -279,5 +315,8 @@ export function useMetricPropertyForm({
     deleting,
     handleSave,
     confirmDeleteMetric,
+    pendingDuplicate,
+    dismissPendingDuplicate: () => setPendingDuplicate(null),
+    confirmCreateDuplicate: () => handleSave(true),
   };
 }

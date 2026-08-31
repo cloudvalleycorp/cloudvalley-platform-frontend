@@ -23,6 +23,29 @@ export const EVALUATE_METRICS_MAX_IDS = 30;
 export const EVALUATE_METRICS_MAX_PERIODS = 12;
 
 export type FinancialSourceType = "manual_form" | "sheet" | "stripe";
+
+// Compartido por varios endpoints del rediseño AI-native (2026-08-30):
+// score 0-1, basis en lenguaje simple, method identifica el origen para
+// decidir si mostrar un badge "sugerido por IA" o no.
+export type Confidence = {
+  score: number;
+  basis: string;
+  method?: "llm_classification" | "statistical" | "structural_match";
+};
+
+// Un nodo del trail de lineage de una métrica (get-metric-lineage) o de la
+// evidencia de un highlight (list-metric-highlights) — mismo shape en ambos.
+export type LineageNode = {
+  source_id: string | null;
+  workbook_id: string | null;
+  sheet_name: string | null;
+  cell_ref: string | null;
+  formula: string;
+  version_id: string | null;
+  confidence: Confidence | null;
+};
+
+export type MetricScenario = "actual" | "forecast" | "budget";
 export type ReportStatus = "reportado" | "pendiente" | "con_errores";
 
 export type ValueType = "money" | "count" | "percentage";
@@ -153,15 +176,32 @@ export type FinancialMetricDef = {
   // origin="fund_required". Default "custom" si el backend no lo manda.
   metric_class?: "standard" | "custom";
   standard_key?: string | null;
+  // Contrato ampliado 2026-08-30 (Metrics AI-native): código ISO 4217 de 3
+  // letras, o null — solo tiene sentido si value_type="money". Metadata
+  // pura, no cambia cómo se evalúa la métrica.
+  currency?: string | null;
+  // Ídem — a quién considerar la fuente autoritativa cuando 2+ métricas
+  // propias comparten standard_key (ver MetricClassWarning). Lo setea el
+  // usuario (o acepta la sugerencia de IA en `warnings`), nunca se infiere
+  // solo en el cliente.
+  source_role?: "primary" | "secondary" | "derived" | "reporting" | null;
 };
 
 // list-metrics agrega esto cuando una company tiene 2+ métricas con el
-// mismo standard_key — advertencia visual, nunca bloquea nada.
+// mismo standard_key — advertencia visual, nunca bloquea nada. Conflicto
+// real (misma métrica, valores que pueden no coincidir según la fuente) —
+// ver explain-metric-discrepancy para investigar la causa y
+// upsert-metric-definition (source_role) para resolverlo.
 export type MetricClassWarning = {
   standard_key: string;
   count: number;
   metric_ids: string[];
   requirement_ids: string[];
+  // Sugerencia de IA cacheada por backend, opcional — puede venir ausente O
+  // como objeto vacío {} (cupo de IA agotado, servicio caído, o el
+  // conflicto ya se resolvió a mano). Nunca tratar {} como error: solo
+  // significa "sin sugerencia para mostrar todavía".
+  suggested_source_roles?: Record<string, "primary" | "secondary" | "derived" | "reporting">;
 };
 
 // Shape returned by GET /list-records — one row per period. Values are
@@ -181,6 +221,8 @@ export type EvaluateMetricsPeriodSpec = { period: string } | { period_from: stri
 // silencio, siempre trae por qué (metric_type input, sin query todavía, etc.).
 export type EvaluateMetricsSkipped = { metric_id: string; reason: string };
 
+export type EvaluateMetricsMetadata = { currency: string | null; source_role: string | null };
+
 export type EvaluateMetricsResponse = {
   // metric_id -> período ("YYYY-MM") -> valor. null = sin datos suficientes
   // ese período (nunca un 0 inventado) — distinto de "ausente" (nunca pedido
@@ -188,4 +230,13 @@ export type EvaluateMetricsResponse = {
   values: Record<string, Record<string, number | null>>;
   periods: string[];
   skipped: EvaluateMetricsSkipped[];
+  // Contrato ampliado 2026-08-30: siempre presente, une currency/source_role
+  // por metric_id — list-metrics no expone estos dos campos, así que evaluate
+  // es hoy la única forma de tenerlos junto con el valor ya calculado.
+  metric_metadata: Record<string, EvaluateMetricsMetadata>;
+  scenario: MetricScenario;
+  // Solo presente cuando se pidió un scenario != "actual" — el valor real en
+  // la MISMA respuesta, para comparar sin un segundo request. Ausente
+  // (nunca objeto vacío) cuando scenario === "actual".
+  values_actual?: Record<string, Record<string, number | null>>;
 };

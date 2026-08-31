@@ -48,6 +48,14 @@ export const STANDARD_KEY_LABELS: Record<string, string> = {
   gross_margin: "Gross Margin",
 };
 
+// Orden de despliegue para la grilla de KPIs de Metrics > Overview (rediseño
+// AI-native, 2026-08-30) — mismas 8 claves de arriba, ningún valor nuevo:
+// el enum de standard_key es el que definió backend, no se inventa ninguna
+// clave adicional (Customers/Churn/NRR/CAC/LTV/Headcount del spec original
+// del usuario NO son standard_key hoy — son KPIs custom por company, se ven
+// en el Explorador como cualquier otra métrica, no en esta grilla).
+export const STANDARD_KEY_ORDER: string[] = ["arr", "mrr", "revenue", "growth", "gross_margin", "burn", "runway", "cash"];
+
 export const TARGET_OPERATOR_LABELS: Record<TargetOperator, string> = {
   gte: "mayor o igual a",
   lte: "menor o igual a",

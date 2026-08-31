@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import { Pencil, Sparkles } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { formatMetricValue, type MetricDef } from "@/lib/metrics";
+import { formatMetricValue, type MetricDef, type RawField } from "@/lib/metrics";
 import { MONTH_LABELS } from "@/lib/metricPeriod";
 import { MetricHistoryChart, type MetricHistoryPoint } from "@/components/metrics/MetricHistoryChart";
 import { QuerySummary } from "@/components/metrics/query-builder/QuerySummary";
+import { MetricLineagePanel } from "@/components/metrics/MetricLineagePanel";
+import { MetricVersionHistoryPanel } from "@/components/metrics/MetricVersionHistoryPanel";
 
 export type { MetricHistoryPoint };
 
@@ -20,9 +22,19 @@ type Props = {
   // Abre el PlatformAgentPanel (ver Metrics.tsx) con esta métrica ya
   // seteada en uiContext.selectedMetricId — reemplaza al viejo "Explicar".
   onOpenAssistant?: () => void;
+  // Lineage (rediseño AI-native, 2026-08-30) — opcionales para no romper
+  // otros usos de este componente que todavía no los pasen; sin ellos
+  // simplemente no se muestra la sección "Origen".
+  allMetrics?: MetricDef[];
+  rawFields?: RawField[];
+  companyId?: string | null;
+  // Para el desglose por fuente del lineage panel (valor de métricas
+  // "input"/carga manual referenciadas dentro de una query multi-fuente) —
+  // ver MetricLineagePanel. Opcional, sin cambiar nada si no se pasa.
+  entries?: Record<string, Record<string, number>>;
 };
 
-export function MetricInfoSheet({ metric, onClose, history, onEdit, onOpenAssistant }: Props) {
+export function MetricInfoSheet({ metric, onClose, history, onEdit, onOpenAssistant, allMetrics, rawFields, companyId, entries }: Props) {
   const sorted = useMemo(
     () =>
       (history ?? [])
@@ -36,6 +48,7 @@ export function MetricInfoSheet({ metric, onClose, history, onEdit, onOpenAssist
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{metric?.name}</SheetTitle>
+          <SheetDescription className="sr-only">Detalle de la métrica {metric?.name}</SheetDescription>
         </SheetHeader>
         {metric && (
           <div className="mt-6 space-y-6">
@@ -101,6 +114,16 @@ export function MetricInfoSheet({ metric, onClose, history, onEdit, onOpenAssist
                 <p className="text-sm">{metric.benchmark}</p>
               </div>
             )}
+            {allMetrics && rawFields && (
+              <MetricLineagePanel
+                metric={metric}
+                allMetrics={allMetrics}
+                rawFields={rawFields}
+                companyId={companyId ?? null}
+                entries={entries}
+              />
+            )}
+            {companyId && <MetricVersionHistoryPanel key={metric.id} metric={metric} companyId={companyId} />}
           </div>
         )}
       </SheetContent>

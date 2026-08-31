@@ -53,6 +53,9 @@ export type MetricDef = {
   // "custom" cuando el backend no lo manda.
   metric_class: "standard" | "custom";
   standard_key: string | null;
+  // Contrato ampliado 2026-08-30 (Metrics AI-native) — ver financialData.ts.
+  currency: string | null;
+  source_role: "primary" | "secondary" | "derived" | "reporting" | null;
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -148,6 +151,8 @@ export function toMetricDef(d: FinancialMetricDef): MetricDef {
     order_index: d.display_order,
     metric_class: d.metric_class ?? "custom",
     standard_key: d.standard_key ?? null,
+    currency: d.currency ?? null,
+    source_role: d.source_role ?? null,
   };
 }
 

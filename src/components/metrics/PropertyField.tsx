@@ -70,15 +70,23 @@ export function PropertyField({
   }
 
   if (field.type === "select") {
+    // Radix <Select.Item> no admite value="" (tira en runtime) — un option
+    // con value:"" (ej. "Sin asignar") se mapea a un sentinel interno acá,
+    // sin que el resto del código (Draft, handleSave, etc.) tenga que saber
+    // de esto: onChange siempre recibe "" de vuelta, nunca el sentinel.
+    const EMPTY_SENTINEL = "__unassigned__";
     return (
       <FormField label={field.label} helpText={field.helpText}>
-        <Select value={value as string} onValueChange={(v) => onChange(field.key, v)}>
+        <Select
+          value={value === "" ? EMPTY_SENTINEL : (value as string)}
+          onValueChange={(v) => onChange(field.key, v === EMPTY_SENTINEL ? "" : v)}
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {field.options?.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
+              <SelectItem key={o.value} value={o.value === "" ? EMPTY_SENTINEL : o.value}>
                 {o.label}
               </SelectItem>
             ))}

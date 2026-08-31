@@ -1,525 +1,188 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
-import { InputsPanel } from "@/components/metrics/InputsPanel";
-import { CalculatedMetricsGrid } from "@/components/metrics/CalculatedMetricsGrid";
-import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
 import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
-import { AnnualGrid } from "@/components/metrics/AnnualGrid";
-import { MetricsManager } from "@/components/metrics/MetricsManager";
-import { MetricPropertyPanel } from "@/components/metrics/MetricPropertyPanel";
-import { ImportLogTable } from "@/components/financial/ImportLogTable";
-import { PeriodSelect } from "@/components/metrics/PeriodSelect";
-import { LoadingState } from "@/components/LoadingState";
-import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
-import { LayoutGrid, Table2, Settings2, BarChart3, Sparkles } from "lucide-react";
-import { type MetricDef, type RawField, sourceLabel } from "@/lib/metrics";
-import { evalFormula, FORMULA_SYNTAX } from "@/lib/formulaEngine";
-import { periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
-import { RAW_INPUT_KEYS } from "@/lib/financialReports";
-import { LIST_RAW_FIELDS_URL, LIST_SHEET_CONNECTIONS_URL, type SheetConnection } from "@/lib/sheetsIntegration";
-import { useRawFieldValues } from "@/hooks/useRawFieldValues";
-import { useMetricReportData } from "@/hooks/useMetricReportData";
+import { Sparkles } from "lucide-react";
+import { type RawField } from "@/lib/metrics";
+import { FORMULA_SYNTAX } from "@/lib/formulaEngine";
+import { toPeriodString, periodRange } from "@/lib/metricPeriod";
+import { LIST_RAW_FIELDS_URL, LIST_SHEET_CONNECTIONS_URL, LIST_GOOGLE_ACCOUNTS_URL, type SheetConnection, type GoogleAccount } from "@/lib/sheetsIntegration";
 import { handleMembershipError } from "@/lib/membership";
-import { FundRequiredMetricsSection } from "@/components/metrics/FundRequiredMetricsSection";
-import type { FundRequiredMetricRow } from "@/lib/metricRequirements";
+import { parseMetricsTab, type MetricsTab } from "@/lib/metricsNavigation";
+import { MetricsOverviewTab } from "@/components/metrics/MetricsOverviewTab";
+import { MetricsDataSourcesTab } from "@/components/metrics/MetricsDataSourcesTab";
+import { MetricsDataHealthTab } from "@/components/metrics/MetricsDataHealthTab";
+import { MetricsExplorerTab } from "@/components/metrics/MetricsExplorerTab";
 
-// Los tabs son 100% dinámicos: cualquier category que devuelva list-metrics
-// se vuelve un tab (así una métrica custom con category nueva, o el catálogo
-// default de Acquisition/Retention, ya aparecen sin tocar código).
-const FINANCIAL_CATEGORY_LABELS: Record<string, string> = {
-  revenue: "Revenue",
-  cash_efficiency: "Cash & Efficiency",
+const TAB_LABELS: Record<MetricsTab, string> = {
+  overview: "Overview",
+  sources: "Fuentes de datos",
+  health: "Salud de datos",
+  explorer: "Explorador",
 };
-function labelForCategory(cat: string) {
-  return FINANCIAL_CATEGORY_LABELS[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1).replace(/_/g, " ");
-}
 
 const now = new Date();
-
-type ViewMode = "annual" | "monthly";
-const VIEW_KEY = "cv:metrics:view";
-
-// "data" = cargar/ver valores (tabs, anual/mensual — sin cambios de siempre).
-// "manage" = editor de esquema de métricas estilo AppSheet (lista + panel).
-// Persistido igual que `view`, así refrescar la página durante una sesión de
-// limpieza del catálogo no devuelve de golpe al modo de carga de datos.
-type PageMode = "data" | "manage";
-const PAGE_MODE_KEY = "cv:metrics:pageMode";
 
 export default function Metrics() {
   const { company_id, is_owner } = useAuth();
   const { metricId } = useParams<{ metricId?: string }>();
   const navigate = useNavigate();
-  const [activeCat, setActiveCat] = useState("revenue");
-  const [view, setView] = useState<ViewMode>(() => {
-    const stored = (typeof window !== "undefined" && localStorage.getItem(VIEW_KEY)) as ViewMode | null;
-    return stored === "monthly" ? "monthly" : "annual";
-  });
-  const [pageMode, setPageMode] = useState<PageMode>(() => {
-    const stored = (typeof window !== "undefined" && localStorage.getItem(PAGE_MODE_KEY)) as PageMode | null;
-    return stored === "manage" ? "manage" : "data";
-  });
-  const [creatingNew, setCreatingNew] = useState(false);
-  const [year, setYear] = useState(now.getFullYear());
-  const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
-  const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab: MetricsTab = metricId ? "explorer" : parseMetricsTab(searchParams);
   const [assistantOpen, setAssistantOpen] = useState(false);
-  // "Crear métrica para cumplir esto" desde FundRequiredMetricsSection —
-  // precarga MetricPropertyPanel y, al guardar, crea+vincula en un solo paso.
-  const [fulfillingRequirement, setFulfillingRequirement] = useState<FundRequiredMetricRow | null>(null);
 
-  useEffect(() => {
-    localStorage.setItem(VIEW_KEY, view);
-  }, [view]);
+  const setTab = (tab: MetricsTab) => {
+    if (tab === "explorer" && metricId) return; // ya estamos en explorer, no perder el metricId de la URL
+    setSearchParams(tab === "overview" ? {} : { tab }, { replace: false });
+  };
 
-  useEffect(() => {
-    localStorage.setItem(PAGE_MODE_KEY, pageMode);
-  }, [pageMode]);
+  // Rango compartido por Overview/Fuentes/Salud — no depende de navegación
+  // de período como Explorador (que tiene su propio year/period, ver
+  // MetricsExplorerTab), así que un rango fijo de 12 meses alcanza para KPIs
+  // + evaluación de conflictos. Explorador llama useFinancialMetrics por su
+  // cuenta con su propio rango — evita acoplar su navegador de año/mes al de
+  // estos tres tabs (ver comentario en MetricsExplorerTab.tsx).
+  const overviewRange = useMemo(() => periodRange({ month: now.getMonth() + 1, year: now.getFullYear() }, 12), []);
+  const financial = useFinancialMetrics(company_id, overviewRange);
 
-  // Entrar con un metricId en la URL (link compartido) fuerza modo "manage",
-  // pero nada vuelve a forzarlo a "data" automáticamente — si no, cerrar el
-  // panel te patearía fuera del modo administrar sin que lo pidas.
-  useEffect(() => {
-    if (metricId) setPageMode("manage");
-  }, [metricId]);
-
-  // ---- Todas las categorías (Revenue, Cash & Efficiency, Acquisition,
-  // Retention, y cualquier custom) salen de acá, GCP-backed. ----
-  // Rango acotado en vez de traer todo el histórico: en vista anual cubre
-  // los 12 meses de `year` (referencia = diciembre), en vista mensual el
-  // período elegido — en ambos casos con 24 meses de margen hacia atrás
-  // para que SUMLAST/AVGLAST/YTD sigan calculando en cualquier mes visible.
-  // Cambiar de año o de período recalcula el rango y refetchea (useMemo lo
-  // mantiene estable entre renders si no cambió nada relevante).
-  const financialRange = useMemo(
-    () => periodRange(view === "annual" ? { month: 12, year } : period, 24),
-    [view, year, period]
-  );
-  const financial = useFinancialMetrics(company_id, financialRange);
-
-  const selectedMetric = metricId ? (financial.metrics.find((m) => m.id === metricId) ?? null) : null;
-
-  // Link a una métrica que ya no existe (borrada, o typo) — avisar y volver
-  // a la lista en vez de dejar el panel colgado sin nada que mostrar. Se
-  // espera también a `refreshing` (isFetching): un refetch en curso (ej.
-  // tras crear una métrica nueva y navegar a /metrics/:id de inmediato) deja
-  // financial.metrics con el array viejo por un instante mientras loading ya
-  // es false — sin este chequeo eso disparaba un falso "no encontramos esa
-  // métrica" justo después de crearla (bug real encontrado en vivo 2026-08-17).
-  useEffect(() => {
-    if (!metricId || financial.loading || financial.refreshing) return;
-    if (!financial.metrics.some((m) => m.id === metricId)) {
-      toast.error("No encontramos esa métrica. Puede que se haya eliminado.");
-      navigate("/metrics", { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metricId, financial.loading, financial.refreshing, financial.metrics]);
-
-  const financialCategoryTabs = useMemo(() => {
-    const minOrder = new Map<string, number>();
-    for (const m of financial.metrics) {
-      const current = minOrder.get(m.category);
-      if (current === undefined || m.order_index < current) minOrder.set(m.category, m.order_index);
-    }
-    return Array.from(minOrder.entries())
-      .sort((a, b) => a[1] - b[1])
-      .map(([id]) => ({ id, label: labelForCategory(id) }));
-  }, [financial.metrics]);
-
-  // input_key ya no está restringido a RAW_INPUT_KEYS (los 8 campos
-  // originales) — se suman los que ya existan como sugerencia, tanto para
-  // el datalist del campo "Campo" como para el hint de la fórmula.
-  const inputKeySuggestions = useMemo(() => {
-    const keys = new Set<string>(RAW_INPUT_KEYS);
-    for (const m of financial.metrics) {
-      if (m.metric_type === "input" && m.input_key) keys.add(m.input_key);
-    }
-    return Array.from(keys);
-  }, [financial.metrics]);
-
-  // Todas las métricas calculadas (cualquier categoría) — se usan como
-  // variables reutilizables adentro de OTRAS fórmulas.
-  const allCalcDefs = useMemo(
-    () => financial.metrics.filter((m) => m.metric_type === "calculated"),
-    [financial.metrics]
-  );
-
-  // Campos crudos de integraciones (Sheets, a futuro Stripe) — para el
-  // autocomplete de fórmulas (FormulaField) y para saber qué queries
-  // resolver (una fórmula puede usar FIELDSUM/etc. sin que ese campo
-  // aparezca en ningún otro lado de la company). Se cruza con
-  // list-sheet-connections para poder mostrar de qué planilla/hoja viene
-  // cada campo — dos conexiones pueden tener una columna con el mismo
-  // nombre visible ("Monto") mapeada a cosas distintas, y sin este cruce no
-  // hay forma de distinguirlas al armar una consulta.
+  // Campos crudos + conexiones + cuentas de Google — compartidos por
+  // Fuentes de datos, Salud de datos, y el lineage de Overview/Explorador.
   const [rawFields, setRawFields] = useState<RawField[]>([]);
-  useEffect(() => {
+  const [connections, setConnections] = useState<SheetConnection[]>([]);
+  const [accounts, setAccounts] = useState<GoogleAccount[]>([]);
+  const [loadingSources, setLoadingSources] = useState(true);
+  const reloadSources = async () => {
     if (!company_id) return;
-    (async () => {
-      try {
-        const qs = `?company_id=${encodeURIComponent(company_id)}`;
-        const [fieldsRes, connectionsRes] = await Promise.all([
-          fetch(`${LIST_RAW_FIELDS_URL}${qs}`, { credentials: "include" }),
-          fetch(`${LIST_SHEET_CONNECTIONS_URL}${qs}`, { credentials: "include" }),
-        ]);
-        if (await handleMembershipError(fieldsRes)) return;
-        const fieldsData = await fieldsRes.json();
-        const fields: Omit<RawField, "connection_label">[] = Array.isArray(fieldsData?.fields) ? fieldsData.fields : [];
+    setLoadingSources(true);
+    try {
+      const qs = `?company_id=${encodeURIComponent(company_id)}`;
+      const [fieldsRes, connectionsRes, accountsRes] = await Promise.all([
+        fetch(`${LIST_RAW_FIELDS_URL}${qs}`, { credentials: "include" }),
+        fetch(`${LIST_SHEET_CONNECTIONS_URL}${qs}`, { credentials: "include" }),
+        fetch(`${LIST_GOOGLE_ACCOUNTS_URL}${qs}`, { credentials: "include" }),
+      ]);
+      if (await handleMembershipError(fieldsRes)) return;
+      const fieldsData = await fieldsRes.json();
+      const fields: Omit<RawField, "connection_label">[] = Array.isArray(fieldsData?.fields) ? fieldsData.fields : [];
 
-        const connectionLabelById: Record<string, string> = {};
-        if (connectionsRes.ok) {
-          const connectionsData = await connectionsRes.json();
-          const connections: SheetConnection[] = Array.isArray(connectionsData?.connections) ? connectionsData.connections : [];
-          for (const c of connections) connectionLabelById[c.connection_id] = `${c.spreadsheet_name} · ${c.sheet_name}`;
-        }
-        setRawFields(fields.map((f) => ({ ...f, connection_label: connectionLabelById[f.connection_id] ?? null })));
-      } catch {
-        // silencioso: el editor de fórmulas simplemente no sugiere campos crudos
+      const connectionLabelById: Record<string, string> = {};
+      let conns: SheetConnection[] = [];
+      if (connectionsRes.ok) {
+        const connectionsData = await connectionsRes.json();
+        conns = Array.isArray(connectionsData?.connections) ? connectionsData.connections : [];
+        for (const c of conns) connectionLabelById[c.connection_id] = `${c.spreadsheet_name} · ${c.sheet_name}`;
       }
-    })();
-  }, [company_id]);
+      setConnections(conns);
+      setRawFields(fields.map((f) => ({ ...f, connection_label: connectionLabelById[f.connection_id] ?? null })));
 
-  const financialSaveInput = async (inputKey: string, value: number | null) => {
-    if (value === null) {
-      toast.error("Todavía no se puede vaciar un campo ya cargado. Solo se puede corregir con un valor nuevo.");
-      return;
-    }
-    const def = financial.metrics.find((m) => m.metric_type === "input" && m.input_key === inputKey);
-    if (!def) return;
-    const syncedFrom = sourceLabel(def.source);
-    if (syncedFrom) {
-      toast.error(`Este campo se sincroniza desde ${syncedFrom}, no se puede cargar a mano.`);
-      return;
-    }
-    const ok = await financial.submitValues(toPeriodString(period.month, period.year), { [inputKey]: value });
-    if (!ok) return;
-    financial.applyLocalEntry(def.id, period.month, period.year, value);
-    toast.success("Guardado");
-  };
-
-  const financialSaveAnnualBatch = async (
-    changes: { metricId: string; year: number; month: number; value: number | null }[]
-  ) => {
-    if (changes.length === 0) return;
-    const synced = changes.filter((c) => sourceLabel(financial.metrics.find((m) => m.id === c.metricId)?.source ?? null));
-    const editable = changes.filter((c) => !sourceLabel(financial.metrics.find((m) => m.id === c.metricId)?.source ?? null));
-    if (synced.length > 0) {
-      toast.error(
-        synced.length === 1
-          ? "1 campo se sincroniza automáticamente, no se puede cargar a mano."
-          : `${synced.length} campos se sincronizan automáticamente, no se pueden cargar a mano.`
-      );
-    }
-    const cleared = editable.filter((c) => c.value === null);
-    const toSave = editable.filter((c) => c.value !== null);
-    if (cleared.length > 0) {
-      toast.error(
-        cleared.length === 1
-          ? "1 campo no se pudo vaciar. El módulo nuevo solo permite corregir con un valor nuevo, no borrar."
-          : `${cleared.length} campos no se pudieron vaciar. El módulo nuevo solo permite corregir con un valor nuevo, no borrar.`
-      );
-    }
-    const byPeriod = new Map<string, { year: number; month: number; values: Record<string, number> }>();
-    for (const c of toSave) {
-      const inputKey = financial.inputKeyByMetricId[c.metricId];
-      if (!inputKey) continue;
-      const pk = `${c.year}-${c.month}`;
-      if (!byPeriod.has(pk)) byPeriod.set(pk, { year: c.year, month: c.month, values: {} });
-      byPeriod.get(pk)!.values[inputKey] = c.value as number;
-    }
-    let anyFailed = false;
-    for (const { year: y, month: m, values } of byPeriod.values()) {
-      const ok = await financial.submitValues(toPeriodString(m, y), values);
-      if (!ok) {
-        anyFailed = true;
-        continue;
+      if (accountsRes.ok) {
+        const accountsData = await accountsRes.json();
+        setAccounts(Array.isArray(accountsData?.accounts) ? accountsData.accounts : []);
       }
-      for (const [inputKey, value] of Object.entries(values)) {
-        const def = financial.metrics.find((d) => d.input_key === inputKey);
-        if (def) financial.applyLocalEntry(def.id, m, y, value);
-      }
-    }
-    if (!anyFailed && toSave.length > 0) {
-      toast.success(`${toSave.length} cambio${toSave.length === 1 ? "" : "s"} guardado${toSave.length === 1 ? "" : "s"}`);
+    } catch {
+      // silencioso — Fuentes/Salud de datos simplemente muestran menos señales
+    } finally {
+      setLoadingSources(false);
     }
   };
-
-  const inputDefs = useMemo(
-    () => financial.metrics.filter((m) => m.metric_type === "input" && m.category === activeCat),
-    [financial.metrics, activeCat]
-  );
-  const calcDefs = useMemo(
-    () => financial.metrics.filter((m) => m.metric_type === "calculated" && m.category === activeCat),
-    [financial.metrics, activeCat]
-  );
-  const { allInputDefs, inputsForPeriod, currentInputs, prevInputs, prev, historyInputs, formulaHistory, baseRawFieldPeriods } =
-    useMetricReportData({ metrics: financial.metrics, entries: financial.entries, period });
-
-  // Todos los períodos que alguna parte de la pantalla puede llegar a
-  // necesitar para resolver FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG: los 12
-  // meses del año del grid anual (extra sobre lo que ya cubre
-  // useMetricReportData) más el set base (mes actual + anterior + últimos 12
-  // meses desde hoy). Una sola resolución deduplicada para toda la página en
-  // vez de una por componente.
-  const allFormulas = useMemo(() => allCalcDefs.map((d) => d.formula_expression), [allCalcDefs]);
-  const rawFieldPeriods = useMemo(() => {
-    const set = new Set(baseRawFieldPeriods);
-    for (let m = 1; m <= 12; m++) set.add(toPeriodString(m, year));
-    return Array.from(set);
-  }, [year, baseRawFieldPeriods]);
-  const { valuesByPeriod: rawFieldValuesByPeriod } = useRawFieldValues(company_id, rawFieldPeriods, allFormulas);
-
-  const infoHistory = useMemo<MetricHistoryPoint[]>(() => {
-    if (!openInfo) return [];
-    const out: MetricHistoryPoint[] = [];
-    let m = now.getMonth() + 1;
-    let y = now.getFullYear();
-    for (let i = 0; i < 12; i++) {
-      let v: number | null = null;
-      if (openInfo.metric_type === "input" && openInfo.input_key) {
-        const raw = financial.entries[openInfo.id]?.[periodKey(m, y)];
-        if (raw !== undefined) v = raw;
-      } else if (openInfo.metric_type === "calculated" && openInfo.formula_expression) {
-        const inp = inputsForPeriod(m, y);
-        v = evalFormula(
-          openInfo.formula_expression,
-          inp,
-          [],
-          allCalcDefs,
-          rawFieldValuesByPeriod[toPeriodString(m, y)] ?? {}
-        );
-      }
-      if (v !== null && v !== undefined) out.unshift({ year: y, month: m, value: v });
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return out;
+  useEffect(() => {
+    reloadSources();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openInfo, financial.entries, allInputDefs, rawFieldValuesByPeriod]);
+  }, [company_id]);
 
   return (
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12">
         <PageHeader
-          title="Growth Tracker"
-          subtitle="Cargá los datos del mes y mirá cómo evolucionan tus métricas clave."
+          title="Métricas"
+          subtitle="Tu capa de datos financieros: fuentes conectadas, salud de los datos, y cada métrica con su origen."
           action={
-            pageMode === "data" ? (
-              <>
-                {view === "monthly" && <PeriodSelect period={period} onChange={setPeriod} />}
-                <div className="inline-flex border border-border rounded-md overflow-hidden h-9">
-                  <button
-                    onClick={() => setView("annual")}
-                    aria-pressed={view === "annual"}
-                    className={cn(
-                      "px-3 text-xs flex items-center gap-1.5 transition-all",
-                      view === "annual" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                    )}
-                    title="Vista anual"
-                  >
-                    <Table2 size={12} strokeWidth={1.5} aria-hidden="true" /> Anual
-                  </button>
-                  <button
-                    onClick={() => setView("monthly")}
-                    aria-pressed={view === "monthly"}
-                    className={cn(
-                      "px-3 text-xs flex items-center gap-1.5 transition-all border-l border-border",
-                      view === "monthly" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                    )}
-                    title="Vista mensual"
-                  >
-                    <LayoutGrid size={12} strokeWidth={1.5} aria-hidden="true" /> Mensual
-                  </button>
-                </div>
-                <Button variant="outline" onClick={() => setAssistantOpen(true)}>
-                  <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
-                </Button>
-                <Button variant="outline" onClick={() => setPageMode("manage")}>
-                  <Settings2 size={14} className="mr-1" /> Administrar métricas
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setPageMode("data");
-                  if (metricId) navigate("/metrics");
-                }}
-              >
-                <LayoutGrid size={14} className="mr-1" /> Cargar datos
-              </Button>
-            )
+            <Button variant="outline" onClick={() => setAssistantOpen(true)}>
+              <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
+            </Button>
           }
         />
 
-        <FundRequiredMetricsSection
-          rows={financial.fundRequired}
-          ownMetrics={financial.metrics}
-          onChanged={financial.reload}
-          onCreateNew={(row) => {
-            setFulfillingRequirement(row);
-            setCreatingNew(true);
-            setPageMode("manage");
-          }}
-        />
+        <div className="flex gap-1 border-b border-border mb-8 overflow-x-auto">
+          {(Object.keys(TAB_LABELS) as MetricsTab[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setTab(tab)}
+              aria-pressed={activeTab === tab}
+              className={cn(
+                "px-3 py-2 text-sm rounded-md transition-all duration-150 shrink-0 whitespace-nowrap",
+                activeTab === tab
+                  ? "bg-surface text-foreground font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-surface/60"
+              )}
+            >
+              {TAB_LABELS[tab]}
+            </button>
+          ))}
+        </div>
 
-        {pageMode === "data" && (
-          <>
-            <div className="flex gap-1 border-b border-border mb-8 overflow-x-auto">
-              {financialCategoryTabs.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => setActiveCat(c.id)}
-                  aria-pressed={activeCat === c.id}
-                  className={cn(
-                    "px-3 py-2 text-sm rounded-md transition-all duration-150 shrink-0 whitespace-nowrap",
-                    activeCat === c.id
-                      ? "bg-surface text-foreground font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-surface/60"
-                  )}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-
-            {financial.notEnabled && (
-              <div className="border border-border rounded-lg p-4 mb-6 text-sm text-muted-foreground bg-surface" aria-live="polite">
-                Todavía no tenés el formulario manual habilitado para reportar datos financieros. Pedile a CloudValley
-                que lo active para tu startup.
-              </div>
-            )}
-
-            <div key={`${activeCat}-${view}`} className="animate-fade-in">
-            {financial.loading ? (
-              <LoadingState variant="centered" className="py-16" />
-            ) : view === "annual" ? (
-              inputDefs.length === 0 && calcDefs.length === 0 ? (
-                <EmptyState
-                  icon={BarChart3}
-                  title="No hay métricas activas en esta categoría."
-                  description="Las métricas disponibles dependen de tu modelo de negocio."
-                  action={{
-                    label: "Agregar métrica",
-                    onClick: () => {
-                      setPageMode("manage");
-                      setFulfillingRequirement(null);
-                      setCreatingNew(true);
-                    },
-                  }}
-                  secondaryAction={{ label: "Ver reportes", onClick: () => navigate("/reporting") }}
-                />
-              ) : (
-                <AnnualGrid
-                  year={year}
-                  onYearChange={setYear}
-                  inputDefs={inputDefs}
-                  calcDefs={calcDefs}
-                  allInputDefs={allInputDefs}
-                  allCalcDefs={allCalcDefs}
-                  entries={financial.entries}
-                  onSaveBatch={financialSaveAnnualBatch}
-                  privacy={financial.privacy}
-                  onTogglePrivacy={is_owner ? financial.togglePrivacy : undefined}
-                  onInfo={setOpenInfo}
-                  rawFieldValuesByPeriod={rawFieldValuesByPeriod}
-                  companyId={company_id}
-                />
-              )
-            ) : (
-              <div className="space-y-10">
-                {inputDefs.length > 0 && (
-                  <InputsPanel
-                    inputs={inputDefs}
-                    values={currentInputs}
-                    onSave={financialSaveInput}
-                    onInfo={setOpenInfo}
-                    privacy={financial.privacy}
-                    onTogglePrivacy={is_owner ? financial.togglePrivacy : undefined}
-                  />
-                )}
-
-                {calcDefs.length > 0 && (
-                  <CalculatedMetricsGrid
-                    metrics={calcDefs}
-                    currentInputs={currentInputs}
-                    prevInputs={prevInputs}
-                    historyInputs={historyInputs}
-                    formulaHistory={formulaHistory}
-                    inputDefs={allInputDefs}
-                    calcDefs={allCalcDefs}
-                    rawFieldValues={rawFieldValuesByPeriod[toPeriodString(period.month, period.year)] ?? {}}
-                    prevRawFieldValues={rawFieldValuesByPeriod[toPeriodString(prev.m, prev.y)] ?? {}}
-                    companyId={company_id}
-                    period={period}
-                    onInfo={setOpenInfo}
-                    privacy={financial.privacy}
-                    onTogglePrivacy={is_owner ? financial.togglePrivacy : undefined}
-                  />
-                )}
-
-                {inputDefs.length === 0 && calcDefs.length === 0 && (
-                  <EmptyState
-                    icon={BarChart3}
-                    title="No hay métricas activas en esta categoría."
-                    description="Las métricas disponibles dependen de tu modelo de negocio."
-                  />
-                )}
-              </div>
-            )}
-            </div>
-
-            {!financial.loading && (
-              <section className="mt-10">
-                <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Historial de cargas</h3>
-                {financial.loadingLogs ? (
-                  <LoadingState />
-                ) : (
-                  <ImportLogTable logs={financial.logs} emptyLabel="Todavía no reportaste ningún dato." />
-                )}
-              </section>
-            )}
-          </>
+        {activeTab === "overview" && (
+          <MetricsOverviewTab
+            companyId={company_id}
+            metrics={financial.metrics}
+            warnings={financial.warnings}
+            fundRequired={financial.fundRequired}
+            loading={financial.loading}
+            onChanged={() => {
+              financial.reload();
+              reloadSources();
+            }}
+            onGoToExplorer={(fulfillRequirementId) => {
+              const params = fulfillRequirementId ? { tab: "explorer", fulfill: fulfillRequirementId } : { tab: "explorer" };
+              setSearchParams(params);
+            }}
+          />
         )}
 
-        {pageMode === "manage" &&
-          (financial.loading ? (
-            <LoadingState variant="centered" className="py-16" />
-          ) : (
-            <MetricsManager
-              metrics={financial.metrics}
-              categories={financialCategoryTabs}
-              onSelect={(m) => {
-                setCreatingNew(false);
-                setFulfillingRequirement(null);
-                navigate(`/metrics/${m.id}`);
-              }}
-              onCreateNew={() => {
-                setFulfillingRequirement(null);
-                setCreatingNew(true);
-              }}
-            />
-          ))}
-      </div>
+        {activeTab === "sources" && (
+          <MetricsDataSourcesTab
+            companyId={company_id}
+            connections={connections}
+            accounts={accounts}
+            metrics={financial.metrics}
+            rawFields={rawFields}
+            loading={loadingSources}
+          />
+        )}
 
-      <MetricInfoSheet
-        metric={pageMode === "data" ? openInfo : null}
-        onClose={() => setOpenInfo(null)}
-        history={infoHistory}
-        onEdit={(m) => {
-          setOpenInfo(null);
-          navigate(`/metrics/${m.id}`);
-        }}
-        onOpenAssistant={() => setAssistantOpen(true)}
-      />
+        {activeTab === "health" && (
+          <MetricsDataHealthTab
+            companyId={company_id}
+            metrics={financial.metrics}
+            warnings={financial.warnings}
+            rawFields={rawFields}
+            connections={connections}
+            accounts={accounts}
+            importLogs={financial.logs}
+            loading={financial.loading || loadingSources}
+          />
+        )}
+
+        {activeTab === "explorer" && (
+          <MetricsExplorerTab
+            companyId={company_id}
+            isOwner={is_owner}
+            metricId={metricId}
+            navigate={navigate}
+            rawFields={rawFields}
+            onOpenAssistant={() => setAssistantOpen(true)}
+            onDataChanged={() => {
+              financial.reload();
+              reloadSources();
+            }}
+          />
+        )}
+      </div>
 
       <PlatformAgentPanel
         open={assistantOpen}
@@ -527,59 +190,17 @@ export default function Metrics() {
         companyId={company_id}
         surface="metrics"
         uiContext={{
-          selectedMetricId: openInfo?.id ?? null,
-          selectedCategoryId: activeCat,
+          selectedMetricId: metricId ?? null,
+          selectedCategoryId: null,
           selectedReportId: null,
-          currentPeriodId: toPeriodString(period.month, period.year),
+          currentPeriodId: toPeriodString(now.getMonth() + 1, now.getFullYear()),
         }}
         formulaSyntax={FORMULA_SYNTAX}
-        onAgentWrote={financial.reload}
+        onAgentWrote={() => {
+          financial.reload();
+          reloadSources();
+        }}
       />
-
-      {pageMode === "manage" && (
-        <MetricPropertyPanel
-          metric={selectedMetric}
-          creating={creatingNew}
-          open={!!selectedMetric || creatingNew}
-          isOwner={is_owner}
-          companyId={company_id}
-          allMetrics={financial.metrics}
-          categories={financialCategoryTabs}
-          inputKeySuggestions={inputKeySuggestions}
-          defaultCategory={activeCat}
-          rawFields={rawFields}
-          privacy={financial.privacy}
-          onTogglePrivacy={financial.togglePrivacy}
-          onClose={() => {
-            setCreatingNew(false);
-            setFulfillingRequirement(null);
-            navigate("/metrics");
-          }}
-          onSaved={(id) => {
-            setCreatingNew(false);
-            setFulfillingRequirement(null);
-            financial.reload();
-            navigate(`/metrics/${id}`, { replace: true });
-          }}
-          onDeleted={() => {
-            financial.reload();
-            navigate("/metrics");
-          }}
-          onAgentWrote={financial.reload}
-          fulfillsRequirementId={fulfillingRequirement?.requirement_id ?? null}
-          prefill={
-            fulfillingRequirement
-              ? {
-                  name: fulfillingRequirement.name,
-                  unit: fulfillingRequirement.unit,
-                  value_type: fulfillingRequirement.value_type,
-                  description: fulfillingRequirement.description ?? "",
-                  why_it_matters: fulfillingRequirement.why_it_matters ?? "",
-                }
-              : undefined
-          }
-        />
-      )}
     </AppLayout>
   );
 }
