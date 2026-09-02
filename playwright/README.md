@@ -82,8 +82,21 @@ en ningún endpoint. Eso se reportó al backend y ya se corrigió para
 `get-session`: confirmado con Playwright MCP, la sesión se reutiliza bien y
 las pantallas autenticadas cargan con datos reales (ej. `/dashboard`).
 
-Sigue faltando en otros endpoints — confirmado con `list-import-log` y
-`query-raw-fields`, es esperable que afecte a más ya que todos comparten el mismo patrón de fetch
+Sigue faltando en otros endpoints — confirmado con `list-import-log`,
+`query-raw-fields`, y (2026-09-01) también `list-raw-fields` (falla
+consistente, 100% de las cargas probadas en esa sesión) y `save-sheet-mapping`
+(falla intermitente — 3 llamadas reales exitosas seguidas de 3 fallos
+consecutivos en la misma sesión contra `structure: "eav"`, mismo endpoint que
+antes había funcionado para `structure` tabular/grid; el mensaje de consola es
+idéntico en los 3 casos: `Access to fetch at '...' ... blocked by CORS
+policy: No 'Access-Control-Allow-Origin' header is present on the requested
+resource` — no hay ningún response header ni body visible en
+`browser_network_request`, es un bloqueo 100% del lado del browser antes de
+que la respuesta llegue a JS). El patrón intermitente en `save-sheet-mapping`
+sugiere que el allowlist de CORS no está desplegado de forma consistente en
+todas las instancias/réplicas del backend detrás del gateway, no que sea un
+bug específico de una estructura de datos en particular. Es esperable que
+afecte a más endpoints ya que todos comparten el mismo patrón de fetch
 (`credentials: "include"` contra el mismo host). Esas requests puntuales van
 a seguir apareciendo como error de CORS en `browser_console_messages` /
 `browser_network_requests` aunque el resto de la pantalla funcione — no lo

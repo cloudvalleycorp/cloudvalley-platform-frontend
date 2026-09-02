@@ -22,6 +22,19 @@ export const DELETE_WORKBOOK_UPLOAD_URL = `${API_BASE_URL}/delete-workbook-uploa
 // of truth/operational input/etc.) y configuración de sync — todo nuevo,
 // mismo lanzamiento.
 export const CLASSIFY_WORKBOOK_URL = `${API_BASE_URL}/classify-workbook`;
+// Contrato 2026-08-31 — cuando classify-workbook detecta layout "grid"/"eav"
+// (una hoja con período en columnas/filas tipo estado de resultados, o en
+// formato vertical fecha/métrica/valor) este endpoint reemplaza a
+// analyze-transactional-sheet para esa hoja puntual. Nunca trae los valores
+// numéricos de la hoja (solo posiciones/nombres) — el preview real se arma
+// leyendo sample_rows que el frontend ya tiene cargado.
+export const EXTRACT_SHEET_LAYOUT_URL = `${API_BASE_URL}/extract-sheet-layout`;
+// Contrato 2026-08-31 — URL firmada de LECTURA (a diferencia de
+// request-workbook-upload-url, que es de escritura) para ver/descargar el
+// archivo Excel original ya subido a una conexión. Solo aplica a
+// source: "excel" — las conexiones de Sheets no tienen archivo, se leen en
+// vivo. Expira en 60 min, pedirla recién al hacer click, nunca cachearla.
+export const GET_WORKBOOK_DOWNLOAD_URL = `${API_BASE_URL}/get-workbook-download-url`;
 export const SET_CONNECTION_DATA_ROLE_URL = `${API_BASE_URL}/set-connection-data-role`;
 export const SET_CONNECTION_SYNC_SETTINGS_URL = `${API_BASE_URL}/set-connection-sync-settings`;
 
@@ -106,15 +119,51 @@ export type IngestResult = {
   row_errors: unknown[];
 };
 
+// ---- save-sheet-mapping: campos comunes a los 3 modos, más los propios de
+// "grid"/"eav" (2026-08-31) — structure ausente/"tabular" es el contrato de
+// siempre, retrocompatible sin cambios. ----
+type SaveSheetMappingCommon = {
+  company_id: string;
+  source: "sheet" | "excel";
+  sheet_name: string;
+  connection_id?: string;
+  upload_id?: string;
+  account_id?: string;
+  spreadsheet_id?: string;
+  spreadsheet_name?: string;
+};
+export type SaveSheetMappingTabularRequest = SaveSheetMappingCommon & {
+  structure?: "tabular";
+  period_column: string;
+  field_mappings: FieldMapping[];
+};
+export type SaveSheetMappingGridRequest = SaveSheetMappingCommon & {
+  structure: "grid";
+  period_orientation: "columns" | "rows";
+  period_axis: PeriodAxisEntry[];
+  concept_axis: ConceptAxisEntry[];
+};
+export type SaveSheetMappingEavRequest = SaveSheetMappingCommon & {
+  structure: "eav";
+  eav_period_column: string;
+  eav_metric_name_column: string;
+  eav_value_column: string;
+  eav_metric_mapping: EavMetricMapping[];
+};
+export type SaveSheetMappingRequest = SaveSheetMappingTabularRequest | SaveSheetMappingGridRequest | SaveSheetMappingEavRequest;
+
+// field_mappings viene null para structure "grid"/"eav" (sin descripciones
+// generadas por IA en esta pasada, a diferencia del modo tabular).
 // save-sheet-mapping ahora también devuelve field_mappings (antes solo
 // {success, connection_id}) — cada uno con su description ya resuelta
 // (generada o la que mandó el founder), para poder mostrarla sin un
 // segundo request. 2026-08-11. ingest_result: contrato 2026-08-30 (ver
-// arriba).
+// arriba). field_mappings viene null para structure "grid"/"eav" (contrato
+// 2026-08-31, sin descripciones generadas por IA en esta pasada).
 export type SaveSheetMappingResponse = {
   success: boolean;
   connection_id: string;
-  field_mappings: FieldMapping[];
+  field_mappings: FieldMapping[] | null;
   ingest_result: IngestResult | null;
 };
 
@@ -134,7 +183,12 @@ export type SheetConnection = {
   spreadsheet_name: string;
   sheet_name: string;
   period_column: string;
-  field_mappings: FieldMapping[];
+  // null para conexiones structure="grid"/"eav" (contrato 2026-08-31) — el
+  // tipo decía FieldMapping[] a secas hasta que un crash real en vivo
+  // (2026-09-01, primera vez que se guardó una conexión eav de verdad)
+  // confirmó que backend sí devuelve null acá, no solo en la respuesta de
+  // save-sheet-mapping. Ver fieldCountLabel en GrowthTrackerSheets.tsx.
+  field_mappings: FieldMapping[] | null;
   last_synced_at: string | null;
   last_sync_status: string | null;
   created_at: string;
@@ -147,6 +201,20 @@ export type SheetConnection = {
   next_sync_at: string | null;
   freshness_sla: string | null;
 };
+
+// field_mappings viene null para conexiones structure="grid"/"eav"
+// (contrato 2026-08-31) — bug real encontrado en vivo 2026-09-01: 4 lugares
+// (GrowthTrackerSheets.tsx x3, MetricsDataSourcesTab.tsx x1) asumían que
+// siempre era un array y rompían toda la página (crash de React, pantalla
+// en blanco) al leer .length de null la primera vez que se guardó una
+// conexión grid/eav real de verdad (hasta entonces nunca había pasado).
+// tsc no lo atrapó porque este proyecto tiene "strict": false — no hay
+// protección de null en ningún lado del código, revisión manual es la única
+// defensa real.
+export function fieldCountLabel(fieldMappings: FieldMapping[] | null): string {
+  if (fieldMappings === null) return "mapeo avanzado";
+  return `${fieldMappings.length} campo${fieldMappings.length === 1 ? "" : "s"}`;
+}
 
 export type SyncRowError = { field: string; reason: string; row?: number; period?: string };
 
@@ -193,6 +261,17 @@ export type SheetsApiError = {
   // chequeo client-side ya hecho antes de llegar acá (ver
   // GrowthTrackerSheets.tsx, bug real encontrado en vivo 2026-08-29).
   duplicateConnectionId?: string;
+  // save-sheet-mapping, 400 (contrato 2026-08-31, modos "grid"/"eav"): una
+  // coordenada/columna que se había confirmado con extract-sheet-layout ya
+  // no existe en la hoja real (se re-subió una versión distinta entre el
+  // análisis y la confirmación) — hay que volver a llamar a
+  // extract-sheet-layout, nunca reintentar con los mismos datos.
+  layoutStale?: boolean;
+  // save-sheet-mapping, 400 "grid inválido"/"eav inválido" (contrato
+  // 2026-09-01): qué field_keys vinieron con un value_type no aceptado, y
+  // qué valores SÍ acepta — evita tener que adivinar a ciegas qué mandar.
+  invalidValueTypes?: { field_key: string; value_type: string }[];
+  allowedValueTypes?: string[];
 };
 
 export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
@@ -208,6 +287,12 @@ export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
           ? data.duplicate_field_keys_across_connections
           : undefined,
       duplicateConnectionId: typeof data?.duplicate_connection_id === "string" ? data.duplicate_connection_id : undefined,
+      // El contrato no manda un booleano dedicado para este caso — reason
+      // solo viene presente en el error de "hoja cambió", se usa como
+      // discriminador.
+      layoutStale: typeof data?.reason === "string",
+      invalidValueTypes: Array.isArray(data?.invalid_value_types) ? data.invalid_value_types : undefined,
+      allowedValueTypes: Array.isArray(data?.allowed_value_types) ? data.allowed_value_types : undefined,
     };
   } catch {
     return { reconnectRequired: false, sourceDisabled: false, message: null };
@@ -230,13 +315,91 @@ export type GetUploadStatusResponse = {
 
 // ---- Clasificación de spreadsheet + rol de fuente + sync (2026-08-30) ----
 
+// "row_based" = una fila por período/registro, el mapeo de columnas de
+// siempre (period_column + field_mappings). "grid" = período en un eje
+// (columnas o filas) y conceptos en el otro, ej. un estado de resultados
+// con meses en columnas — necesita extract-sheet-layout. "eav" = formato
+// vertical fecha/nombre-de-métrica/valor en vez de una columna por métrica
+// — también necesita extract-sheet-layout. Ausente (respuesta vieja
+// cacheada) se trata como "row_based", mismo default que aplica backend.
+export type SheetLayout = "row_based" | "grid" | "eav";
+
 export type ClassifiedSheet = {
   sheet_name: string;
   spreadsheet_type: SpreadsheetType;
   row_semantics: string;
+  layout?: SheetLayout;
   confidence: Confidence;
   suggested_data_role: Exclude<DataRole, "source_of_truth">;
 };
+
+// ---- extract-sheet-layout (2026-08-31) — reemplaza a
+// analyze-transactional-sheet cuando classify-workbook detecta layout
+// "grid"/"eav". Nunca trae valores numéricos de la hoja, solo
+// posiciones/nombres — el preview de datos reales sale de sample_rows que
+// el frontend ya tiene, no de esta respuesta. ----
+
+export type ExtractSheetLayoutRequest = {
+  company_id: string;
+  sheet_name: string;
+  layout_hint: Extract<SheetLayout, "grid" | "eav">;
+  source: "sheet" | "excel";
+  upload_id?: string; // requerido si source="excel"
+  account_id?: string; // requerido si source="sheet"
+  spreadsheet_id?: string; // requerido si source="sheet"
+  // Solo source="sheet": ignora el cache de backend y vuelve a analizar —
+  // usar cuando el founder edita la hoja real después de haberla analizado.
+  force?: boolean;
+};
+
+export type PeriodAxisEntry = { index: number; period: string; confidence: Confidence };
+
+export type ConceptAxisEntry = {
+  index: number;
+  label: string;
+  suggested_field_key: string;
+  // Contrato backend (2026-09-01): garantizado "number"|"text" — el backend
+  // normaliza cualquier valor que la IA devuelva fuera de ese enum antes de
+  // responder. Antes de este contrato se vieron en vivo "monetary" y
+  // "currency" en corridas reales (ninguno aceptado por save-sheet-mapping,
+  // ver normalizeConceptValueType en GrowthTrackerSheets.tsx) — ya no
+  // deberían aparecer, pero esa normalización queda como red de seguridad.
+  value_type: "number" | "text";
+  data_maturity: "raw" | "calculated";
+  derived_from?: string[];
+  confidence: Confidence;
+};
+
+export type ExtractSheetLayoutGridResponse = {
+  layout: "grid";
+  sheet_name: string;
+  period_orientation: "columns" | "rows";
+  period_axis: PeriodAxisEntry[];
+  concept_axis: ConceptAxisEntry[];
+};
+
+export type EavMetricMapping = {
+  observed_value: string;
+  field_key: string;
+  value_type: "number" | "text";
+  data_maturity: "raw" | "calculated";
+  confidence: Confidence;
+};
+
+export type ExtractSheetLayoutEavResponse = {
+  layout: "eav";
+  sheet_name: string;
+  eav_period_column: string;
+  eav_metric_name_column: string;
+  eav_value_column: string;
+  eav_metric_mapping: EavMetricMapping[];
+};
+
+export type ExtractSheetLayoutResponse = ExtractSheetLayoutGridResponse | ExtractSheetLayoutEavResponse;
+
+// ---- get-workbook-download-url (2026-08-31) ----
+
+export type GetWorkbookDownloadUrlResponse = { download_url: string; file_name: string };
 
 export type SetConnectionSyncSettingsResponse = {
   connection_id: string;

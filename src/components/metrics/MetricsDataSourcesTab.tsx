@@ -6,6 +6,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { SheetConnection, GoogleAccount, DataRole } from "@/lib/sheetsIntegration";
+import { fieldCountLabel } from "@/lib/sheetsIntegration";
 import type { MetricDef, RawField } from "@/lib/metrics";
 import { computeSourceStatus } from "@/lib/dataFreshness";
 import { SourceStatusPill } from "@/components/metrics/SourceStatusPill";
@@ -48,7 +49,7 @@ export function MetricsDataSourcesTab({ connections, accounts, metrics, rawField
             <FileSpreadsheet size={13} strokeWidth={1.5} className="text-muted-foreground shrink-0" />
             {c.spreadsheet_name} · {c.sheet_name}
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">{c.field_mappings.length} campo{c.field_mappings.length === 1 ? "" : "s"}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{fieldCountLabel(c.field_mappings)}</p>
         </div>
       ),
     },

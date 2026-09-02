@@ -57,36 +57,66 @@ export default function Metrics() {
   const reloadSources = async () => {
     if (!company_id) return;
     setLoadingSources(true);
-    try {
-      const qs = `?company_id=${encodeURIComponent(company_id)}`;
-      const [fieldsRes, connectionsRes, accountsRes] = await Promise.all([
-        fetch(`${LIST_RAW_FIELDS_URL}${qs}`, { credentials: "include" }),
-        fetch(`${LIST_SHEET_CONNECTIONS_URL}${qs}`, { credentials: "include" }),
-        fetch(`${LIST_GOOGLE_ACCOUNTS_URL}${qs}`, { credentials: "include" }),
-      ]);
-      if (await handleMembershipError(fieldsRes)) return;
-      const fieldsData = await fieldsRes.json();
-      const fields: Omit<RawField, "connection_label">[] = Array.isArray(fieldsData?.fields) ? fieldsData.fields : [];
+    const qs = `?company_id=${encodeURIComponent(company_id)}`;
+    // Promise.allSettled, no Promise.all: son 3 requests independientes que
+    // alimentan piezas de UI distintas — un fallo de red en una sola (ej. el
+    // gap de CORS conocido en list-raw-fields, ver playwright/README.md) no
+    // debe tirar las otras dos que sí respondieron. Bug real encontrado en
+    // vivo 2026-09-01: con Promise.all, ese único fallo dejaba "Fuentes de
+    // datos" en "0 fuentes conectadas" pese a que list-sheet-connections
+    // devolvía conexiones reales — Promise.all rechaza entero apenas una
+    // promesa rechaza, descartando los otros dos resultados ya resueltos.
+    const [fieldsResult, connectionsResult, accountsResult] = await Promise.allSettled([
+      fetch(`${LIST_RAW_FIELDS_URL}${qs}`, { credentials: "include" }),
+      fetch(`${LIST_SHEET_CONNECTIONS_URL}${qs}`, { credentials: "include" }),
+      fetch(`${LIST_GOOGLE_ACCOUNTS_URL}${qs}`, { credentials: "include" }),
+    ]);
 
-      const connectionLabelById: Record<string, string> = {};
-      let conns: SheetConnection[] = [];
-      if (connectionsRes.ok) {
-        const connectionsData = await connectionsRes.json();
+    const connectionLabelById: Record<string, string> = {};
+    let conns: SheetConnection[] = [];
+    if (connectionsResult.status === "fulfilled" && connectionsResult.value.ok) {
+      try {
+        const connectionsData = await connectionsResult.value.json();
         conns = Array.isArray(connectionsData?.connections) ? connectionsData.connections : [];
         for (const c of conns) connectionLabelById[c.connection_id] = `${c.spreadsheet_name} · ${c.sheet_name}`;
+      } catch {
+        // sigue con conns vacío
       }
-      setConnections(conns);
-      setRawFields(fields.map((f) => ({ ...f, connection_label: connectionLabelById[f.connection_id] ?? null })));
-
-      if (accountsRes.ok) {
-        const accountsData = await accountsRes.json();
-        setAccounts(Array.isArray(accountsData?.accounts) ? accountsData.accounts : []);
-      }
-    } catch {
-      // silencioso — Fuentes/Salud de datos simplemente muestran menos señales
-    } finally {
-      setLoadingSources(false);
     }
+    setConnections(conns);
+
+    if (fieldsResult.status === "fulfilled") {
+      const fieldsRes = fieldsResult.value;
+      if (fieldsRes.ok) {
+        try {
+          const fieldsData = await fieldsRes.json();
+          const fields: Omit<RawField, "connection_label">[] = Array.isArray(fieldsData?.fields) ? fieldsData.fields : [];
+          setRawFields(fields.map((f) => ({ ...f, connection_label: connectionLabelById[f.connection_id] ?? null })));
+        } catch {
+          setRawFields([]);
+        }
+      } else {
+        await handleMembershipError(fieldsRes);
+        setRawFields([]);
+      }
+    } else {
+      // Fallo de red (ej. CORS) — silencioso, mismo criterio que antes:
+      // Fuentes/Salud de datos simplemente muestran menos señales.
+      setRawFields([]);
+    }
+
+    if (accountsResult.status === "fulfilled" && accountsResult.value.ok) {
+      try {
+        const accountsData = await accountsResult.value.json();
+        setAccounts(Array.isArray(accountsData?.accounts) ? accountsData.accounts : []);
+      } catch {
+        setAccounts([]);
+      }
+    } else {
+      setAccounts([]);
+    }
+
+    setLoadingSources(false);
   };
   useEffect(() => {
     reloadSources();

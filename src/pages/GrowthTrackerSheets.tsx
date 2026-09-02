@@ -7,6 +7,7 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
+  Check,
   ChevronRight,
   ChevronsUpDown,
   Plus,
@@ -45,6 +46,8 @@ import { SuggestedMetricsReview } from "@/components/metrics/SuggestedMetricsRev
 import { EntityResolutionDialog } from "@/components/metrics/EntityResolutionDialog";
 import { EntityAliasesDialog } from "@/components/metrics/EntityAliasesDialog";
 import { DuplicateTransactionsDialog } from "@/components/metrics/DuplicateTransactionsDialog";
+import { GridLayoutMapping } from "@/components/metrics/GridLayoutMapping";
+import { EavLayoutMapping } from "@/components/metrics/EavLayoutMapping";
 import {
   LIST_GOOGLE_ACCOUNTS_URL,
   CONNECT_SHEETS_URL,
@@ -63,8 +66,11 @@ import {
   CLASSIFY_WORKBOOK_URL,
   SET_CONNECTION_DATA_ROLE_URL,
   SET_CONNECTION_SYNC_SETTINGS_URL,
+  EXTRACT_SHEET_LAYOUT_URL,
+  GET_WORKBOOK_DOWNLOAD_URL,
   EXCEL_CONTENT_TYPE,
   parseSheetsError,
+  fieldCountLabel,
   type GoogleAccount,
   type GoogleAccountsResponse,
   type SheetSummary,
@@ -76,18 +82,35 @@ import {
   type DataRole,
   type SyncMode,
   type SyncFrequency,
+  type SheetLayout,
+  type ExtractSheetLayoutRequest,
+  type ExtractSheetLayoutResponse,
+  type PeriodAxisEntry,
+  type ConceptAxisEntry,
+  type EavMetricMapping,
+  type SaveSheetMappingRequest,
+  type GetWorkbookDownloadUrlResponse,
 } from "@/lib/sheetsIntegration";
 
 const PERIOD_PATTERNS = ["periodo", "period", "mes", "month", "fecha", "date"];
 
-type WizardStep = 1 | 2 | 3;
+// 1 Planilla/Archivo → 2 Hoja (solo Sheets) → 3 Reconociendo (resultado de
+// classify-workbook, pantalla propia) → 4 Mapear columnas → 5 Confirmar
+// métricas (solo si analyze-transactional-sheet sugirió algo).
+type WizardStep = 1 | 2 | 3 | 4 | 5;
+
+// Excel no tiene paso "Hoja" propio (WizardStep 2 no se usa en ese modo) —
+// este mapa traduce el WizardStep real al índice visual del rail de abajo.
+const EXCEL_STEP_LABELS = ["Archivo", "Reconociendo", "Mapear columnas", "Confirmar métricas"];
+const EXCEL_STEP_INDEX: Record<WizardStep, number> = { 1: 1, 2: 1, 3: 2, 4: 3, 5: 4 };
+const SHEETS_STEP_LABELS = ["Planilla", "Hoja", "Reconociendo", "Mapear columnas", "Confirmar métricas"];
 
 // Un campo crudo en edición: cada columna de la hoja se usa (con un
 // field_key propio y un tipo) o no se usa — nada de agregación ni filtros
 // acá, eso vive en las fórmulas de Métricas (ver formulaEngine.ts:
 // FIELDSUM/FIELDCOUNT/FIELDCOUNTD/FIELDAVG). La integración solo dice "qué
 // columna se lee y cómo se llama."
-type DraftFieldMapping = {
+export type DraftFieldMapping = {
   column: string;
   field_key: string;
   value_type: "number" | "text";
@@ -130,7 +153,85 @@ function slugifyFieldKey(s: string): string {
 // field_key (snake_case) para cada columna restante — todas number por
 // default (no hay forma confiable de adivinar texto vs. número solo por el
 // nombre de la columna, el usuario lo corrige si hace falta).
-function autoMapHeaders(headers: string[]): { periodColumn: string | null; fieldMappings: Record<string, DraftFieldMapping> } {
+// Chequeo determinístico, no-IA: la columna de período tiene que contener
+// valores que parezcan fecha (Date.parse es permisivo — "Enero 2026",
+// "2026-01", "01/2026" todos parsean; "Venta bruta" no). Sin esto, elegir a
+// mano una columna de texto como período se guardaba en silencio sin ningún
+// aviso — justo el caso de un estado de resultados con la columna de
+// etiquetas de fila marcada por error como "período".
+// Contrato 2026-09-01: extract-sheet-layout garantiza "number"|"text" en
+// value_type (el backend normaliza cualquier otra cosa que la IA devuelva
+// antes de responder). Antes de este contrato se vieron en vivo "monetary"
+// y "currency" en corridas reales sobre el mismo archivo — ninguno aceptado
+// por save-sheet-mapping (400 "grid inválido"). Esta función queda como red
+// de seguridad, no como el camino esperado: si backend rompe la garantía de
+// nuevo, un valor de plata cae a "number" (más útil que "text" para algo que
+// se va a sumar) y cualquier otra cosa desconocida cae a "text".
+export function normalizeConceptValueType(raw: string): "number" | "text" {
+  if (raw === "number" || raw === "text") return raw;
+  if (raw === "monetary" || raw === "currency") return "number";
+  return "text";
+}
+
+// Causa real del loop "la hoja cambió" en layout grid/eav, confirmada en
+// vivo 2026-09-01 con un archivo de control sin filas vacías (guardó al
+// primer intento) contra el mismo archivo con una fila 100% vacía en todos
+// los períodos (ej. "Otros ingresos" en cero/blanco los 12 meses): la IA de
+// extract-sheet-layout es no-determinística sobre si una fila así cuenta
+// como concepto. Dos extracciones seguidas del mismo archivo sin cambios
+// pueden traer listas de distinto largo, y save-sheet-mapping lo interpreta
+// como "el archivo cambió". Como esa fila no tiene ningún dato real que
+// perder, la solución no es explicarle al founder que edite el Excel y
+// vuelva a subirlo — es detectar automáticamente cuál fila es la
+// inconsistente (comparando qué se mandó a guardar contra la reextracción
+// fresca) y excluirla del mapeo para poder guardar el resto ya mismo. Ver
+// el uso en doSaveMapping.
+export function findMissingOrNewConcepts(submitted: string[], fresh: string[]): string[] {
+  const submittedSet = new Set(submitted);
+  const freshSet = new Set(fresh);
+  const diff = new Set<string>();
+  for (const label of submitted) if (!freshSet.has(label)) diff.add(label);
+  for (const label of fresh) if (!submittedSet.has(label)) diff.add(label);
+  return Array.from(diff);
+}
+
+// Tope de reintentos automáticos del loop de arriba — puramente una
+// salvaguarda contra un caso patológico (varias filas inestables a la vez),
+// no el camino esperado: en la práctica un archivo real con una sola fila
+// vacía se resuelve en 1-2 reintentos.
+const MAX_LAYOUT_STALE_ATTEMPTS = 3;
+
+// Bug real encontrado en vivo 2026-09-01: fieldMappings está indexado por
+// NOMBRE de columna (Record<string, DraftFieldMapping>), no por posición —
+// con headers repetidos (ej. "Cliente" dos veces), ambas columnas colisionan
+// en la misma entrada y una se pierde en silencio al guardar (confirmado:
+// el field_mappings mandado a save-sheet-mapping solo traía 1 "Cliente" y 1
+// "Monto" en vez de 2 de cada uno, y el ingest_result terminó usando los
+// valores de la SEGUNDA columna física, descartando la primera sin ningún
+// aviso). Arreglar el modelo de datos para indexar por posición es un
+// cambio de arquitectura más grande — mientras tanto, esto se detecta y
+// BLOQUEA el guardado (a diferencia de los demás avisos de este wizard, que
+// nunca bloquean): acá no hay ambigüedad de negocio que el founder pueda
+// resolver desde la UI, es pérdida de datos garantizada.
+export function findDuplicateHeaders(headers: string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const h of headers) counts.set(h, (counts.get(h) ?? 0) + 1);
+  return Array.from(counts.entries())
+    .filter(([, c]) => c > 1)
+    .map(([h]) => h);
+}
+
+export function periodColumnLooksWrong(header: string | null, headers: string[], sampleRows: string[][]): boolean {
+  if (!header) return false;
+  const idx = headers.indexOf(header);
+  if (idx === -1) return false;
+  const values = sampleRows.map((r) => r[idx]).filter((v) => v != null && String(v).trim() !== "");
+  if (values.length === 0) return false;
+  const parseable = values.filter((v) => !Number.isNaN(Date.parse(String(v)))).length;
+  return parseable / values.length < 0.5;
+}
+
+export function autoMapHeaders(headers: string[]): { periodColumn: string | null; fieldMappings: Record<string, DraftFieldMapping> } {
   let periodColumn: string | null = null;
   const fieldMappings: Record<string, DraftFieldMapping> = {};
   const usedKeys = new Set<string>();
@@ -278,7 +379,16 @@ export default function GrowthTrackerSheets() {
   const { analyzeTransactionalSheet, analyzingSheet } = useMetricInsights(company_id);
   const [suggestedMetrics, setSuggestedMetrics] = useState<SuggestedMetric[]>([]);
   const [metricsNeedingMoreData, setMetricsNeedingMoreData] = useState<MetricNeedingMoreData[]>([]);
-  const [showMetricsReview, setShowMetricsReview] = useState(false);
+  // analyzeTransactionalSheet ya avisa con un toast si falla (useMetricInsights.ts),
+  // pero un toast es efímero (~4s) y el usuario recién ve el paso de mapeo
+  // después de esa espera — encontrado en vivo 2026-09-01: con la request
+  // bloqueada (mismo gap de CORS de playwright/README.md), el mapeo quedaba
+  // con nombres de campo bien resueltos (autoMapHeaders, local) pero el tipo
+  // de dato de cada columna sin la corrección de la IA, sin ningún indicio
+  // visible en el paso mismo de que la sugerencia había fallado. Este flag
+  // sostiene un aviso persistente mientras el usuario está parado en "Mapeá
+  // las columnas", no solo el toast que ya pasó.
+  const [aiEnrichmentFailed, setAiEnrichmentFailed] = useState(false);
 
   // Per-connection sync state — each connection card syncs/tests
   // independently, and "Sincronizar todo" fills several of these at once.
@@ -337,8 +447,13 @@ export default function GrowthTrackerSheets() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usedFieldKeys.join(",")]);
   const allMappingsValid = Object.values(fieldMappings).every((m) => m.field_key.trim().length > 0);
-  const canSaveMapping =
-    !!periodColumn && usedColumnsCount > 0 && allMappingsValid && duplicateFieldKeys.length === 0;
+  const duplicateHeaders = useMemo(() => findDuplicateHeaders(headers), [headers]);
+  const canSaveMappingTabular =
+    !!periodColumn &&
+    usedColumnsCount > 0 &&
+    allMappingsValid &&
+    duplicateFieldKeys.length === 0 &&
+    duplicateHeaders.length === 0;
 
   // Para SuggestedMetricsReview: las categorías (tabs) que ya existen en el
   // catálogo real de la company, así una métrica sugerida por IA cae en un
@@ -535,7 +650,7 @@ export default function GrowthTrackerSheets() {
         const seededPeriod = hs.includes(seed.period_column) ? seed.period_column : null;
         if (!seededPeriod) missing.push(seed.period_column);
         const seededMappings: Record<string, DraftFieldMapping> = {};
-        for (const fm of seed.field_mappings) {
+        for (const fm of seed.field_mappings ?? []) {
           if (!hs.includes(fm.column)) {
             missing.push(fm.column);
             continue;
@@ -566,21 +681,40 @@ export default function GrowthTrackerSheets() {
     }
 
     if (!autoMapped) return;
-    // classify-workbook corre en paralelo (cupo de IA "onboarding", separado
-    // del cupo "regular" de analyze-transactional-sheet) — puramente
-    // informativo esta pasada (spreadsheet_type + suggested_data_role), no
-    // bloquea el mapeo si falla o se agota el cupo.
+    // classify-workbook se espera antes de decidir qué análisis correr —
+    // "layout" (row_based/grid/eav) determina si sigue el flujo de
+    // analyze-transactional-sheet (fila por período, de siempre) o si esta
+    // hoja necesita extract-sheet-layout (período en columnas/filas, o
+    // formato vertical fecha/métrica/valor). Antes esto no se esperaba y
+    // analyze-transactional-sheet corría siempre, sin importar el tipo real
+    // de la hoja — el bug que encontró el usuario con el estado de
+    // resultados ancho.
     setClassifying(true);
-    classifyWorkbook(sheetName, autoMapped.hs, autoMapped.sampleRows).finally(() => setClassifying(false));
+    const cls = await classifyWorkbook(sheetName, autoMapped.hs, autoMapped.sampleRows, "sheet");
+    setClassifying(false);
+    const layout: SheetLayout = cls?.layout ?? "row_based";
+    setSheetLayout(layout);
+    setLayoutOverride(null);
+    setLayoutExtraction(null);
+    if (layout === "grid" || layout === "eav") {
+      await extractSheetLayout(layout, { sheetName, excel: false, accountId, spreadsheetId });
+      return;
+    }
 
+    setAiEnrichmentFailed(false);
     const analysis = await analyzeTransactionalSheet({
+      source: "sheet",
       accountId,
       spreadsheetId,
       sheetName,
       headers: autoMapped.hs,
       sampleRows: autoMapped.sampleRows,
+      spreadsheetType: cls?.spreadsheet_type,
     });
-    if (!analysis) return;
+    if (!analysis) {
+      setAiEnrichmentFailed(true);
+      return;
+    }
 
     const suggestedCount = analysis.suggested_fields.filter((f) => f.column !== autoMapped!.periodColumn).length;
     if (suggestedCount > 0) {
@@ -614,24 +748,110 @@ export default function GrowthTrackerSheets() {
   // falla o se agota el cupo de IA "onboarding". Se llama tanto desde
   // loadHeaders (Sheets) como desde el flujo de Excel, una sola vez por
   // hoja/tab nueva — nunca al editar una conexión existente.
-  const classifyWorkbook = async (sheetName: string, hs: string[], sampleRows: string[][]) => {
-    if (!company_id) return;
+  const classifyWorkbook = async (sheetName: string, hs: string[], sampleRows: string[][], source: "sheet" | "excel" = "sheet"): Promise<ClassifiedSheet | null> => {
+    if (!company_id) return null;
     setClassification(null);
     try {
       const res = await fetch(CLASSIFY_WORKBOOK_URL, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_id, sheets: [{ sheet_name: sheetName, headers: hs, sample_rows: sampleRows }] }),
+        body: JSON.stringify({ company_id, source, sheets: [{ sheet_name: sheetName, headers: hs, sample_rows: sampleRows }] }),
       });
-      if (!res.ok) return; // no bloqueante — 429/503/400 se ignoran en silencio, es solo una sugerencia
+      if (!res.ok) return null; // no bloqueante — 429/503/400 se ignoran en silencio, es solo una sugerencia
       const data = await res.json();
       const sheets: ClassifiedSheet[] = Array.isArray(data?.sheets) ? data.sheets : [];
-      setClassification(sheets.find((s) => s.sheet_name === sheetName) ?? null);
+      const found = sheets.find((s) => s.sheet_name === sheetName) ?? null;
+      setClassification(found);
+      return found;
     } catch {
       // silencioso — puramente informativo
+      return null;
     }
   };
+
+  // ---- extract-sheet-layout (2026-08-31) — reemplaza a
+  // analyze-transactional-sheet cuando classify-workbook detecta layout
+  // "grid"/"eav" para esta hoja. El founder siempre puede cambiar el
+  // mecanismo a mano (layoutOverride) sin importar lo que sugirió la IA.
+  const [sheetLayout, setSheetLayout] = useState<SheetLayout>("row_based");
+  const [layoutOverride, setLayoutOverride] = useState<SheetLayout | null>(null);
+  const [layoutExtraction, setLayoutExtraction] = useState<ExtractSheetLayoutResponse | null>(null);
+  const [extractingLayout, setExtractingLayout] = useState(false);
+  const effectiveLayout: SheetLayout = layoutOverride ?? sheetLayout;
+  // Copias editables — el founder puede corregir cualquier campo sugerido
+  // antes de confirmar (pedido explícito del contrato de backend), nunca se
+  // manda la sugerencia de la IA tal cual sin poder tocarla.
+  const [gridConceptAxis, setGridConceptAxis] = useState<ConceptAxisEntry[]>([]);
+  const [eavMetricMapping, setEavMetricMapping] = useState<EavMetricMapping[]>([]);
+
+  // Toma los identificadores como parámetros explícitos (no del estado del
+  // componente) — se llama desde loadHeaders/handleExcelSheetPicked justo
+  // cuando esos valores recién se están fijando, antes de que el estado
+  // termine de actualizarse.
+  const extractSheetLayout = async (
+    layoutHint: Extract<SheetLayout, "grid" | "eav">,
+    ctx?: { sheetName: string; excel: boolean; uploadId?: string | null; accountId?: string | null; spreadsheetId?: string | null },
+    force = false
+  ): Promise<ExtractSheetLayoutResponse | null> => {
+    const sheetName = ctx?.sheetName ?? selectedSheetName;
+    if (!company_id || !sheetName) return null;
+    const isExcel = ctx?.excel ?? excelMode;
+    setExtractingLayout(true);
+    setLayoutExtraction(null);
+    try {
+      const body: ExtractSheetLayoutRequest = isExcel
+        ? { company_id, sheet_name: sheetName, layout_hint: layoutHint, source: "excel", upload_id: (ctx?.uploadId ?? excelUploadId) ?? undefined, force }
+        : { company_id, sheet_name: sheetName, layout_hint: layoutHint, source: "sheet", account_id: (ctx?.accountId ?? wizardAccountId) ?? undefined, spreadsheet_id: (ctx?.spreadsheetId ?? selectedSpreadsheetId) ?? undefined, force };
+      const res = await fetch(EXTRACT_SHEET_LAYOUT_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err?.error ?? "No pudimos entender la estructura de esta hoja. Podés mapearla a mano.");
+        setLayoutOverride("row_based");
+        return null;
+      }
+      const data = (await res.json()) as ExtractSheetLayoutResponse;
+      setLayoutExtraction(data);
+      if (data.layout === "grid") {
+        setGridConceptAxis(data.concept_axis.map((c) => ({ ...c, value_type: normalizeConceptValueType(c.value_type) })));
+      } else {
+        setEavMetricMapping(data.eav_metric_mapping.map((m) => ({ ...m, value_type: normalizeConceptValueType(m.value_type) })));
+      }
+      return data;
+    } catch {
+      toast.error("No pudimos entender la estructura de esta hoja. Podés mapearla a mano.");
+      setLayoutOverride("row_based");
+      return null;
+    } finally {
+      setExtractingLayout(false);
+    }
+  };
+
+  // El founder cambia el mecanismo a mano (selector en el paso 3) —
+  // dispara extract-sheet-layout si hace falta, o vuelve al mapeo de
+  // columnas de siempre si elige "row_based".
+  const handleLayoutOverride = (next: SheetLayout) => {
+    setLayoutOverride(next);
+    if (next === "grid" || next === "eav") {
+      if (!layoutExtraction || layoutExtraction.layout !== next) extractSheetLayout(next);
+    }
+  };
+
+  const handleReanalyzeLayout = () => {
+    if (effectiveLayout === "grid" || effectiveLayout === "eav") extractSheetLayout(effectiveLayout, undefined, true);
+  };
+
+  const canSaveMapping =
+    effectiveLayout === "row_based"
+      ? canSaveMappingTabular
+      : effectiveLayout === "grid"
+        ? !extractingLayout && layoutExtraction?.layout === "grid" && gridConceptAxis.length > 0
+        : !extractingLayout && layoutExtraction?.layout === "eav" && eavMetricMapping.length > 0;
 
   // loadTabs/loadHeaders are deliberately called directly from the click
   // (or from openEditConnection) instead of a useEffect keyed off the
@@ -657,6 +877,11 @@ export default function GrowthTrackerSheets() {
     setSheetSearch("");
     setTabSearch("");
     setClassification(null);
+    setSheetLayout("row_based");
+    setLayoutOverride(null);
+    setLayoutExtraction(null);
+    setGridConceptAxis([]);
+    setEavMetricMapping([]);
   };
 
   const resetExcelWizard = () => {
@@ -681,6 +906,7 @@ export default function GrowthTrackerSheets() {
   const resetSuggestedMetrics = () => {
     setSuggestedMetrics([]);
     setMetricsNeedingMoreData([]);
+    setAiEnrichmentFailed(false);
   };
 
   const openAddConnection = (accountId: string) => {
@@ -704,7 +930,10 @@ export default function GrowthTrackerSheets() {
     setSelectedSpreadsheetId(spreadsheetId);
     setSelectedSpreadsheetName(conn.spreadsheet_name);
     setSelectedSheetName(conn.sheet_name);
-    setStep(3);
+    // Editar salta directo a Mapear columnas — no hay nada que "reconocer"
+    // (classify-workbook nunca corre de nuevo al editar, ver el guard
+    // !editingConnectionId más abajo).
+    setStep(4);
     setLoadingEditConnection(true);
     Promise.all([
       loadSheets(accountId),
@@ -792,7 +1021,7 @@ export default function GrowthTrackerSheets() {
       setExcelSheets(sheets);
       setExcelStep("pick_sheet");
       if (sheets.length === 1) {
-        handleExcelSheetPicked(sheets[0]);
+        handleExcelSheetPicked(sheets[0], upload_id);
       }
     } catch {
       toast.error("No se pudo subir el archivo");
@@ -800,20 +1029,92 @@ export default function GrowthTrackerSheets() {
     }
   };
 
-  const handleExcelSheetPicked = (sheet: WorkbookSheetPreview) => {
+  // uploadIdOverride: cuando se llama justo después de setExcelUploadId (el
+  // auto-pick de un workbook de una sola hoja, ver handleExcelFileChange),
+  // el estado todavía no se aplicó — leer excelUploadId acá adentro daría el
+  // valor viejo (null). Mismo patrón que ya usa extractSheetLayout.
+  const handleExcelSheetPicked = async (sheet: WorkbookSheetPreview, uploadIdOverride?: string) => {
     setSelectedSpreadsheetName(excelFileName);
     setSelectedSheetName(sheet.sheet_name);
     setHeaders(sheet.headers);
-    setSampleRows(sheet.sample_rows.map((r) => r.map((c) => String(c ?? ""))));
+    const sampleRowsData = sheet.sample_rows.map((r) => r.map((c) => String(c ?? "")));
+    setSampleRows(sampleRowsData);
     const auto = autoMapHeaders(sheet.headers);
     setPeriodColumn(auto.periodColumn);
     setFieldMappings(auto.fieldMappings);
     setStaleHeaders([]);
     setStep(3);
+    setLayoutOverride(null);
+    setLayoutExtraction(null);
     setClassifying(true);
-    classifyWorkbook(sheet.sheet_name, sheet.headers, sheet.sample_rows.map((r) => r.map((c) => String(c ?? "")))).finally(() =>
-      setClassifying(false)
-    );
+    const cls = await classifyWorkbook(sheet.sheet_name, sheet.headers, sampleRowsData, "excel");
+    setClassifying(false);
+    const layout: SheetLayout = cls?.layout ?? "row_based";
+    setSheetLayout(layout);
+    if (layout === "grid" || layout === "eav") {
+      extractSheetLayout(layout, { sheetName: sheet.sheet_name, excel: true, uploadId: uploadIdOverride ?? excelUploadId });
+      return;
+    }
+    // analyze-transactional-sheet ahora acepta Excel (contrato 2026-09-01,
+    // antes este paso se saltaba directo a mapeo manual para Excel porque
+    // el backend no podía procesarlo) — mismo sugerido de campos/métricas
+    // que ya tenía Sheets.
+    setAiEnrichmentFailed(false);
+    const analysis = await analyzeTransactionalSheet({
+      source: "excel",
+      sheetName: sheet.sheet_name,
+      headers: sheet.headers,
+      sampleRows: sampleRowsData,
+      spreadsheetType: cls?.spreadsheet_type,
+    });
+    if (!analysis) {
+      setAiEnrichmentFailed(true);
+      return;
+    }
+    const suggestedCount = analysis.suggested_fields.filter((f) => f.column !== auto.periodColumn).length;
+    if (suggestedCount > 0) {
+      setFieldMappings((prev) => {
+        const next = { ...prev };
+        for (const f of analysis.suggested_fields) {
+          if (f.column === auto.periodColumn) continue;
+          next[f.column] = { column: f.column, field_key: f.field_key, value_type: f.value_type, description: "", originalDescription: "" };
+        }
+        return next;
+      });
+      toast.success(
+        `IA mapeó ${suggestedCount} columna${suggestedCount === 1 ? "" : "s"}. Revisá los nombres abajo antes de guardar.`
+      );
+    }
+    if (analysis.suggested_metrics.length > 0 || analysis.metrics_needing_more_data.length > 0) {
+      setSuggestedMetrics(analysis.suggested_metrics);
+      setMetricsNeedingMoreData(analysis.metrics_needing_more_data);
+    }
+  };
+
+  // get-workbook-download-url (2026-08-31) — se pide recién al hacer click,
+  // nunca se cachea (la signed URL expira en 60 min). Solo aplica a
+  // conexiones source: "excel" — las de Sheets no tienen archivo propio.
+  const [downloadingConnectionId, setDownloadingConnectionId] = useState<string | null>(null);
+  const handleViewOriginalFile = async (connectionId: string) => {
+    if (!company_id) return;
+    setDownloadingConnectionId(connectionId);
+    try {
+      const res = await fetch(
+        `${GET_WORKBOOK_DOWNLOAD_URL}?company_id=${encodeURIComponent(company_id)}&connection_id=${encodeURIComponent(connectionId)}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err?.error ?? "No se pudo obtener el archivo original");
+        return;
+      }
+      const data = (await res.json()) as GetWorkbookDownloadUrlResponse;
+      window.open(data.download_url, "_blank", "noopener,noreferrer");
+    } catch {
+      toast.error("No se pudo obtener el archivo original");
+    } finally {
+      setDownloadingConnectionId(null);
+    }
   };
 
   const cancelExcelUpload = async () => {
@@ -966,6 +1267,13 @@ export default function GrowthTrackerSheets() {
   // llamaba desde ningún lado.
   const findBreakingChanges = (): MetricDef[] => {
     if (!editingConnectionId) return [];
+    // Grid/eav todavía no tienen esta comparación implementada — comparan
+    // contra fieldMappings (el estado del modo tabular), que para estos dos
+    // modos ni siquiera se llena. Devolver [] acá es correcto por ahora
+    // (evita comparar contra un estado que no corresponde), a costa de no
+    // avisar si un cambio de grid/eav rompe una métrica — gap conocido, no
+    // fabricar una comparación que no es real.
+    if (effectiveLayout !== "row_based") return [];
     const existing = connections.find((c) => c.connection_id === editingConnectionId);
     if (!existing) return [];
     const newByKey = new Map(Object.values(fieldMappings).map((m) => [m.field_key.trim(), m.value_type]));
@@ -995,43 +1303,132 @@ export default function GrowthTrackerSheets() {
     await doSaveMapping();
   };
 
-  const doSaveMapping = async () => {
-    if (!company_id || !selectedSheetName || !periodColumn) return;
+  const doSaveMapping = async (retry?: {
+    attempt: number;
+    gridConceptAxis: ConceptAxisEntry[];
+    eavMetricMapping: EavMetricMapping[];
+  }) => {
+    if (!company_id || !selectedSheetName) return;
+    if (effectiveLayout === "row_based" && !periodColumn) return;
     if (!excelMode && !wizardAccountId) return;
     if (!excelMode && !selectedSpreadsheetId) return;
     if (excelMode && !excelUploadId) return;
     setPendingBreakingChange(null);
     setSavingMapping(true);
     setDuplicateConnectionId(null);
+    // En un reintento (ver err.layoutStale más abajo) se usa la lista ya
+    // corregida que se pasó explícitamente, nunca el estado del componente
+    // directo — setGridConceptAxis/setEavMetricMapping son asíncronos y esta
+    // misma llamada recursiva no vería el valor actualizado a tiempo.
+    const currentGridConceptAxis = retry?.gridConceptAxis ?? gridConceptAxis;
+    const currentEavMetricMapping = retry?.eavMetricMapping ?? eavMetricMapping;
     try {
-      const field_mappings: FieldMapping[] = Object.values(fieldMappings).map((m) => ({
-        column: m.column,
-        field_key: m.field_key.trim(),
-        value_type: m.value_type,
-        // Ausente cuando está vacía — así el backend la genera con IA. Si
-        // tiene contenido (el usuario la escribió o ya venía de un guardado
-        // anterior), se manda tal cual: el backend nunca la sobrescribe.
-        ...(m.description.trim() ? { description: m.description.trim() } : {}),
-      }));
+      const common = {
+        company_id,
+        connection_id: editingConnectionId ?? excelReuploadConnectionId ?? undefined,
+        ...(excelMode
+          ? { source: "excel" as const, upload_id: excelUploadId ?? undefined, spreadsheet_name: excelFileName }
+          : { source: "sheet" as const, account_id: wizardAccountId ?? undefined, spreadsheet_id: selectedSpreadsheetId ?? undefined, spreadsheet_name: selectedSpreadsheetName }),
+        sheet_name: selectedSheetName,
+      };
+      let requestBody: SaveSheetMappingRequest;
+      if (effectiveLayout === "grid" && layoutExtraction?.layout === "grid") {
+        requestBody = {
+          ...common,
+          structure: "grid",
+          period_orientation: layoutExtraction.period_orientation,
+          period_axis: layoutExtraction.period_axis,
+          concept_axis: currentGridConceptAxis,
+        };
+      } else if (effectiveLayout === "eav" && layoutExtraction?.layout === "eav") {
+        requestBody = {
+          ...common,
+          structure: "eav",
+          eav_period_column: layoutExtraction.eav_period_column,
+          eav_metric_name_column: layoutExtraction.eav_metric_name_column,
+          eav_value_column: layoutExtraction.eav_value_column,
+          eav_metric_mapping: currentEavMetricMapping,
+        };
+      } else {
+        const field_mappings: FieldMapping[] = Object.values(fieldMappings).map((m) => ({
+          column: m.column,
+          field_key: m.field_key.trim(),
+          value_type: m.value_type,
+          // Ausente cuando está vacía — así el backend la genera con IA. Si
+          // tiene contenido (el usuario la escribió o ya venía de un guardado
+          // anterior), se manda tal cual: el backend nunca la sobrescribe.
+          ...(m.description.trim() ? { description: m.description.trim() } : {}),
+        }));
+        requestBody = { ...common, structure: "tabular", period_column: periodColumn!, field_mappings };
+      }
       const res = await fetch(SAVE_SHEET_MAPPING_URL, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company_id,
-          connection_id: editingConnectionId ?? excelReuploadConnectionId ?? undefined,
-          ...(excelMode
-            ? { source: "excel", upload_id: excelUploadId, spreadsheet_name: excelFileName }
-            : { source: "sheet", account_id: wizardAccountId, spreadsheet_id: selectedSpreadsheetId, spreadsheet_name: selectedSpreadsheetName }),
-          sheet_name: selectedSheetName,
-          period_column: periodColumn,
-          field_mappings,
-        }),
+        body: JSON.stringify(requestBody),
       });
       if (res.status === 400) {
         const err = await parseSheetsError(res);
         if (err.sourceDisabled || err.reconnectRequired) {
           await loadAccounts();
+          return;
+        }
+        if (err.layoutStale) {
+          if (effectiveLayout !== "grid" && effectiveLayout !== "eav") {
+            toast.error(err.message ?? "La hoja cambió desde que se analizó su estructura. Volvé a intentar guardar.");
+            return;
+          }
+          const attempt = retry?.attempt ?? 0;
+          if (attempt >= MAX_LAYOUT_STALE_ATTEMPTS) {
+            // Solución real, no solo un mensaje: mientras haya una única fila
+            // (o unas pocas) sin ningún dato cargado, el bucle de abajo la
+            // detecta y la excluye sola en 1-2 vueltas. Llegar acá significa
+            // que sigue habiendo inconsistencia después de varios intentos —
+            // el botón de guardar sigue funcionando normalmente (no es un
+            // callejón sin salida), cada click nuevo repite el mismo proceso
+            // de detección y filtrado desde cero.
+            toast.error(
+              "La hoja sigue sin coincidir con lo último analizado después de varios intentos. Volvé a apretar \"Guardar mapeo\": cada intento excluye automáticamente las filas inconsistentes hasta que coincida.",
+              { duration: 10000 }
+            );
+            return;
+          }
+          // Reextrae la estructura real ahora mismo y compara qué se mandó a
+          // guardar contra lo que acaba de volver: la fila que aparece en una
+          // lista y no en la otra es, con la evidencia confirmada en vivo, la
+          // que no tiene ningún dato cargado (ver findMissingOrNewConcepts).
+          const fresh = await extractSheetLayout(effectiveLayout, undefined, true);
+          if (!fresh) return; // extractSheetLayout ya avisó del error real.
+          const submittedLabels =
+            effectiveLayout === "grid"
+              ? currentGridConceptAxis.map((c) => c.label)
+              : currentEavMetricMapping.map((m) => m.observed_value);
+          const freshLabels =
+            fresh.layout === "grid" ? fresh.concept_axis.map((c) => c.label) : fresh.eav_metric_mapping.map((m) => m.observed_value);
+          const diff = findMissingOrNewConcepts(submittedLabels, freshLabels);
+          let nextGrid =
+            fresh.layout === "grid"
+              ? fresh.concept_axis.map((c) => ({ ...c, value_type: normalizeConceptValueType(c.value_type) }))
+              : currentGridConceptAxis;
+          let nextEav =
+            fresh.layout === "eav"
+              ? fresh.eav_metric_mapping.map((m) => ({ ...m, value_type: normalizeConceptValueType(m.value_type) }))
+              : currentEavMetricMapping;
+          if (diff.length > 0) {
+            if (fresh.layout === "grid") nextGrid = nextGrid.filter((c) => !diff.includes(c.label));
+            else nextEav = nextEav.filter((m) => !diff.includes(m.observed_value));
+            toast.error(
+              diff.length === 1
+                ? `"${diff[0]}" no tiene ningún dato cargado en esta hoja. La excluimos del mapeo para guardar el resto ahora. Si más adelante cargás datos ahí, volvé a analizar la hoja desde este paso.`
+                : `${diff.length} filas no tienen ningún dato cargado en esta hoja. Las excluimos del mapeo para guardar el resto ahora. Si más adelante les cargás datos, volvé a analizar la hoja desde este paso.`,
+              { duration: 9000 }
+            );
+          } else {
+            toast.error("La hoja cambió desde que se analizó su estructura. Reintentando con los datos actualizados.");
+          }
+          setGridConceptAxis(nextGrid);
+          setEavMetricMapping(nextEav);
+          await doSaveMapping({ attempt: attempt + 1, gridConceptAxis: nextGrid, eavMetricMapping: nextEav });
           return;
         }
         if (err.missingHeaders?.length) {
@@ -1047,6 +1444,12 @@ export default function GrowthTrackerSheets() {
         if (err.duplicateConnectionId) {
           setDuplicateConnectionId(err.duplicateConnectionId);
           toast.error("Ya existe otra conexión activa para esta misma hoja y pestaña.");
+          return;
+        }
+        if (err.invalidValueTypes?.length) {
+          const fields = err.invalidValueTypes.map((v) => v.field_key).join(", ");
+          const allowed = err.allowedValueTypes?.length ? ` (válidos: ${err.allowedValueTypes.join(", ")})` : "";
+          toast.error(`Tipo de dato inválido en: ${fields}${allowed}. Corregilo arriba y volvé a guardar.`);
           return;
         }
         toast.error(err.message ?? "No se pudo guardar el mapeo");
@@ -1071,8 +1474,11 @@ export default function GrowthTrackerSheets() {
           }
         }
         await financial.reloadLogs();
-        cancelWizard();
-        if (suggestedMetrics.length > 0 || metricsNeedingMoreData.length > 0) setShowMetricsReview(true);
+        if (suggestedMetrics.length > 0 || metricsNeedingMoreData.length > 0) {
+          setStep(5);
+        } else {
+          cancelWizard();
+        }
         return;
       }
       // El connection_id de una conexión nueva no vuelve en la respuesta de
@@ -1100,11 +1506,14 @@ export default function GrowthTrackerSheets() {
           syncTargetId = match?.connection_id ?? null;
         }
       }
-      cancelWizard();
+      if (syncTargetId) await runConnectionSync(syncTargetId, false);
       // Recién acá los field_keys sugeridos existen del lado backend (ver
       // nota en el handler de análisis) — es seguro dejar confirmar.
-      if (suggestedMetrics.length > 0 || metricsNeedingMoreData.length > 0) setShowMetricsReview(true);
-      if (syncTargetId) await runConnectionSync(syncTargetId, false);
+      if (suggestedMetrics.length > 0 || metricsNeedingMoreData.length > 0) {
+        setStep(5);
+      } else {
+        cancelWizard();
+      }
     } catch {
       toast.error("No se pudo guardar el mapeo");
     } finally {
@@ -1357,7 +1766,7 @@ export default function GrowthTrackerSheets() {
                                   <span className="truncate min-w-0 text-muted-foreground font-normal">· {conn.spreadsheet_name}</span>
                                 </p>
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                  {conn.field_mappings.length} campo{conn.field_mappings.length === 1 ? "" : "s"} · última
+                                  {fieldCountLabel(conn.field_mappings)} · última
                                   sincronización {timeAgo(conn.last_synced_at)}
                                   {conn.last_sync_status && (
                                     <>
@@ -1565,7 +1974,7 @@ export default function GrowthTrackerSheets() {
                             <span className="shrink-0 text-muted-foreground font-normal">· {conn.sheet_name}</span>
                           </p>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {conn.field_mappings.length} campo{conn.field_mappings.length === 1 ? "" : "s"} · subido{" "}
+                            {fieldCountLabel(conn.field_mappings)} · subido{" "}
                             {timeAgo(conn.last_synced_at)}
                           </p>
                           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
@@ -1583,6 +1992,16 @@ export default function GrowthTrackerSheets() {
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => openExcelUpload(conn.connection_id)}>
                             <Upload size={11} className="mr-1" />
                             Subir nueva versión
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => handleViewOriginalFile(conn.connection_id)}
+                            disabled={downloadingConnectionId === conn.connection_id}
+                            title="Abre el archivo Excel tal como se subió, para confirmar qué se cargó."
+                          >
+                            {downloadingConnectionId === conn.connection_id ? "Abriendo…" : "Ver archivo original"}
                           </Button>
                           <Button
                             variant="ghost"
@@ -1643,29 +2062,15 @@ export default function GrowthTrackerSheets() {
 
         {showWizard && (
           <div className="space-y-6">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {excelMode ? (
-                <>
-                  <span className="truncate">{excelFileName || "Subir Excel"}</span>
-                  <ChevronRight size={12} strokeWidth={1.5} className="shrink-0" />
-                  <span className={cn(step !== 3 && "text-foreground font-medium")}>1. Archivo</span>
-                  <ChevronRight size={12} strokeWidth={1.5} />
-                  <span className={cn(step === 3 && "text-foreground font-medium")}>2. Mapear columnas</span>
-                </>
-              ) : (
-                <>
-                  <span className="truncate">{wizardAccount?.google_account_email}</span>
-                  <ChevronRight size={12} strokeWidth={1.5} className="shrink-0" />
-                  <span className={cn(step === 1 && "text-foreground font-medium")}>1. Planilla</span>
-                  <ChevronRight size={12} strokeWidth={1.5} />
-                  <span className={cn(step === 2 && "text-foreground font-medium")}>2. Hoja</span>
-                  <ChevronRight size={12} strokeWidth={1.5} />
-                  <span className={cn(step === 3 && "text-foreground font-medium")}>3. Mapear columnas</span>
-                </>
-              )}
-            </div>
+            <p className="text-xs text-muted-foreground truncate">
+              {excelMode ? excelFileName || "Subir Excel" : wizardAccount?.google_account_email}
+            </p>
+            <StepRail
+              labels={excelMode ? EXCEL_STEP_LABELS : SHEETS_STEP_LABELS}
+              current={excelMode ? EXCEL_STEP_INDEX[step] : step}
+            />
 
-            {excelMode && step !== 3 && excelStep === "pick_file" && (
+            {excelMode && step === 1 && excelStep === "pick_file" && (
               <SectionCard title="Subí tu archivo Excel">
                 <p className="text-xs text-muted-foreground mb-3">
                   Solo archivos .xlsx. Una vez subido, vas a poder mapear sus columnas igual que con Google Sheets.
@@ -1686,13 +2091,13 @@ export default function GrowthTrackerSheets() {
               </SectionCard>
             )}
 
-            {excelMode && step !== 3 && excelStep === "uploading" && (
+            {excelMode && step === 1 && excelStep === "uploading" && (
               <SectionCard title="Subiendo y procesando tu archivo">
                 <LoadingState variant="centered" className="py-16" label="Esto puede tardar unos segundos…" />
               </SectionCard>
             )}
 
-            {excelMode && step !== 3 && excelStep === "pick_sheet" && (
+            {excelMode && step === 1 && excelStep === "pick_sheet" && (
               <SectionCard title="Elegí la hoja" description={excelFileName}>
                 {excelSheets.length === 0 ? (
                   <EmptyState bordered={false} icon={FileSpreadsheet} title="No encontramos hojas con datos en este archivo." />
@@ -1870,35 +2275,42 @@ export default function GrowthTrackerSheets() {
             })()}
 
             {!loadingEditConnection && step === 3 && (
-              <SectionCard
-                title="Mapeá las columnas"
-                description={
-                  headers.length > 0
-                    ? `${selectedSpreadsheetName} · ${selectedSheetName} · ${usedColumnsCount} de ${headers.length} columnas usadas`
-                    : `${selectedSpreadsheetName} · ${selectedSheetName}`
-                }
-              >
-                {!loadingHeaders && headers.length > 0 && (
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Elegí qué columna marca el período. Para las demás, decidí cuáles traer y cómo se van a llamar:
-                    solo lectura de datos acá, nada de sumar ni filtrar, eso se define después con fórmulas en la
-                    sección de Métricas (por ejemplo <code className="font-mono">FIELDSUM("monto")</code>).
-                  </p>
+              <SectionCard title="Reconociendo tu planilla" description={`${selectedSpreadsheetName} · ${selectedSheetName}`}>
+                {(classifying || analyzingSheet || extractingLayout) && (
+                  <LoadingState
+                    variant="inline"
+                    label={classifying ? "Identificando qué tipo de datos es esto…" : "Analizando con IA para sugerir el mapeo…"}
+                    className="mb-3"
+                  />
                 )}
-                {!editingConnectionId && sampleRows.length > 0 && (
+                {!classifying && sampleRows.length > 0 && (
                   <div className="border border-border rounded-md p-3 mb-4">
                     <p className="text-xs font-medium mb-2 flex items-center gap-1.5">
                       <Sparkles size={12} strokeWidth={1.5} className="text-muted-foreground" />
                       Vista previa de tus datos
                     </p>
-                    {classifying ? (
-                      <p className="text-xs text-muted-foreground mb-2">Identificando qué tipo de datos es esto…</p>
-                    ) : classification ? (
+                    {classification && (
                       <p className="text-xs text-muted-foreground mb-2">
                         Parece ser un <span className="font-medium text-foreground">{SPREADSHEET_TYPE_LABELS[classification.spreadsheet_type] ?? classification.spreadsheet_type}</span>
                         {classification.row_semantics && <>: {classification.row_semantics}</>}
                       </p>
-                    ) : null}
+                    )}
+                    <div className="mb-2">
+                      <label className="text-xs font-medium block mb-1">Cómo leer esta hoja</label>
+                      <Select value={effectiveLayout} onValueChange={(v) => handleLayoutOverride(v as SheetLayout)}>
+                        <SelectTrigger className="h-8 w-full sm:w-72 text-xs" aria-label="Mecanismo de mapeo">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="row_based">Fila por período (una columna marca el mes)</SelectItem>
+                          <SelectItem value="grid">Cuadrícula (meses en columnas o en filas, ej. estado de resultados)</SelectItem>
+                          <SelectItem value="eav">Vertical (una columna de fecha, una de nombre de métrica, una de valor)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] text-tertiary mt-1">
+                        {sheetLayout !== "row_based" ? "Sugerido automáticamente — cambialo si no es correcto." : "Podés cambiarlo si tu hoja no es una fila por período."}
+                      </p>
+                    </div>
                     <div className="overflow-x-auto -mx-1">
                       <table className="text-[11px] font-mono border-collapse min-w-full">
                         <thead>
@@ -1925,12 +2337,64 @@ export default function GrowthTrackerSheets() {
                     </div>
                   </div>
                 )}
-                {analyzingSheet && (
-                  <LoadingState
-                    variant="inline"
-                    label="Analizando la hoja con IA para sugerir el mapeo de columnas…"
-                    className="mb-3"
-                  />
+                {!classifying && classification?.spreadsheet_type === "entity_table" && (
+                  <div className="border border-warning/40 bg-warning/10 rounded-md p-3 mb-4 text-xs" aria-live="polite">
+                    <p className="font-medium flex items-center gap-1.5">
+                      <AlertTriangle size={12} strokeWidth={1.5} />
+                      Todavía no podemos mapear este tipo de hoja automáticamente
+                    </p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Parece una lista de entidades (ej. clientes), donde cada fila no tiene un período — no
+                      encaja en el mapeo de siempre. Por ahora no hay una forma automática de cargar esto. Probá con
+                      otra hoja, o subí esta más adelante cuando lo soportemos.
+                    </p>
+                  </div>
+                )}
+                <FormActions
+                  onCancel={excelMode ? cancelExcelUpload : () => setStep(2)}
+                  cancelLabel={excelMode ? "Cancelar" : "Atrás"}
+                  onSubmit={() => setStep(4)}
+                  submitLabel="Continuar"
+                  disabled={classifying || analyzingSheet || extractingLayout || classification?.spreadsheet_type === "entity_table"}
+                />
+              </SectionCard>
+            )}
+
+            {!loadingEditConnection && step === 4 && (
+              <SectionCard
+                title="Mapeá las columnas"
+                description={
+                  headers.length > 0
+                    ? `${selectedSpreadsheetName} · ${selectedSheetName} · ${usedColumnsCount} de ${headers.length} columnas usadas`
+                    : `${selectedSpreadsheetName} · ${selectedSheetName}`
+                }
+              >
+                {!loadingHeaders && headers.length > 0 && (
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Elegí qué columna marca el período. Para las demás, decidí cuáles traer y cómo se van a llamar:
+                    solo lectura de datos acá, nada de sumar ni filtrar, eso se define después con fórmulas en la
+                    sección de Métricas (por ejemplo <code className="font-mono">FIELDSUM("monto")</code>).
+                  </p>
+                )}
+                {aiEnrichmentFailed && (
+                  <div className="border border-warning/40 bg-warning/10 rounded-md p-3 mb-4 text-xs" aria-live="polite">
+                    <p className="font-medium">No pudimos generar la sugerencia de IA para esta hoja.</p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Los nombres de campo se completaron igual, pero el tipo de dato de cada columna no se revisó
+                      automáticamente — confirmá que cada una diga "Texto" o "Número" correctamente antes de guardar.
+                    </p>
+                  </div>
+                )}
+                {duplicateHeaders.length > 0 && (
+                  <div className="border border-destructive/40 bg-destructive/5 rounded-md p-3 mb-4 text-xs" aria-live="polite">
+                    <p className="font-medium text-destructive">
+                      Esta hoja tiene columnas con el mismo nombre repetido: {duplicateHeaders.join(", ")}
+                    </p>
+                    <p className="text-muted-foreground mt-0.5">
+                      No podemos distinguir cuál es cuál — si guardás así, se pierden los datos de una de las dos.
+                      Renombrá las columnas repetidas en el archivo (ej. "Monto" y "Monto 2") y subilo de nuevo.
+                    </p>
+                  </div>
                 )}
                 {staleHeaders.length > 0 && (
                   <div className="border border-warning/40 bg-warning/10 rounded-md p-3 mb-4 text-xs" aria-live="polite">
@@ -1960,6 +2424,33 @@ export default function GrowthTrackerSheets() {
                   <LoadingState />
                 ) : headers.length === 0 ? (
                   <EmptyState bordered={false} icon={FileSpreadsheet} title="Esta hoja no tiene columnas en la primera fila." />
+                ) : effectiveLayout === "grid" ? (
+                  extractingLayout ? (
+                    <LoadingState variant="inline" label="Entendiendo la estructura de la hoja…" />
+                  ) : layoutExtraction?.layout === "grid" ? (
+                    <GridLayoutMapping
+                      periodOrientation={layoutExtraction.period_orientation}
+                      periodAxis={layoutExtraction.period_axis}
+                      conceptAxis={gridConceptAxis}
+                      onChange={setGridConceptAxis}
+                    />
+                  ) : (
+                    <EmptyState bordered={false} icon={AlertTriangle} title="No pudimos entender esta hoja como cuadrícula." description="Probá con 'Vertical' o 'Fila por período' arriba." />
+                  )
+                ) : effectiveLayout === "eav" ? (
+                  extractingLayout ? (
+                    <LoadingState variant="inline" label="Entendiendo la estructura de la hoja…" />
+                  ) : layoutExtraction?.layout === "eav" ? (
+                    <EavLayoutMapping
+                      periodColumn={layoutExtraction.eav_period_column}
+                      metricNameColumn={layoutExtraction.eav_metric_name_column}
+                      valueColumn={layoutExtraction.eav_value_column}
+                      metricMapping={eavMetricMapping}
+                      onChange={setEavMetricMapping}
+                    />
+                  ) : (
+                    <EmptyState bordered={false} icon={AlertTriangle} title="No pudimos entender esta hoja como formato vertical." description="Probá con 'Cuadrícula' o 'Fila por período' arriba." />
+                  )
                 ) : (
                   <div className="space-y-5">
                     <div>
@@ -1981,6 +2472,14 @@ export default function GrowthTrackerSheets() {
                           ariaLabel="Columna de período"
                         />
                       </div>
+                      {periodColumnLooksWrong(periodColumn, headers, sampleRows) && (
+                        <p className="text-xs text-warning mt-1.5 flex items-start gap-1.5" aria-live="polite">
+                          <AlertTriangle size={12} strokeWidth={1.5} className="shrink-0 mt-0.5" />
+                          Los valores de "{periodColumn}" no parecen fechas — revisá que sea realmente la columna que
+                          marca el mes de cada fila. Si tu archivo tiene los meses como columnas en vez de como
+                          filas, probá "Cuadrícula" arriba en vez de "Fila por período".
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -2009,17 +2508,19 @@ export default function GrowthTrackerSheets() {
                     </div>
                   </div>
                 )}
-                {!loadingHeaders && headers.length > 0 && (
+                {!loadingHeaders && headers.length > 0 && effectiveLayout === "row_based" && (
                   <p className="text-xs text-muted-foreground pt-3">
-                    {!periodColumn
-                      ? "Falta elegir la columna de período (mes)."
-                      : usedColumnsCount === 0
-                        ? "Elegí al menos una columna para traer."
-                        : !allMappingsValid
-                          ? "Hay columnas sin nombre de campo."
-                          : duplicateFieldKeys.length > 0
-                            ? "Hay nombres de campo repetidos: dejá cada uno una sola vez."
-                            : "Listo para guardar."}
+                    {duplicateHeaders.length > 0
+                      ? "Renombrá las columnas repetidas en el archivo antes de guardar."
+                      : !periodColumn
+                        ? "Falta elegir la columna de período (mes)."
+                        : usedColumnsCount === 0
+                          ? "Elegí al menos una columna para traer."
+                          : !allMappingsValid
+                            ? "Hay columnas sin nombre de campo."
+                            : duplicateFieldKeys.length > 0
+                              ? "Hay nombres de campo repetidos: dejá cada uno una sola vez."
+                              : "Listo para guardar."}
                   </p>
                 )}
                 {duplicateConnectionId && (
@@ -2032,19 +2533,37 @@ export default function GrowthTrackerSheets() {
                 )}
                 <FormActions
                   className="mt-4"
-                  onCancel={excelMode ? cancelExcelUpload : () => setStep(2)}
-                  cancelLabel={excelMode ? "Cancelar" : "Atrás"}
+                  onCancel={excelMode ? cancelExcelUpload : editingConnectionId ? cancelWizard : () => setStep(3)}
+                  cancelLabel={excelMode ? "Cancelar" : editingConnectionId ? "Cancelar" : "Atrás"}
                   onSubmit={handleSaveMapping}
                   submitLabel="Guardar mapeo"
                   busy={savingMapping}
                   disabled={headers.length === 0 || !canSaveMapping}
                   extra={
-                    excelMode ? undefined : (
+                    excelMode || editingConnectionId ? undefined : (
                       <Button variant="ghost" onClick={cancelWizard}>
                         Cancelar
                       </Button>
                     )
                   }
+                />
+              </SectionCard>
+            )}
+
+            {step === 5 && (
+              <SectionCard
+                title="Revisá las métricas sugeridas"
+                description="La IA propuso esto a partir de tus datos. Nada se crea todavía."
+              >
+                <SuggestedMetricsReview
+                  suggestions={suggestedMetrics}
+                  needingMoreData={metricsNeedingMoreData}
+                  companyId={company_id}
+                  allMetrics={financial.metrics}
+                  categories={metricCategories}
+                  defaultCategory={metricCategories[0]?.id ?? "revenue"}
+                  onSaved={financial.reload}
+                  onDone={cancelWizard}
                 />
               </SectionCard>
             )}
@@ -2084,7 +2603,9 @@ export default function GrowthTrackerSheets() {
         title="Quitar hoja conectada"
         description={
           confirmRemoveConnection
-            ? `Se deja de sincronizar "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}". Sus ${confirmRemoveConnection.field_mappings.length} campo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} crudo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} deja${confirmRemoveConnection.field_mappings.length === 1 ? "" : "n"} de estar disponibles: cualquier fórmula que los use (FIELDSUM, etc.) va a dejar de calcular hasta que mapees el campo de nuevo. No afecta la cuenta de Google ni tus otras conexiones.`
+            ? confirmRemoveConnection.field_mappings === null
+              ? `Se deja de sincronizar "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}". Sus campos crudos dejan de estar disponibles: cualquier fórmula que los use (FIELDSUM, etc.) va a dejar de calcular hasta que mapees la hoja de nuevo. No afecta la cuenta de Google ni tus otras conexiones.`
+              : `Se deja de sincronizar "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}". Sus ${confirmRemoveConnection.field_mappings.length} campo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} crudo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} deja${confirmRemoveConnection.field_mappings.length === 1 ? "" : "n"} de estar disponibles: cualquier fórmula que los use (FIELDSUM, etc.) va a dejar de calcular hasta que mapees el campo de nuevo. No afecta la cuenta de Google ni tus otras conexiones.`
             : ""
         }
         confirmLabel="Quitar hoja"
@@ -2114,7 +2635,7 @@ export default function GrowthTrackerSheets() {
           onOpenChange={(o) => !o && setEntityResolutionConnection(null)}
           companyId={company_id}
           connectionId={entityResolutionConnection.connection_id}
-          fields={entityResolutionConnection.field_mappings}
+          fields={entityResolutionConnection.field_mappings ?? []}
           onResolved={loadConnections}
         />
       )}
@@ -2131,18 +2652,49 @@ export default function GrowthTrackerSheets() {
         />
       )}
 
-      <SuggestedMetricsReview
-        open={showMetricsReview}
-        onOpenChange={setShowMetricsReview}
-        suggestions={suggestedMetrics}
-        needingMoreData={metricsNeedingMoreData}
-        companyId={company_id}
-        allMetrics={financial.metrics}
-        categories={metricCategories}
-        defaultCategory={metricCategories[0]?.id ?? "revenue"}
-        onSaved={financial.reload}
-      />
     </AppLayout>
+  );
+}
+
+// Rail de pasos del wizard — reemplaza el breadcrumb plano de texto viejo.
+// current es 1-indexado sobre `labels` (ver EXCEL_STEP_INDEX/SHEETS_STEP_LABELS
+// más arriba para cómo se traduce desde el WizardStep real).
+function StepRail({ labels, current }: { labels: string[]; current: number }) {
+  return (
+    <div className="flex items-center mb-4" role="list" aria-label="Pasos">
+      {labels.map((label, i) => {
+        const n = i + 1;
+        const state = n === current ? "active" : n < current ? "done" : "pending";
+        return (
+          <div key={label} className={cn("flex items-center", i < labels.length - 1 && "flex-1")} role="listitem">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span
+                className={cn(
+                  "w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-medium shrink-0",
+                  state === "active" && "bg-primary border-primary text-primary-foreground",
+                  state === "done" && "bg-foreground border-foreground text-background",
+                  state === "pending" && "border-border text-tertiary"
+                )}
+              >
+                {state === "done" ? <Check size={11} strokeWidth={2.5} /> : n}
+              </span>
+              <span
+                className={cn(
+                  "text-xs whitespace-nowrap",
+                  state === "pending" ? "text-tertiary" : "text-foreground",
+                  state === "active" && "font-medium"
+                )}
+              >
+                {label}
+              </span>
+            </div>
+            {i < labels.length - 1 && (
+              <div className={cn("h-px mx-2.5 flex-1 min-w-4", n < current ? "bg-foreground" : "bg-border")} />
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

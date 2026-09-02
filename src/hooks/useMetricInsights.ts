@@ -17,11 +17,18 @@ export function useMetricInsights(companyId: string | null) {
   const [analyzingSheet, setAnalyzingSheet] = useState(false);
 
   const analyzeTransactionalSheet = async (params: {
-    accountId: string;
-    spreadsheetId: string;
+    // "sheet" (default) requiere accountId/spreadsheetId; "excel" (contrato
+    // 2026-09-01, antes no soportado — el wizard de Excel se saltaba
+    // directo a mapeo manual) no los necesita, la hoja ya está parseada del
+    // lado del founder (headers/sampleRows vienen del preview de
+    // confirm-workbook-upload).
+    source?: "sheet" | "excel";
+    accountId?: string;
+    spreadsheetId?: string;
     sheetName: string;
     headers: string[];
     sampleRows: string[][];
+    spreadsheetType?: string;
   }): Promise<AnalyzeTransactionalSheetResponse | null> => {
     if (!companyId) return null;
     setAnalyzingSheet(true);
@@ -32,11 +39,13 @@ export function useMetricInsights(companyId: string | null) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           company_id: companyId,
-          account_id: params.accountId,
-          spreadsheet_id: params.spreadsheetId,
+          source: params.source ?? "sheet",
+          ...(params.accountId ? { account_id: params.accountId } : {}),
+          ...(params.spreadsheetId ? { spreadsheet_id: params.spreadsheetId } : {}),
           sheet_name: params.sheetName,
           headers: params.headers,
           sample_rows: params.sampleRows,
+          ...(params.spreadsheetType ? { spreadsheet_type: params.spreadsheetType } : {}),
         }),
       });
       if (!res.ok) {
