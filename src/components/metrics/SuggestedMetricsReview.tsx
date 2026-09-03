@@ -75,13 +75,37 @@ export function SuggestedMetricsReview({
   useEffect(() => {
     setRows(
       suggestions.map((s) => {
+        // mode/target_metric_id ausentes o con un valor no reconocido
+        // (backend viejo, o el contrato 2026-09-03 todavía no desplegado del
+        // todo — mismo patrón intermitente ya visto con otros endpoints esta
+        // sesión) se tratan como "create": es el único modo que no depende
+        // de que target_metric_id sea válido, y es el comportamiento que ya
+        // existía antes de este cambio.
+        const mode = s.mode === "connect" || s.mode === "enrich" ? s.mode : "create";
+        const targetMetricId = mode !== "create" && s.target_metric_id ? s.target_metric_id : null;
+        // mode !== "create" (contrato 2026-09-03): backend ya resolvió que
+        // esto conecta/enriquece una métrica existente (target_metric_id) —
+        // no hace falta el heurístico de nombre client-side para estas filas
+        // (era el único mecanismo antes de este cambio, y solo atrapaba
+        // coincidencias de texto), se aprueban por default como cualquier
+        // fila sin ambigüedad.
+        if (mode !== "create" && targetMetricId && allMetrics.some((m) => m.id === targetMetricId)) {
+          return { ...s, mode, target_metric_id: targetMetricId, approved: true, category: s.category?.trim() || defaultCategory, possibleDuplicate: null };
+        }
         // Filtro determinístico previo al 409 real de backend (dedup
         // universal, ver useMetricPropertyForm.ts) — atrapa variantes de
         // formato/substring ("Revenue" ⊂ "Revenue USD") ANTES de
         // desperdiciar un guardado. No atrapa sinónimos entre idiomas
         // ("Sales"/"Ingresos" vs "Revenue") — eso lo hace el 409 real.
         const possibleDuplicate = findPossibleDuplicates(s.name, allMetrics)[0] ?? null;
-        return { ...s, approved: !possibleDuplicate, category: s.category?.trim() || defaultCategory, possibleDuplicate };
+        return {
+          ...s,
+          mode: "create",
+          target_metric_id: null,
+          approved: !possibleDuplicate,
+          category: s.category?.trim() || defaultCategory,
+          possibleDuplicate,
+        };
       })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,6 +125,7 @@ export function SuggestedMetricsReview({
     setSaving(true);
     const existingIds = new Set(allMetrics.map((m) => m.id));
     let savedCount = 0;
+    let connectedCount = 0; // mode "connect"/"enrich" — no son métricas nuevas, distingue el toast final
     let pendingDuplicateCount = 0;
     let failedSilently = 0;
     const rowErrorMessages: string[] = [];
@@ -111,6 +136,60 @@ export function SuggestedMetricsReview({
         nextRows.push(row);
         continue;
       }
+
+      // mode "connect"/"enrich" (contrato 2026-09-03): backend ya identificó
+      // la métrica existente — se pisa esa (metric_id = target_metric_id) en
+      // vez de armar un slug nuevo. Para "enrich" el query ya viene con el
+      // cálculo viejo combinado adentro (arithmetic "+"), no hace falta
+      // wrapInArithmetic acá (eso solo sigue aplicando a handleCombine, el
+      // camino viejo de detección client-side/409).
+      if (row.mode !== "create") {
+        const target = allMetrics.find((m) => m.id === row.target_metric_id);
+        if (!target) {
+          rowErrorMessages.push(`"${row.name}" no se pudo conectar — no encontramos la métrica existente.`);
+          nextRows.push(row);
+          continue;
+        }
+        const body: Record<string, unknown> = {
+          company_id: companyId,
+          metric_id: target.id,
+          name: target.name,
+          category: target.category,
+          metric_type: "calculated",
+          unit: target.unit ?? null,
+          display_order: target.order_index,
+          value_type: target.value_type ?? "count",
+          query: row.query,
+        };
+        if (target.description) body.description = target.description;
+        if (target.why_it_matters) body.why_it_matters = target.why_it_matters;
+        try {
+          const res = await fetch(UPSERT_FINANCIAL_METRIC_DEFINITION_URL, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (res.status === 401) {
+            await handleMembershipError(res);
+            setSaving(false);
+            setRows(nextRows.concat(rows.slice(nextRows.length)));
+            return;
+          }
+          if (res.ok) {
+            connectedCount++;
+            continue;
+          }
+          const data = await res.json().catch(() => null);
+          rowErrorMessages.push(typeof data?.error === "string" ? data.error : `No se pudo conectar "${target.name}".`);
+          nextRows.push(row);
+        } catch {
+          failedSilently++;
+          nextRows.push(row);
+        }
+        continue;
+      }
+
       const category = normalizeCategory(row.category, categories);
       if (!category) {
         nextRows.push(row);
@@ -203,8 +282,11 @@ export function SuggestedMetricsReview({
     setSaving(false);
     if (savedCount > 0) {
       toast.success(`${savedCount} métrica${savedCount === 1 ? "" : "s"} agregada${savedCount === 1 ? "" : "s"}`);
-      onSaved();
     }
+    if (connectedCount > 0) {
+      toast.success(`${connectedCount} métrica${connectedCount === 1 ? "" : "s"} existente${connectedCount === 1 ? "" : "s"} conectada${connectedCount === 1 ? "" : "s"} a esta fuente`);
+    }
+    if (savedCount > 0 || connectedCount > 0) onSaved();
     for (const msg of rowErrorMessages) toast.error(msg);
     if (failedSilently > 0) {
       toast.error(`${failedSilently} métrica${failedSilently === 1 ? "" : "s"} no se pudo guardar por un error de red — probá de nuevo.`);
@@ -307,7 +389,50 @@ export function SuggestedMetricsReview({
         <EmptyState bordered={false} icon={Sparkles} title="La IA no encontró métricas nuevas para proponer." />
       ) : (
         <div className="space-y-4">
-          {rows.map((row, i) => (
+          {rows.map((row, i) => {
+            // mode "connect"/"enrich" (contrato 2026-09-03): backend ya
+            // identificó a qué métrica existente corresponde esta fuente —
+            // se muestra fijo (nombre/categoría/unidad no se editan acá,
+            // vienen de la métrica destino, no de la sugerencia) en vez del
+            // formulario completo de "crear métrica nueva". Antes esto
+            // siempre proponía crear una métrica en conflicto; ahora backend
+            // resuelve la ambigüedad de una, sin depender del heurístico de
+            // nombre client-side ni de esperar un 409 al guardar.
+            if (row.mode !== "create") {
+              const target = allMetrics.find((m) => m.id === row.target_metric_id);
+              const targetName = target?.name ?? row.name;
+              return (
+                <div key={i} className="border border-primary/30 bg-primary/5 rounded-md p-3 space-y-2">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={row.approved}
+                      onCheckedChange={(c) => setRow(i, { approved: c === true })}
+                      className="mt-0.5"
+                      aria-label={`Aprobar conexión con ${targetName}`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium flex items-center gap-1.5">
+                        <Combine size={13} strokeWidth={1.5} className="text-primary shrink-0" aria-hidden="true" />
+                        {row.mode === "enrich" ? `Suma esta fuente a "${targetName}"` : `Conecta esta fuente a "${targetName}"`}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {row.mode === "enrich"
+                          ? "Ya se calculaba sola — se le suma el aporte de esta hoja sin perder lo que ya tenía."
+                          : "Todavía se cargaba a mano — pasa a calcularse sola con esta fuente."}
+                      </p>
+                    </div>
+                  </label>
+                  {row.approved && (
+                    <div className="pl-7">
+                      <div className="rounded-md bg-surface border border-border p-2.5">
+                        <QuerySummary query={row.query} className="text-xs" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return (
             <div key={i} className="border border-border rounded-md p-3 space-y-3">
               <label className="flex items-start gap-2 cursor-pointer">
                 <Checkbox
@@ -410,7 +535,8 @@ export function SuggestedMetricsReview({
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
       <FormActions

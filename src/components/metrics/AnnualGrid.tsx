@@ -21,9 +21,16 @@ type Props = {
   allCalcDefs?: MetricDef[]; // all calculated defs across categories (metric reuse inside formulas)
   // entries[metric_id]["YYYY-M"] = value
   entries: Record<string, Record<string, number>>;
+  // Devuelve los cambios que NO se pudieron guardar (metricId+month) — save()
+  // los deja en `pending` en vez de descartarlos junto con los que sí se
+  // guardaron. Antes onSaveBatch no devolvía nada y save() vaciaba `pending`
+  // sin condición: un rechazo del backend (ej. "formulario manual no
+  // habilitado para esta startup") hacía que el valor tipeado desapareciera
+  // de la celda sin haberse guardado y sin ningún indicio ahí mismo de que
+  // falló — encontrado en vivo 2026-09-03.
   onSaveBatch: (
     changes: { metricId: string; year: number; month: number; value: number | null }[]
-  ) => Promise<void>;
+  ) => Promise<{ metricId: string; month: number }[]>;
   privacy: Record<string, boolean>; // metric_id -> is_public
   onTogglePrivacy?: (metricId: string, next: boolean) => Promise<void>;
   onInfo: (m: MetricDef) => void;
@@ -230,8 +237,15 @@ export function AnnualGrid({
         }
       }
     }
-    await onSaveBatch(changes);
-    setPending({});
+    const failed = await onSaveBatch(changes);
+    const failedKeys = new Set(failed.map((f) => `${f.metricId}|${f.month}`));
+    setPending((prev) => {
+      const next: Record<string, string> = {};
+      for (const [pk, raw] of Object.entries(prev)) {
+        if (failedKeys.has(pk)) next[pk] = raw;
+      }
+      return next;
+    });
   };
 
   return (

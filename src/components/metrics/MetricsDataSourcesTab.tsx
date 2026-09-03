@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { LoadingState } from "@/components/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { SheetConnection, GoogleAccount, DataRole } from "@/lib/sheetsIntegration";
 import { fieldCountLabel } from "@/lib/sheetsIntegration";
 import type { MetricDef, RawField } from "@/lib/metrics";
@@ -49,7 +50,45 @@ export function MetricsDataSourcesTab({ connections, accounts, metrics, rawField
             <FileSpreadsheet size={13} strokeWidth={1.5} className="text-muted-foreground shrink-0" />
             {c.spreadsheet_name} · {c.sheet_name}
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">{fieldCountLabel(c.field_mappings)}</p>
+          {c.field_mappings === null ? (
+            // structure "grid"/"eav" (contrato 2026-08-31) nunca trae
+            // field_mappings — el detalle de qué campo es cada concepto vive
+            // en el mapeo avanzado, solo visible entrando a "Editar".
+            <p className="text-xs text-muted-foreground mt-0.5">{fieldCountLabel(c.field_mappings)}</p>
+          ) : (
+            <Popover>
+              {/* Antes esto era solo un número ("4 campos") sin forma de ver
+                  CUÁLES — el founder tenía que entrar a "Editar" (el wizard
+                  completo) solo para chequear un mapeo. Encontrado en vivo
+                  2026-09-03. field_mappings ya viene en list-sheet-connections,
+                  no hace falta ningún request nuevo para mostrarlo acá. */}
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs text-muted-foreground mt-0.5 hover:text-foreground hover:underline underline-offset-2"
+                >
+                  {fieldCountLabel(c.field_mappings)}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-80" onClick={(e) => e.stopPropagation()}>
+                <p className="text-xs font-medium mb-2">Campos mapeados</p>
+                {c.field_mappings.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Todavía no se mapeó ninguna columna.</p>
+                ) : (
+                  <ul className="space-y-1.5 max-h-64 overflow-y-auto">
+                    {c.field_mappings.map((f) => (
+                      <li key={f.field_key} className="text-xs">
+                        <span className="font-medium">{f.column}</span>
+                        <span className="text-muted-foreground"> → {f.field_key}</span>
+                        {f.description && <p className="text-muted-foreground mt-0.5">{f.description}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
       ),
     },
@@ -122,7 +161,16 @@ export function MetricsDataSourcesTab({ connections, accounts, metrics, rawField
           action={{ label: "Conectar una fuente", onClick: () => navigate("/growth-tracker/sheets") }}
         />
       ) : (
-        <DataTable columns={columns} rows={connections} rowKey={(c) => c.connection_id} emptyLabel="Sin fuentes conectadas." onRowClick={() => navigate("/growth-tracker/sheets")} />
+        <DataTable
+          columns={columns}
+          rows={connections}
+          rowKey={(c) => c.connection_id}
+          emptyLabel="Sin fuentes conectadas."
+          // Antes mandaba siempre a la página genérica de conexiones sin
+          // importar en qué fila se hacía click — encontrado en vivo
+          // 2026-09-03 junto con el gap de "campos mapeados" de arriba.
+          onRowClick={(c) => navigate(`/growth-tracker/sheets?connection_id=${encodeURIComponent(c.connection_id)}`)}
+        />
       )}
     </div>
   );

@@ -166,7 +166,14 @@ export function useFinancialMetrics(companyId: string | null, range: PeriodRange
         const data = await res.json().catch(() => ({}));
         const msg: string = data?.error ?? "";
         if (/manual_form/i.test(msg) || /habilitad/i.test(msg)) {
+          // Antes no mostraba ningún toast acá, solo el banner persistente
+          // (ver MetricsExplorerTab.tsx) — pero ese banner vive arriba de la
+          // grilla, fuera de vista si el founder está parado en una
+          // categoría/fila más abajo (encontrado en vivo 2026-09-03,
+          // "Team" > Headcount). El valor tipeado no se guarda igual, pero
+          // ahora al menos hay una señal inmediata en el momento del intento.
           setNotEnabled(true);
+          toast.error("Todavía no tenés el formulario manual habilitado. Pedile a CloudValley que lo active para tu startup.");
           return false;
         }
         toast.error(msg || "Solicitud inválida");

@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Sparkles, Wand2 } from "lucide-react";
+import { AlertTriangle, Sparkles, Wand2, SlidersHorizontal } from "lucide-react";
 import { SectionCard } from "@/components/SectionCard";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FundRequiredMetricsSection } from "@/components/metrics/FundRequiredMetricsSection";
 import { MetricValueCard } from "@/components/metrics/MetricValueCard";
 import { MetricCoverageReviewDialog, type CoverageReviewItem } from "@/components/metrics/MetricCoverageReviewDialog";
@@ -43,6 +44,26 @@ type Props = {
 // se usa para el datalist de categoría del dialog de confirmación.
 function categoryLabel(cat: string) {
   return cat.charAt(0).toUpperCase() + cat.slice(1).replace(/_/g, " ");
+}
+
+// Qué KPIs de STANDARD_KEY_ORDER mostrar en la grilla — preferencia por
+// founder, persiste en localStorage (mismo criterio que VIEW_KEY/
+// PAGE_MODE_KEY en MetricsExplorerTab.tsx). Pedido en vivo 2026-09-03: no
+// todas las startups siguen los 8 KPIs estándar, algunas quieren ocultar los
+// que no les aplican en vez de ver "Todavía no la trackeás" x N sin poder
+// sacarlos de la vista.
+const VISIBLE_KPIS_KEY = "cv:metrics:visibleKpis";
+
+function loadVisibleKpis(): Set<string> {
+  try {
+    const raw = localStorage.getItem(VISIBLE_KPIS_KEY);
+    if (!raw) return new Set(STANDARD_KEY_ORDER);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return new Set(STANDARD_KEY_ORDER);
+    return new Set(parsed.filter((k) => STANDARD_KEY_ORDER.includes(k)));
+  } catch {
+    return new Set(STANDARD_KEY_ORDER);
+  }
 }
 
 type CoverageErrorKind = "rate_limit" | "unavailable" | "generic";
@@ -182,6 +203,26 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
     });
   };
 
+  const [visibleKpis, setVisibleKpis] = useState<Set<string>>(loadVisibleKpis);
+  const toggleKpiVisible = (key: string, checked: boolean) => {
+    setVisibleKpis((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      // Nunca queda vacío — ni en memoria ni en localStorage. Vacío en
+      // memoria dejaría la grilla entera en blanco sin ninguna pista de por
+      // qué; vacío en localStorage se leería como "todos" al recargar (ver
+      // loadVisibleKpis), mostrando los 8 de nuevo sin avisar.
+      if (next.size === 0) {
+        toast.error("Dejá al menos un KPI visible.");
+        return prev;
+      }
+      localStorage.setItem(VISIBLE_KPIS_KEY, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
+  const visibleKpiOrder = useMemo(() => STANDARD_KEY_ORDER.filter((k) => visibleKpis.has(k)), [visibleKpis]);
+
   const [rangeMonths, setRangeMonths] = useState<number>(6);
   const periodSpec = useMemo(() => lastNPeriodSpec(rangeMonths), [rangeMonths]);
   const metricIds = useMemo(() => standardMetrics.map((m) => m.id), [standardMetrics]);
@@ -272,11 +313,33 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
                 ))}
               </SelectContent>
             </Select>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-xs px-2.5">
+                  <SlidersHorizontal size={12} className="mr-1.5" aria-hidden="true" />
+                  KPIs ({visibleKpiOrder.length}/{STANDARD_KEY_ORDER.length})
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="text-xs">Elegí qué KPIs mostrar</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {STANDARD_KEY_ORDER.map((key) => (
+                  <DropdownMenuCheckboxItem
+                    key={key}
+                    checked={visibleKpis.has(key)}
+                    onSelect={(e) => e.preventDefault()}
+                    onCheckedChange={(checked) => toggleKpiVisible(key, checked === true)}
+                  >
+                    {STANDARD_KEY_LABELS[key]}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         }
       >
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {STANDARD_KEY_ORDER.map((key) => {
+          {visibleKpiOrder.map((key) => {
             const group = byKey.get(key) ?? [];
             if (group.length === 0) {
               const derivable = derivableByKey.get(key);

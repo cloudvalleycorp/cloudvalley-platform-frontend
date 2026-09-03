@@ -174,8 +174,8 @@ export function MetricsExplorerTab({ companyId, isOwner, metricId, navigate, raw
 
   const financialSaveAnnualBatch = async (
     changes: { metricId: string; year: number; month: number; value: number | null }[]
-  ) => {
-    if (changes.length === 0) return;
+  ): Promise<{ metricId: string; month: number }[]> => {
+    if (changes.length === 0) return [];
     const synced = changes.filter((c) => sourceLabel(financial.metrics.find((m) => m.id === c.metricId)?.source ?? null));
     const editable = changes.filter((c) => !sourceLabel(financial.metrics.find((m) => m.id === c.metricId)?.source ?? null));
     if (synced.length > 0) {
@@ -202,11 +202,23 @@ export function MetricsExplorerTab({ companyId, isOwner, metricId, navigate, raw
       if (!byPeriod.has(pk)) byPeriod.set(pk, { year: c.year, month: c.month, values: {} });
       byPeriod.get(pk)!.values[inputKey] = c.value as number;
     }
+    // synced/cleared nunca se van a poder guardar (bloqueo estructural, ya
+    // explicado en el toast de arriba) — no tiene sentido dejarlos
+    // "pendientes" para reintentar. Los de toSave que fallen sí quedan en
+    // `failed`: son la única categoría con chance real de guardarse después
+    // (ej. una vez que CloudValley habilite el formulario manual, ver
+    // useFinancialMetrics.ts `notEnabled`) — perder el valor tipeado ahí
+    // obligaba a escribirlo de nuevo a ciegas. Encontrado en vivo 2026-09-03.
+    const failed: { metricId: string; month: number }[] = [];
     let anyFailed = false;
     for (const { year: y, month: m, values } of byPeriod.values()) {
       const ok = await financial.submitValues(toPeriodString(m, y), values);
       if (!ok) {
         anyFailed = true;
+        for (const inputKey of Object.keys(values)) {
+          const def = financial.metrics.find((d) => d.input_key === inputKey);
+          if (def) failed.push({ metricId: def.id, month: m });
+        }
         continue;
       }
       for (const [inputKey, value] of Object.entries(values)) {
@@ -217,6 +229,7 @@ export function MetricsExplorerTab({ companyId, isOwner, metricId, navigate, raw
     if (!anyFailed && toSave.length > 0) {
       toast.success(`${toSave.length} cambio${toSave.length === 1 ? "" : "s"} guardado${toSave.length === 1 ? "" : "s"}`);
     }
+    return failed;
   };
 
   const inputDefs = useMemo(

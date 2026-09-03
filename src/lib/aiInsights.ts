@@ -225,6 +225,17 @@ export type SuggestedField = { column: string; field_key: string; value_type: "n
 // aggregation/fields_used/dependencies salieron del contrato (la
 // aggregation ya vive adentro de query, fields_used/dependencies eran solo
 // informativos y nunca se guardaban).
+// mode (contrato ampliado 2026-09-03, aditivo): "create" = métrica nueva de
+// verdad, target_metric_id null (comportamiento de siempre). "connect" = ya
+// existe una métrica (default o custom) para el mismo concepto pero
+// metric_type="input" sin datos todavía — target_metric_id apunta a ella.
+// "enrich" = la existente ya es "calculated" con query real, y este query ya
+// viene combinando el cálculo VIEJO (intacto) + la fuente nueva vía
+// arithmetic "+" — nunca hace falta combinarlo del lado frontend, mismo
+// criterio que ya usa list-metric-source-coverage (MetricCoverageReviewDialog.tsx).
+// Antes de este cambio, cada hoja nueva con un concepto ya cubierto proponía
+// una métrica nueva en conflicto en vez de reconocer la existente — reportado
+// en vivo 2026-09-03.
 export type SuggestedMetric = {
   name: string;
   category: string;
@@ -232,6 +243,8 @@ export type SuggestedMetric = {
   why_it_matters: string;
   unit: string;
   query: QuerySpec;
+  mode: "create" | "connect" | "enrich";
+  target_metric_id: string | null;
 };
 // Mismo cambio de contrato: cuando el modelo necesitaría inventar un
 // supuesto de negocio (margen, tasa) sin datos reales para proponer una

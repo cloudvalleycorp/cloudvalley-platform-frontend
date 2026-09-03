@@ -42,6 +42,7 @@ import { findMetricsUsingField } from "@/lib/metricLineage";
 import type { MetricDef } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type { SuggestedMetric, MetricNeedingMoreData } from "@/lib/aiInsights";
+import type { QuerySpec } from "@/lib/querySpec";
 import { SuggestedMetricsReview } from "@/components/metrics/SuggestedMetricsReview";
 import { EntityResolutionDialog } from "@/components/metrics/EntityResolutionDialog";
 import { EntityAliasesDialog } from "@/components/metrics/EntityAliasesDialog";
@@ -741,6 +742,95 @@ export default function GrowthTrackerSheets() {
       setSuggestedMetrics(analysis.suggested_metrics);
       setMetricsNeedingMoreData(analysis.metrics_needing_more_data);
     }
+  };
+
+  // Re-disparar el análisis de IA a mano sobre una conexión YA existente —
+  // editar una hoja (loadHeaders con seed) o volver a subir un Excel nunca
+  // corre analyzeTransactionalSheet automáticamente (a propósito: no pisar
+  // en silencio nombres de campo ya guardados, ver el comentario de arriba),
+  // así que si el founder agrega una columna nueva relevante a una conexión
+  // vieja (ej. "Evento" New/Renewal/Churn) no había forma de pedirle a la IA
+  // que proponga métricas para eso — encontrado en vivo 2026-09-03. Mismo
+  // criterio de no pisar mapeos existentes: solo completa columnas que
+  // TODAVÍA no tienen field_key asignado, nunca sobreescribe uno ya guardado.
+  const reanalyzeWithAi = async () => {
+    if (!selectedSheetName || headers.length === 0) return;
+    setAiEnrichmentFailed(false);
+    const analysis = await analyzeTransactionalSheet({
+      source: excelMode ? "excel" : "sheet",
+      accountId: excelMode ? undefined : (wizardAccountId ?? undefined),
+      spreadsheetId: excelMode ? undefined : (selectedSpreadsheetId ?? undefined),
+      sheetName: selectedSheetName,
+      headers,
+      sampleRows,
+      spreadsheetType: classification?.spreadsheet_type,
+    });
+    if (!analysis) {
+      setAiEnrichmentFailed(true);
+      return;
+    }
+    // Para una columna que YA tenía field_key guardado, se conserva ese (no
+    // se pisa) — pero suggested_metrics.query de esta misma respuesta
+    // referencia el field_key que la IA propuso para esa columna en ESTA
+    // corrida, que puede no coincidir. Sin este remap, guardar la métrica
+    // sugerida tira 400 "aggregation referencia un field_key inexistente"
+    // porque ese field_key nunca se llegó a guardar de verdad — bug real
+    // encontrado en vivo 2026-09-03 (2/2 confirmaciones fallaron con 400).
+    // keyRemap se arma leyendo `fieldMappings` (el state ya resuelto de este
+    // render) directo, NO desde adentro del updater funcional de
+    // setFieldMappings de abajo — ese corre en otro tick, así que mutar una
+    // variable de este closure desde ahí queda vacía cuando se la lee acá
+    // mismo después (bug real encontrado en vivo, el primer intento de este
+    // fix compilaba y no tiraba error, pero el remap nunca se aplicaba).
+    let newlyMapped = 0;
+    const keyRemap: Record<string, string> = {};
+    const nextFieldMappings = { ...fieldMappings };
+    for (const f of analysis.suggested_fields) {
+      if (f.column === periodColumn) continue;
+      const existing = fieldMappings[f.column];
+      if (existing) {
+        if (existing.field_key !== f.field_key) keyRemap[f.field_key] = existing.field_key;
+        continue; // no pisa un mapeo ya guardado
+      }
+      nextFieldMappings[f.column] = { column: f.column, field_key: f.field_key, value_type: f.value_type, description: "", originalDescription: "" };
+      newlyMapped++;
+    }
+    setFieldMappings(nextFieldMappings);
+    if (newlyMapped > 0) {
+      toast.success(`IA mapeó ${newlyMapped} columna${newlyMapped === 1 ? "" : "s"} nueva${newlyMapped === 1 ? "" : "s"}.`);
+    }
+    const remappedMetrics = analysis.suggested_metrics.map((m) => ({ ...m, query: remapQuerySpecFieldKeys(m.query, keyRemap) }));
+    if (remappedMetrics.length > 0 || analysis.metrics_needing_more_data.length > 0) {
+      setSuggestedMetrics(remappedMetrics);
+      setMetricsNeedingMoreData(analysis.metrics_needing_more_data);
+      toast.success(
+        remappedMetrics.length > 0
+          ? `La IA propone ${remappedMetrics.length} métrica${remappedMetrics.length === 1 ? "" : "s"} — revisalas al guardar el mapeo.`
+          : "La IA no encontró métricas nuevas para proponer con las columnas actuales."
+      );
+    } else {
+      toast.success("La IA no encontró métricas nuevas para proponer con las columnas actuales.");
+    }
+  };
+
+  // Reescribe field_key/distinct_field_key (en el nodo y en sus filters) en
+  // todo el árbol de un QuerySpec según keyRemap — recorre "arithmetic"
+  // (left/right); "aggregation" es la única hoja con field_keys reales,
+  // "metric_ref"/"constant" no tienen nada que remapear. Ver reanalyzeWithAi.
+  const remapQuerySpecFieldKeys = (query: QuerySpec, keyRemap: Record<string, string>): QuerySpec => {
+    if (Object.keys(keyRemap).length === 0) return query;
+    if (query.type === "arithmetic") {
+      return { ...query, left: remapQuerySpecFieldKeys(query.left, keyRemap), right: remapQuerySpecFieldKeys(query.right, keyRemap) };
+    }
+    if (query.type === "aggregation") {
+      return {
+        ...query,
+        field_key: query.field_key ? (keyRemap[query.field_key] ?? query.field_key) : query.field_key,
+        distinct_field_key: query.distinct_field_key ? (keyRemap[query.distinct_field_key] ?? query.distinct_field_key) : query.distinct_field_key,
+        filters: query.filters.map((f) => (keyRemap[f.field_key] ? { ...f, field_key: keyRemap[f.field_key] } : f)),
+      };
+    }
+    return query;
   };
 
   // classify-workbook — puramente informativo (spreadsheet_type +
@@ -2540,7 +2630,31 @@ export default function GrowthTrackerSheets() {
                   busy={savingMapping}
                   disabled={headers.length === 0 || !canSaveMapping}
                   extra={
-                    excelMode || editingConnectionId ? undefined : (
+                    // "Volver a analizar con IA" solo tiene sentido editando/
+                    // resubiendo una conexión YA existente (única situación
+                    // donde loadHeaders/handleExcelSheetPicked NO corrieron
+                    // analyzeTransactionalSheet solos) — un Excel subido por
+                    // primera vez (excelMode sin excelReuploadConnectionId)
+                    // ya pasó por el análisis automático al llegar acá, así
+                    // que mostrar el botón ahí es confuso (implica que falta
+                    // algo que en realidad ya corrió). Bug real encontrado en
+                    // vivo 2026-09-03: la condición original (excelMode ||
+                    // editingConnectionId) lo mostraba también en una subida
+                    // nueva.
+                    editingConnectionId || excelReuploadConnectionId ? (
+                      effectiveLayout === "row_based" && headers.length > 0 ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={reanalyzeWithAi}
+                          disabled={analyzingSheet}
+                          title="Vuelve a mirar las columnas actuales — nunca pisa un mapeo que ya guardaste, solo completa las que falten y propone métricas nuevas."
+                        >
+                          <Sparkles size={14} className="mr-1.5" aria-hidden="true" />
+                          {analyzingSheet ? "Analizando…" : "Volver a analizar con IA"}
+                        </Button>
+                      ) : undefined
+                    ) : excelMode ? undefined : (
                       <Button variant="ghost" onClick={cancelWizard}>
                         Cancelar
                       </Button>

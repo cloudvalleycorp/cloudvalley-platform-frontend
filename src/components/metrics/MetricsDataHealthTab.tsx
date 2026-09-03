@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, AlertTriangle, AlertCircle, Info } from "lucide-react";
+import { Link } from "react-router-dom";
+import { CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingState } from "@/components/LoadingState";
 import { Badge } from "@/components/ui/badge";
@@ -77,8 +78,8 @@ export function MetricsDataHealthTab({ companyId, metrics, warnings, rawFields, 
         <div className="space-y-2">
           {issues.map((issue) => {
             const Icon = SEVERITY_ICON[issue.severity];
-            return (
-              <div key={issue.id} className="border border-border rounded-md p-3 flex items-start gap-2.5">
+            const content = (
+              <>
                 <Icon size={15} strokeWidth={1.5} className={cn("shrink-0 mt-0.5", SEVERITY_COLOR[issue.severity])} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -89,6 +90,26 @@ export function MetricsDataHealthTab({ companyId, metrics, warnings, rawFields, 
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">{issue.description}</p>
                 </div>
+                {issue.targetPath && (
+                  <ChevronRight size={15} strokeWidth={1.5} className="shrink-0 mt-0.5 text-muted-foreground" aria-hidden="true" />
+                )}
+              </>
+            );
+            // Link a donde se resuelve el issue puntual (reconectar cuenta,
+            // revisar la conexión, editar la métrica sin fuente, etc.) — antes
+            // esta fila era puro texto informativo sin ninguna forma de llegar
+            // desde acá a arreglarlo. Ver targetPath en dataHealthIssues.ts.
+            return issue.targetPath ? (
+              <Link
+                key={issue.id}
+                to={issue.targetPath}
+                className="border border-border rounded-md p-3 flex items-start gap-2.5 hover:bg-surface/50 hover:border-foreground/20 transition-colors"
+              >
+                {content}
+              </Link>
+            ) : (
+              <div key={issue.id} className="border border-border rounded-md p-3 flex items-start gap-2.5">
+                {content}
               </div>
             );
           })}

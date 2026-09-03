@@ -21,6 +21,13 @@ export type HealthIssue = {
   category: string;
   title: string;
   description: string;
+  // Adónde ir para resolver este issue puntual — ausente solo cuando no hay
+  // un destino más específico que "Salud de datos" en sí (hoy ningún caso).
+  // Encontrado en vivo 2026-09-03: la lista mostraba "X no está conectada a
+  // ninguna fuente" sin ningún link, el founder no tenía forma de llegar
+  // desde acá a arreglarlo — tenía que ir a buscar la métrica a mano en el
+  // Explorador.
+  targetPath?: string;
 };
 
 export type HealthSummary = { critical: number; warning: number; info: number; total: number };
@@ -51,6 +58,7 @@ export function collectDataHealthIssues(input: {
         category: "Permisos",
         title: `Se perdió el acceso a ${acc.google_account_email}`,
         description: "Reconectá esta cuenta para seguir sincronizando sus hojas.",
+        targetPath: "/growth-tracker/sheets",
       });
     }
   }
@@ -64,6 +72,7 @@ export function collectDataHealthIssues(input: {
         category: "Frescura",
         title: `${conn.spreadsheet_name} · ${conn.sheet_name} está desactualizada`,
         description: ageDays != null ? `Última sincronización hace ${Math.floor(ageDays)} día${Math.floor(ageDays) === 1 ? "" : "s"}.` : "Nunca se sincronizó.",
+        targetPath: `/growth-tracker/sheets?connection_id=${encodeURIComponent(conn.connection_id)}`,
       });
     }
     if (conn.last_sync_status && conn.last_sync_status !== "success") {
@@ -73,6 +82,7 @@ export function collectDataHealthIssues(input: {
         category: "Sincronización",
         title: `${conn.spreadsheet_name} · ${conn.sheet_name} tuvo un error de sync`,
         description: `Último estado: ${conn.last_sync_status}.`,
+        targetPath: `/growth-tracker/sheets?connection_id=${encodeURIComponent(conn.connection_id)}`,
       });
     }
   }
@@ -85,6 +95,7 @@ export function collectDataHealthIssues(input: {
         category: "Calidad de datos",
         title: `${log.rows_rejected} fila${log.rows_rejected === 1 ? "" : "s"} rechazada${log.rows_rejected === 1 ? "" : "s"}`,
         description: `Período ${log.period}, fuente ${log.source_type}.`,
+        targetPath: "/growth-tracker/sheets",
       });
     }
   }
@@ -99,6 +110,7 @@ export function collectDataHealthIssues(input: {
         category: "Métricas sin fuente",
         title: `"${m.name}" no está conectada a ninguna fuente de datos`,
         description: "Su fórmula no referencia ningún campo mapeado todavía.",
+        targetPath: `/metrics/${encodeURIComponent(m.id)}`,
       });
     }
   }
@@ -111,6 +123,7 @@ export function collectDataHealthIssues(input: {
       category: "Campos sin usar",
       title: `${unusedFields.length} campo${unusedFields.length === 1 ? "" : "s"} mapeado${unusedFields.length === 1 ? "" : "s"} sin usar en ninguna métrica`,
       description: unusedFields.slice(0, 5).map((f) => f.field_key).join(", ") + (unusedFields.length > 5 ? "…" : ""),
+      targetPath: "/metrics?tab=sources",
     });
   }
 
@@ -122,6 +135,7 @@ export function collectDataHealthIssues(input: {
       category: "Conflicto de métrica",
       title: `${w.count} métricas miden lo mismo (${w.standard_key})`,
       description: `${names}. Asigná un rol de fuente para elegir cuál usar, o revisá por qué difieren.`,
+      targetPath: "/metrics",
     });
   }
 
@@ -133,6 +147,7 @@ export function collectDataHealthIssues(input: {
         category: "Mapeo con baja confianza",
         title: `La columna "${bi.column}" quedó mapeada con baja confianza`,
         description: bi.confidence.basis,
+        targetPath: `/growth-tracker/sheets?connection_id=${encodeURIComponent(bi.connection_id)}`,
       });
     } else {
       issues.push({
@@ -141,6 +156,7 @@ export function collectDataHealthIssues(input: {
         category: "Anomalía estadística",
         title: `Valor atípico en ${bi.field_key} (${bi.period})`,
         description: `${bi.value} — se esperaba algo cercano a ${bi.expected_range.mean.toFixed(1)}.`,
+        targetPath: `/growth-tracker/sheets?connection_id=${encodeURIComponent(bi.connection_id)}`,
       });
     }
   }
