@@ -295,8 +295,8 @@ export function AnnualGrid({
                         {def.unit && (
                           <span className="text-xs text-muted-foreground">({def.unit})</span>
                         )}
-                        {syncedFrom &&
-                          (settingsPath ? (
+                        {syncedFrom ? (
+                          settingsPath ? (
                             <Link
                               to={settingsPath}
                               className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5 hover:text-foreground hover:border-foreground/30 transition-colors"
@@ -313,7 +313,26 @@ export function AnnualGrid({
                               <Zap size={10} strokeWidth={2} aria-hidden="true" />
                               {syncedFrom}
                             </span>
-                          ))}
+                          )
+                        ) : (
+                          // Antes no había ningún acceso directo acá para
+                          // conectar un input a una fuente ya conectada — el
+                          // único camino era abrir "Editar" y encontrar la
+                          // sección "Fuente de datos" a ciegas. Reusa onInfo
+                          // (MetricInfoSheet ya tiene el CTA "Conectar con
+                          // una fuente" cuando el metric_type es input sin
+                          // source, ver MetricInfoSheet.tsx) en vez de sumar
+                          // un prop nuevo solo para esto.
+                          <button
+                            type="button"
+                            onClick={() => onInfo(def)}
+                            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-dashed border-border rounded-full px-2 py-0.5 hover:text-primary hover:border-primary/50 transition-colors"
+                            title="Este dato se carga a mano — conectalo a una fuente si ya la tenés."
+                          >
+                            <Zap size={10} strokeWidth={2} aria-hidden="true" />
+                            Conectar fuente
+                          </button>
+                        )}
                         <button
                           onClick={() => onInfo(def)}
                           className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"

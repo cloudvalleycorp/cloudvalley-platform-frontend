@@ -82,35 +82,66 @@ en ningún endpoint. Eso se reportó al backend y ya se corrigió para
 `get-session`: confirmado con Playwright MCP, la sesión se reutiliza bien y
 las pantallas autenticadas cargan con datos reales (ej. `/dashboard`).
 
-Sigue faltando en otros endpoints — confirmado con `list-import-log`,
-`query-raw-fields`, y (2026-09-01) también `list-raw-fields` (falla
-consistente, 100% de las cargas probadas en esa sesión) y `save-sheet-mapping`
-(falla intermitente — 3 llamadas reales exitosas seguidas de 3 fallos
-consecutivos en la misma sesión contra `structure: "eav"`, mismo endpoint que
-antes había funcionado para `structure` tabular/grid; el mensaje de consola es
-idéntico en los 3 casos: `Access to fetch at '...' ... blocked by CORS
-policy: No 'Access-Control-Allow-Origin' header is present on the requested
-resource` — no hay ningún response header ni body visible en
-`browser_network_request`, es un bloqueo 100% del lado del browser antes de
-que la respuesta llegue a JS). El patrón intermitente en `save-sheet-mapping`
-sugiere que el allowlist de CORS no está desplegado de forma consistente en
-todas las instancias/réplicas del backend detrás del gateway, no que sea un
-bug específico de una estructura de datos en particular. Es esperable que
-afecte a más endpoints ya que todos comparten el mismo patrón de fetch
-(`credentials: "include"` contra el mismo host). Esas requests puntuales van
-a seguir apareciendo como error de CORS en `browser_console_messages` /
-`browser_network_requests` aunque el resto de la pantalla funcione — no lo
-confundas con un bug del cambio que estés verificando, primero fijate si el
-endpoint del error es uno nuevo o ya conocido.
+**2026-09-02, actualización tras un deploy de backend:** el gap se cerró para
+la mayoría de los endpoints que estaban fallando — confirmado en vivo con un
+deploy nuevo que `list-raw-fields`, `list-sheet-connections`,
+`list-google-accounts`, `list-metric-source-coverage` y
+`upsert-metric-definition` ahora responden 200 con headers CORS correctos de
+forma consistente (varios intentos seguidos, sin ningún fallo). **Sigue
+fallando `list-import-log`** — confirmado con el mismo error de siempre en
+dos páginas distintas (`/metrics?tab=overview` y `/metrics?tab=health`), 100%
+de los intentos, incluso después del deploy que arregló el resto — quedó
+afuera del allowlist. `query-raw-fields` y `save-sheet-mapping` no se
+volvieron a probar después del deploy, no asumas que ya están bien sin
+volver a verificarlos en vivo.
+El mensaje de consola es idéntico en todos los casos: `Access to fetch at
+'...' ... blocked by CORS policy: No 'Access-Control-Allow-Origin' header is
+present on the requested resource` — no hay ningún response header ni body
+visible en `browser_network_request`, es un bloqueo 100% del lado del browser
+antes de que la respuesta llegue a JS. No es un bug de una estructura de
+datos ni de un endpoint en particular, es config de CORS del gateway —
+histórico: algunos endpoints fallaban de forma intermitente (funcionaban N
+veces, después fallaban) mientras otros fallaban siempre, lo que sugería que
+el allowlist no estaba desplegado parejo en todas las instancias/réplicas.
+El deploy del 2026-09-02 corrigió la mayoría de esa inconsistencia de una.
+Antes de reportar que algo "no funciona", primero fijate si el error de
+consola es este mismo CORS contra un endpoint ya conocido en esta sección, y
+si es `list-import-log` específicamente (el único que sigue fallando).
+
+**Verificado en vivo 2026-09-02, sesión completa con datos reales de
+backend** (no simulados) contra `list-metric-source-coverage` — la sección
+"Qué podemos mejorar" de Metrics > Overview (`MetricsOverviewTab.tsx`):
+estados de carga/error/reintentar, responsive (375px) y dark mode; la card
+de KPI "derivable" (ARR, con `net_new_mrr × 12` como query real); el diálogo
+de confirmación (`MetricCoverageReviewDialog.tsx`) con nombre/categoría/
+unidad editables y `QuerySummary` legible; y el guardado real end-to-end vía
+`upsert-metric-definition` (POST 200, `metric_class: "standard"`,
+`standard_key: "arr"` guardados correctamente, la card pasó de "derivable" a
+un `MetricValueCard` real tras el guardado). Repetido varias veces después
+del deploy sin ningún fallo de CORS.
+
+**Bug real encontrado en esta misma prueba, reportado a backend, todavía sin
+fix:** `missing_data_description` (el motivo de por qué un KPI estándar
+quedó en `status: "missing"`) viene en **inglés** ("There is no direct MRR
+input or metric available...", "Insufficient historical time-series
+data...") en vez de español — rompe la consistencia de idioma de toda la app
+(ver "UX writing" en `CLAUDE.md`). Es texto generado por IA del lado del
+backend, no algo que el frontend deba traducir a mano (fragilidad, riesgo de
+tergiversar el motivo real) — hace falta que el prompt que genera ese texto
+especifique español explícitamente.
 
 Esto **no es un problema de esta integración ni de Playwright**: le pasaría
 igual a un Chrome humano corriendo `npm run dev` y logueándose contra el
 mismo backend.
 
-**Qué falta para que funcione todo**: que el backend termine de agregar
-`http://localhost:8080` al allowlist de CORS (con
-`Access-Control-Allow-Credentials: true`) en el resto de sus endpoints, no
-solo en `get-session`. Es un cambio de backend fuera del alcance de este
-setup — repórtalo a quien lo mantenga si volvés a encontrar un endpoint
+**Qué falta para que funcione todo**: que el backend agregue
+`list-import-log` al mismo allowlist de CORS que ya corrigió para el resto
+(con `Access-Control-Allow-Credentials: true`) — es el único endpoint
+confirmado todavía afuera, en dos pantallas distintas (`/metrics?tab=
+overview` y `/metrics?tab=health`), 100% de los intentos, incluso después
+del deploy del 2026-09-02. `query-raw-fields` y `save-sheet-mapping` no se
+volvieron a probar después de ese deploy — no asumas que están bien sin
+volver a verificarlos en vivo. Es un cambio de backend fuera del alcance de
+este setup — repórtalo a quien lo mantenga si volvés a encontrar un endpoint
 nuevo bloqueado. No hace falta tocar nada de esta config cuando se resuelva:
 `storageState.json` ya tiene una sesión real y válida, lista para usarse.

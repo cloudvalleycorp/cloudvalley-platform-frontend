@@ -102,6 +102,7 @@ export function SuggestedMetricsReview({
     const existingIds = new Set(allMetrics.map((m) => m.id));
     let savedCount = 0;
     let pendingDuplicateCount = 0;
+    let failedSilently = 0;
     const rowErrorMessages: string[] = [];
     const nextRows: ReviewRow[] = [];
 
@@ -186,6 +187,14 @@ export function SuggestedMetricsReview({
         rowErrorMessages.push(typeof data?.error === "string" ? data.error : `"${row.name}" no se pudo guardar.`);
         nextRows.push(row);
       } catch {
+        // Fallo de red real (ej. el gap de CORS intermitente de
+        // playwright/README.md — confirmado en vivo 2026-09-02, esta misma
+        // request cayó acá) — sin este catch marcando failedSilently más
+        // abajo, la fila simplemente desaparecía del flujo sin ningún aviso:
+        // ni toast, ni fila visible para reintentar. Bug real introducido
+        // al reescribir esta función para el flujo de duplicados — el
+        // código original si lo cubría (ver failedSilently más abajo).
+        failedSilently++;
         nextRows.push(row);
       }
     }
@@ -197,6 +206,9 @@ export function SuggestedMetricsReview({
       onSaved();
     }
     for (const msg of rowErrorMessages) toast.error(msg);
+    if (failedSilently > 0) {
+      toast.error(`${failedSilently} métrica${failedSilently === 1 ? "" : "s"} no se pudo guardar por un error de red — probá de nuevo.`);
+    }
     if (pendingDuplicateCount > 0) {
       // El paso queda abierto a propósito: hay decisiones reales pendientes
       // (combinar o crear igual), cerrar acá las escondería.
@@ -214,13 +226,25 @@ export function SuggestedMetricsReview({
   // (arithmetic "+", ver querySpec.ts) en vez de crear una métrica nueva en
   // conflicto — solo tiene sentido cuando el destino es calculada (tiene una
   // query para extender); una métrica "input" (carga manual) no tiene query,
-  // combinar ahí no significa nada.
+  // combinar ahí no significa nada — PERO si el destino es "input" (una
+  // métrica default como "Revenue" cargada a mano, sin query todavía),
+  // conectar sí significa algo: convertirla a calculada usando la query
+  // sugerida tal cual, sin mezclar nada (no había query previo que
+  // mezclar). Mismo cambio que hace el botón "Cambiar a Calculada y elegir
+  // la fuente" de MetricPropertyPanel.tsx, pero disparado desde acá con la
+  // fuente ya elegida por la IA en vez de que el usuario la elija a mano
+  // después — encontrado en vivo 2026-09-02: sin esto, conectar una hoja
+  // nueva nunca tocaba las métricas default existentes ("Revenue" seguía
+  // vacía) aunque la IA hubiera reconocido el campo correcto.
   const handleCombine = async (i: number) => {
     const row = rows[i];
     const target = row.possibleDuplicate;
-    if (!companyId || !target || target.metric_type !== "calculated" || !target.query) return;
+    if (!companyId || !target) return;
+    const isConnectingInput = target.metric_type === "input";
+    const isMergingCalculated = target.metric_type === "calculated" && !!target.query;
+    if (!isConnectingInput && !isMergingCalculated) return;
     setRow(i, { combining: true });
-    const mergedQuery = wrapInArithmetic("+", target.query, row.query);
+    const query = isConnectingInput ? row.query : wrapInArithmetic("+", target.query!, row.query);
     const body: Record<string, unknown> = {
       company_id: companyId,
       metric_id: target.id,
@@ -230,10 +254,11 @@ export function SuggestedMetricsReview({
       unit: target.unit ?? null,
       display_order: target.order_index,
       value_type: target.value_type ?? "count",
-      query: mergedQuery,
+      query,
     };
     if (target.description) body.description = target.description;
     if (target.why_it_matters) body.why_it_matters = target.why_it_matters;
+    const verb = isConnectingInput ? "conectar" : "sumar a";
     try {
       const res = await fetch(UPSERT_FINANCIAL_METRIC_DEFINITION_URL, {
         method: "POST",
@@ -248,15 +273,15 @@ export function SuggestedMetricsReview({
       }
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        toast.error(typeof data?.error === "string" ? data.error : `No se pudo sumar a "${target.name}".`);
+        toast.error(typeof data?.error === "string" ? data.error : `No se pudo ${verb} "${target.name}".`);
         setRow(i, { combining: false });
         return;
       }
-      toast.success(`Sumado a "${target.name}"`);
+      toast.success(isConnectingInput ? `"${target.name}" conectada a esta fuente` : `Sumado a "${target.name}"`);
       onSaved();
       setRows((prev) => prev.filter((_, idx) => idx !== i));
     } catch {
-      toast.error(`No se pudo sumar a "${target.name}".`);
+      toast.error(`No se pudo ${verb} "${target.name}".`);
       setRow(i, { combining: false });
     }
   };
@@ -306,7 +331,8 @@ export function SuggestedMetricsReview({
                           ? `Ya existe "${row.possibleDuplicate.name}" — no se creó de nuevo.`
                           : `Parecida a "${row.possibleDuplicate.name}" — revisá antes de crear otra.`}
                       </p>
-                      {row.possibleDuplicate.metric_type === "calculated" && row.possibleDuplicate.query && (
+                      {(row.possibleDuplicate.metric_type === "input" ||
+                        (row.possibleDuplicate.metric_type === "calculated" && row.possibleDuplicate.query)) && (
                         <Button
                           type="button"
                           size="sm"
@@ -320,7 +346,11 @@ export function SuggestedMetricsReview({
                           }}
                         >
                           <Combine size={12} className="mr-1.5" aria-hidden="true" />
-                          {row.combining ? "Sumando…" : `Sumar esta fuente a "${row.possibleDuplicate.name}"`}
+                          {row.combining
+                            ? "Conectando…"
+                            : row.possibleDuplicate.metric_type === "input"
+                              ? `Usar esta fuente para "${row.possibleDuplicate.name}"`
+                              : `Sumar esta fuente a "${row.possibleDuplicate.name}"`}
                         </Button>
                       )}
                     </div>

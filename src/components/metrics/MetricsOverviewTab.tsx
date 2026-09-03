@@ -1,19 +1,23 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Sparkles } from "lucide-react";
+import { AlertTriangle, Sparkles, Wand2 } from "lucide-react";
 import { SectionCard } from "@/components/SectionCard";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { FundRequiredMetricsSection } from "@/components/metrics/FundRequiredMetricsSection";
 import { MetricValueCard } from "@/components/metrics/MetricValueCard";
+import { MetricCoverageReviewDialog, type CoverageReviewItem } from "@/components/metrics/MetricCoverageReviewDialog";
 import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
 import { STANDARD_KEY_LABELS, STANDARD_KEY_ORDER, type FundRequiredMetricRow } from "@/lib/metricRequirements";
-import { formatMetricValue, type MetricDef } from "@/lib/metrics";
+import { formatMetricValue, type MetricDef, type RawField } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type { MetricClassWarning, MetricScenario } from "@/lib/financialData";
 import { EXPLAIN_METRIC_DISCREPANCY_URL, LIST_METRIC_HIGHLIGHTS_URL, type ExplainMetricDiscrepancyResponse, type MetricHighlight } from "@/lib/metricIntelligence";
+import { LIST_METRIC_SOURCE_COVERAGE_URL, type ListMetricSourceCoverageResponse, type NewStandardKpiRow } from "@/lib/metricSourceCoverage";
+import { handleMembershipError } from "@/lib/membership";
 import { toPeriodString } from "@/lib/metricPeriod";
 
 const SCENARIO_LABELS: Record<MetricScenario, string> = { actual: "Real", forecast: "Forecast", budget: "Presupuesto" };
@@ -23,6 +27,7 @@ type Props = {
   metrics: MetricDef[];
   warnings: MetricClassWarning[];
   fundRequired: FundRequiredMetricRow[];
+  rawFields: RawField[];
   loading: boolean;
   onChanged: () => void;
   onGoToExplorer: (fulfillRequirementId?: string) => void;
@@ -30,6 +35,21 @@ type Props = {
   // click en "info" de una card llevaba al Explorador genérico, sin la
   // métrica preseleccionada.
   onOpenMetric: (metricId: string) => void;
+};
+
+// Mismo criterio de agrupación que financialCategoryTabs en
+// MetricsExplorerTab.tsx (categoría con menor order_index primero) —
+// duplicado acá porque este tab no comparte estado con el Explorador, solo
+// se usa para el datalist de categoría del dialog de confirmación.
+function categoryLabel(cat: string) {
+  return cat.charAt(0).toUpperCase() + cat.slice(1).replace(/_/g, " ");
+}
+
+type CoverageErrorKind = "rate_limit" | "unavailable" | "generic";
+const COVERAGE_ERROR_MESSAGES: Record<CoverageErrorKind, string> = {
+  rate_limit: "Se alcanzó el límite de uso de IA por ahora. Probá de nuevo en un rato.",
+  unavailable: "El servicio de IA no está disponible en este momento. Probá de nuevo en unos minutos.",
+  generic: "Puede ser un problema temporal del servicio. Probá de nuevo en un rato.",
 };
 
 // Presets relativos, no meses calendario hardcodeados (se rompería con el
@@ -71,7 +91,7 @@ function lastNPeriodSpec(months: number) {
 // lista aspiracional de 14 del spec original), requisitos de fondos, y
 // Destacados real (list-metric-highlights, ver Notas generales del handoff
 // de backend — no bloqueante por rate limit, puede volver sin `description`).
-export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired, loading, onChanged, onGoToExplorer, onOpenMetric }: Props) {
+export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired, rawFields, loading, onChanged, onGoToExplorer, onOpenMetric }: Props) {
   const standardMetrics = useMemo(() => metrics.filter((m) => m.metric_class === "standard"), [metrics]);
   const byKey = useMemo(() => {
     const map = new Map<string, MetricDef[]>();
@@ -83,6 +103,84 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
     }
     return map;
   }, [standardMetrics]);
+
+  const categoryTabs = useMemo(() => {
+    const minOrder = new Map<string, number>();
+    for (const m of metrics) {
+      const current = minOrder.get(m.category);
+      if (current === undefined || m.order_index < current) minOrder.set(m.category, m.order_index);
+    }
+    return Array.from(minOrder.entries())
+      .sort((a, b) => a[1] - b[1])
+      .map(([id]) => ({ id, label: categoryLabel(id) }));
+  }, [metrics]);
+
+  // list-metric-source-coverage (entregado por backend 2026-09-02) — nunca
+  // se dispara solo al cargar la pantalla (mismo principio que Destacados,
+  // ver loadHighlights más abajo): es una llamada de IA con costo y rate
+  // limit real (429), el founder la pide cuando quiere. 100% lectura,
+  // re-disparable en cualquier momento — confirmar una propuesta puntual
+  // pasa por MetricCoverageReviewDialog (upsert-metric-definition real).
+  const [coverage, setCoverage] = useState<ListMetricSourceCoverageResponse | null>(null);
+  const [loadingCoverage, setLoadingCoverage] = useState(false);
+  const [coverageError, setCoverageError] = useState<CoverageErrorKind | null>(null);
+  const [reviewItem, setReviewItem] = useState<CoverageReviewItem | null>(null);
+
+  const loadCoverage = async () => {
+    if (!companyId) return;
+    setLoadingCoverage(true);
+    setCoverageError(null);
+    try {
+      const res = await fetch(`${LIST_METRIC_SOURCE_COVERAGE_URL}?company_id=${encodeURIComponent(companyId)}`, {
+        credentials: "include",
+      });
+      if (res.status === 429) {
+        setCoverageError("rate_limit");
+        return;
+      }
+      if (res.status === 503) {
+        setCoverageError("unavailable");
+        return;
+      }
+      if (!res.ok) {
+        await handleMembershipError(res);
+        setCoverageError("generic");
+        return;
+      }
+      const data = (await res.json()) as ListMetricSourceCoverageResponse;
+      setCoverage(data);
+    } catch {
+      setCoverageError("generic");
+    } finally {
+      setLoadingCoverage(false);
+    }
+  };
+
+  const improvableMetrics = useMemo(
+    () => coverage?.metrics.filter((m) => m.status === "proposal_connect" || m.status === "proposal_enrich") ?? [],
+    [coverage]
+  );
+  const derivableByKey = useMemo(() => {
+    const map = new Map<string, NewStandardKpiRow>();
+    for (const k of coverage?.new_standard_kpis ?? []) map.set(k.standard_key, k);
+    return map;
+  }, [coverage]);
+
+  // Tras confirmar, se saca la propuesta ya aplicada de la lista local en vez
+  // de volver a llamar list-metric-source-coverage (evita gastar otra
+  // corrida de IA solo para refrescar una lista que ya sabemos que cambió) —
+  // onChanged() sí recarga las métricas reales (financial.reload), que es lo
+  // que hace que la grilla de KPIs de arriba muestre el valor nuevo.
+  const handleCoverageSaved = () => {
+    onChanged();
+    setCoverage((prev) => {
+      if (!prev || !reviewItem) return prev;
+      if (reviewItem.kind === "new_standard") {
+        return { ...prev, new_standard_kpis: prev.new_standard_kpis.filter((k) => k.standard_key !== reviewItem.row.standard_key) };
+      }
+      return { ...prev, metrics: prev.metrics.filter((m) => m.metric_id !== reviewItem.row.metric_id) };
+    });
+  };
 
   const [rangeMonths, setRangeMonths] = useState<number>(6);
   const periodSpec = useMemo(() => lastNPeriodSpec(rangeMonths), [rangeMonths]);
@@ -181,11 +279,46 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
           {STANDARD_KEY_ORDER.map((key) => {
             const group = byKey.get(key) ?? [];
             if (group.length === 0) {
+              const derivable = derivableByKey.get(key);
+              // "derivable" con proposal: la IA ya encontró cómo calcularlo
+              // con lo que el founder conectó — se ofrece confirmar en vez
+              // de mandarlo al Explorador a armar la query a mano. "missing"
+              // con motivo real: se muestra en vez del texto genérico "Todavía
+              // no la trackeás" (nunca se inventa qué falta si no vino del
+              // backend). Sin buscar coverage todavía (derivable undefined),
+              // sigue el fallback de siempre — el founder decide cuándo pedir
+              // esta capa de IA, ver botón "Buscar mejoras" más abajo.
+              if (derivable?.status === "derivable" && derivable.proposal) {
+                return (
+                  <div key={key} className="border border-dashed border-primary/40 bg-primary/5 rounded-lg p-5 flex flex-col items-start justify-between min-h-[140px]">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles size={13} strokeWidth={1.5} className="text-primary" aria-hidden="true" />
+                      <h3 className="text-sm font-medium">{STANDARD_KEY_LABELS[key]}</h3>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-2">Lo podemos calcular con lo que ya conectaste.</p>
+                      {derivable.proposal.low_confidence && (
+                        <Badge variant="warning" className="mb-2 gap-1">
+                          <AlertTriangle size={10} strokeWidth={1.5} aria-hidden="true" />
+                          Confianza baja
+                        </Badge>
+                      )}
+                      <Button variant="outline" size="sm" onClick={() => setReviewItem({ kind: "new_standard", row: derivable })}>
+                        Revisar y confirmar
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <div key={key} className="border border-dashed border-border rounded-lg p-5 flex flex-col items-start justify-between min-h-[140px]">
                   <h3 className="text-sm font-medium text-muted-foreground">{STANDARD_KEY_LABELS[key]}</h3>
                   <div>
-                    <p className="text-xs text-muted-foreground mb-2">Todavía no la trackeás.</p>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      {derivable?.status === "missing" && derivable.missing_data_description
+                        ? derivable.missing_data_description
+                        : "Todavía no la trackeás."}
+                    </p>
                     <Button variant="outline" size="sm" onClick={() => onGoToExplorer()}>
                       Crear métrica
                     </Button>
@@ -282,6 +415,78 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
       </SectionCard>
 
       <SectionCard
+        title="Qué podemos mejorar"
+        action={
+          !loadingCoverage ? (
+            <Button variant="outline" size="sm" onClick={loadCoverage}>
+              <Wand2 size={13} className="mr-1.5" aria-hidden="true" /> {coverage ? "Volver a buscar" : "Buscar mejoras"}
+            </Button>
+          ) : undefined
+        }
+      >
+        {loadingCoverage ? (
+          <p className="text-sm text-muted-foreground">Revisando tus fuentes conectadas contra tus métricas…</p>
+        ) : coverageError ? (
+          <EmptyState
+            bordered={false}
+            icon={Wand2}
+            title="No pudimos buscar mejoras ahora."
+            description={COVERAGE_ERROR_MESSAGES[coverageError]}
+            action={{ label: "Reintentar", onClick: loadCoverage }}
+          />
+        ) : !coverage ? (
+          <EmptyState
+            bordered={false}
+            icon={Wand2}
+            title="Todavía no buscaste mejoras con tus fuentes conectadas."
+            description="Revisamos tus métricas de carga manual y las que ya se calculan solas, y avisamos si hay una fuente ya conectada que las puede completar o mejorar."
+            action={{ label: "Buscar mejoras", onClick: loadCoverage }}
+          />
+        ) : improvableMetrics.length === 0 ? (
+          <EmptyState
+            bordered={false}
+            icon={Wand2}
+            title="Con tus fuentes conectadas no encontramos mejoras nuevas."
+            description="Volvé a buscar cuando conectes una fuente nueva."
+          />
+        ) : (
+          <div className="space-y-3">
+            {improvableMetrics.map((m) => (
+              <div key={m.metric_id} className="border border-border rounded-md p-3 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-sm font-medium">{m.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {m.status === "proposal_connect"
+                      ? "Se carga a mano — la podemos calcular sola con lo que ya conectaste."
+                      : "Ya se calcula sola — hay una fuente nueva conectada para sumarle."}
+                  </p>
+                  {m.proposal?.low_confidence && (
+                    <Badge variant="warning" className="mt-1.5 gap-1">
+                      <AlertTriangle size={10} strokeWidth={1.5} aria-hidden="true" />
+                      Confianza baja
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setReviewItem({ kind: m.status === "proposal_connect" ? "connect" : "enrich", row: m })}
+                >
+                  Revisar y confirmar
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        {coverage && coverage.truncated_metric_ids.length > 0 && (
+          <p className="text-[11px] text-muted-foreground mt-3">
+            Todavía no revisamos {coverage.truncated_metric_ids.length} métrica{coverage.truncated_metric_ids.length === 1 ? "" : "s"} más
+            — volvé a buscar en un rato para cubrirlas.
+          </p>
+        )}
+      </SectionCard>
+
+      <SectionCard
         title="Destacados"
         action={
           !highlights && !loadingHighlights ? (
@@ -329,6 +534,17 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
           </div>
         )}
       </SectionCard>
+
+      <MetricCoverageReviewDialog
+        item={reviewItem}
+        onOpenChange={(o) => !o && setReviewItem(null)}
+        companyId={companyId}
+        allMetrics={metrics}
+        rawFields={rawFields}
+        categories={categoryTabs}
+        defaultCategory={categoryTabs[0]?.id ?? "revenue"}
+        onSaved={handleCoverageSaved}
+      />
     </div>
   );
 }

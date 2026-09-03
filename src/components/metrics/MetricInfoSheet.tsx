@@ -114,6 +114,23 @@ export function MetricInfoSheet({ metric, onClose, history, onEdit, onOpenAssist
                 <p className="text-sm">{metric.benchmark}</p>
               </div>
             )}
+            {/* Antes esta métrica se quedaba en "carga a mano" sin ningún
+                acceso directo — había que ir a Editar y encontrar la sección
+                "Fuente de datos" a ciegas (ver AnnualGrid.tsx/InputsPanel.tsx
+                para el mismo acceso desde la grilla). onEdit ya abre
+                MetricPropertyPanel con esa sección expandida por default
+                para este caso, ver MetricPropertyPanel.tsx. */}
+            {metric.metric_type === "input" && !metric.source && onEdit && (
+              <div className="border border-dashed border-border rounded-md p-3">
+                <p className="text-sm font-medium mb-1">Se carga a mano.</p>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Si ya conectaste una fuente con este dato, no hace falta seguir cargándolo a mano.
+                </p>
+                <Button size="sm" variant="outline" onClick={() => onEdit(metric)}>
+                  Conectar con una fuente
+                </Button>
+              </div>
+            )}
             {allMetrics && rawFields && (
               <MetricLineagePanel
                 metric={metric}

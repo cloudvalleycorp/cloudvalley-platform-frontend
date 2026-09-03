@@ -256,7 +256,16 @@ export function MetricPropertyPanel({
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto px-6">
-            <Accordion type="multiple" defaultValue={["general"]}>
+            {/* key fuerza a remontar el accordion al cambiar de métrica —
+                sin esto defaultValue solo se lee una vez y "Fuente de
+                datos" quedaría colapsada al abrir la segunda métrica
+                aunque sí correspondiera expandirla (mismo tipo de bug que
+                seedKey en useMetricPropertyForm.ts, ver ese comentario). */}
+            <Accordion
+              key={metric?.id ?? "new"}
+              type="multiple"
+              defaultValue={draft.metric_type === "input" && !syncedFrom ? ["general", "fuente"] : ["general"]}
+            >
               <AccordionItem value="general">
                 <AccordionTrigger>General</AccordionTrigger>
                 <AccordionContent className="space-y-4">
@@ -329,15 +338,19 @@ export function MetricPropertyPanel({
                         <>
                           <p className="text-sm">Se carga a mano.</p>
                           <p className="text-xs text-muted-foreground mt-1.5">
-                            No se puede reasignar esta carga a una integración desde acá. Para traer este dato
-                            automáticamente: cambiá el Tipo (arriba) a "Calculada" y escribí una fórmula que use{" "}
-                            <code className="font-mono">FIELDSUM</code>/<code className="font-mono">FIELDCOUNT</code>{" "}
-                            sobre un campo ya mapeado en{" "}
-                            <a href="/growth-tracker/sheets" className="text-primary hover:underline">
-                              Integraciones → Google Sheets
-                            </a>
-                            .
+                            No se puede reasignar esta carga a una integración desde acá — pero sí podés hacer que
+                            este número salga de una fuente ya conectada: cambiá el Tipo a "Calculada" y elegí el
+                            campo desde el selector, sin escribir nada a mano.
                           </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-2"
+                            onClick={() => setField("metric_type", "calculated")}
+                          >
+                            Cambiar a Calculada y elegir la fuente
+                          </Button>
                         </>
                       ) : settingsPath ? (
                         <a href={settingsPath} className="text-sm text-primary hover:underline">

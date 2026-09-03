@@ -142,6 +142,7 @@ export default function Metrics() {
             metrics={financial.metrics}
             warnings={financial.warnings}
             fundRequired={financial.fundRequired}
+            rawFields={rawFields}
             loading={financial.loading}
             onChanged={() => {
               financial.reload();

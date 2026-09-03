@@ -69,8 +69,8 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
                 {m.unit && (
                   <span className="text-xs text-muted-foreground">({m.unit})</span>
                 )}
-                {syncedFrom &&
-                  (settingsPath ? (
+                {syncedFrom ? (
+                  settingsPath ? (
                     <Link
                       to={settingsPath}
                       className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5 hover:text-foreground hover:border-foreground/30 transition-colors"
@@ -87,7 +87,21 @@ export function InputsPanel({ inputs, values, onSave, onInfo, privacy, onToggleP
                       <Zap size={10} strokeWidth={2} />
                       {syncedFrom}
                     </span>
-                  ))}
+                  )
+                ) : (
+                  // Mismo criterio que AnnualGrid.tsx: acceso directo para
+                  // conectar este input a una fuente ya conectada, en vez de
+                  // solo el ícono de info genérico.
+                  <button
+                    type="button"
+                    onClick={() => onInfo(m)}
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-dashed border-border rounded-full px-2 py-0.5 hover:text-primary hover:border-primary/50 transition-colors"
+                    title="Este dato se carga a mano — conectalo a una fuente si ya la tenés."
+                  >
+                    <Zap size={10} strokeWidth={2} />
+                    Conectar fuente
+                  </button>
+                )}
                 <button
                   onClick={() => onInfo(m)}
                   className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"
