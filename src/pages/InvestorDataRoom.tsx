@@ -157,7 +157,7 @@ function InvestorDataRoomContent({ companies }: { companies: { id: string; name:
                               </span>
                               <span className="text-xs text-muted-foreground shrink-0">
                                 {doc.uploaded_by_name ? `${doc.uploaded_by_name} · ` : ""}
-                                {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString("es-AR", { day: "2-digit", month: "short" }) : ""}
+                                {new Date(doc.created_at).toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
                               </span>
                             </button>
                           ))}

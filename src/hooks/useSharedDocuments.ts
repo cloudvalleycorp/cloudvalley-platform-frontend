@@ -3,6 +3,15 @@ import { LIST_SHARED_DOCUMENTS_URL, type DataRoomDocument } from "@/lib/dataRoom
 
 type Result = { documents: DataRoomDocument[]; forbidden: boolean };
 
+// list-shared-documents llama a su fecha "uploaded_at", no "created_at" como
+// list-documents (confirmado por backend 2026-09-04, no son el mismo shape)
+// — se normaliza acá, una sola vez, para que DataRoomDocument sea el único
+// tipo que el resto del código (DocumentRow.tsx, InvestorDataRoom.tsx)
+// necesita conocer.
+function normalizeSharedDocument(raw: any): DataRoomDocument {
+  return { ...raw, created_at: raw.uploaded_at ?? raw.created_at };
+}
+
 async function fetchSharedDocuments(companyId: string): Promise<Result> {
   const res = await fetch(`${LIST_SHARED_DOCUMENTS_URL}?company_id=${encodeURIComponent(companyId)}`, {
     credentials: "include",
@@ -10,7 +19,8 @@ async function fetchSharedDocuments(companyId: string): Promise<Result> {
   if (res.status === 403) return { documents: [], forbidden: true };
   if (!res.ok) return { documents: [], forbidden: false };
   const data = await res.json();
-  return { documents: Array.isArray(data?.documents) ? data.documents : [], forbidden: false };
+  const documents = Array.isArray(data?.documents) ? data.documents : [];
+  return { documents: documents.map(normalizeSharedDocument), forbidden: false };
 }
 
 /** Lado inversor: solo los documentos que la startup marcó como visibles, validado server-side (nunca is_public filtrado en el cliente). */
@@ -44,8 +54,9 @@ async function fetchPortfolioDocuments(
   // aparecen) — a diferencia del modo legacy de una sola company_id.
   if (!res.ok) return EMPTY_PORTFOLIO;
   const data = await res.json();
+  const documents = Array.isArray(data?.documents) ? data.documents : [];
   return {
-    documents: Array.isArray(data?.documents) ? data.documents : [],
+    documents: documents.map(normalizeSharedDocument),
     total: typeof data?.total === "number" ? data.total : 0,
     page: typeof data?.page === "number" ? data.page : page,
     page_size: typeof data?.page_size === "number" ? data.page_size : pageSize,

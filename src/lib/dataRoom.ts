@@ -21,6 +21,14 @@ export type DocumentCategory =
 
 export type DocumentStatus = "missing" | "uploaded" | "verified";
 
+// Shape normalizado que consume DocumentRow.tsx — list-documents (founder,
+// una sola company) y list-shared-documents (investor, cross-company) NO
+// son intercambiables 1:1 (confirmado por backend 2026-09-04): la fecha se
+// llama distinto en cada uno (created_at/updated_at vs. uploaded_at) y solo
+// el segundo trae company_name/verified_by_name. useSharedDocuments.ts
+// mapea uploaded_at -> created_at al leer la respuesta para que este tipo
+// sea el único que el resto del código necesita conocer — ver esa función
+// antes de asumir que un campo nuevo de un endpoint ya está disponible acá.
 export type DataRoomDocument = {
   id: string;
   category: DocumentCategory;
@@ -32,14 +40,16 @@ export type DataRoomDocument = {
   is_public: boolean;
   verified_at: string | null;
   verified_by: string | null;
-  // Trazabilidad (contrato ampliado 2026-08-23) — confirmar con backend si
-  // ya vienen o hay que agregarlos (ver prompt de backend, ítem 9b).
-  uploaded_by_name?: string | null;
-  uploaded_at?: string | null;
+  created_at: string;
+  // Quién creó el registro del documento (create-document) — null si no se
+  // puede resolver (usuario borrado, o documento viejo de antes de que el
+  // backend guardara este dato). Confirmado real en list-documents Y
+  // list-shared-documents 2026-09-04.
+  uploaded_by_name: string | null;
+  // Solo en list-documents (founder, una sola company).
+  updated_at?: string;
+  // Solo en list-shared-documents (investor).
   verified_by_name?: string | null;
-  // Solo presentes en el modo portfolio-wide de list-shared-documents
-  // (company_ids/segment_id/sin filtro) — ausentes en el modo legacy de una
-  // sola company_id.
   company_id?: string;
   company_name?: string;
 };

@@ -49,6 +49,12 @@ export function DocumentRow({
       <DocumentStatusBadge status={doc.status} />
       <div className="flex-1 min-w-0">
         <div className="text-sm truncate">{doc.name}</div>
+        {doc.status !== "missing" && (
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {doc.uploaded_by_name ? `Subido por ${doc.uploaded_by_name} el ` : "Subido el "}
+            {new Date(doc.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" })}
+          </div>
+        )}
         {showRoadmapBadge && doc.task_title && (
           <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
             <FileText size={10} strokeWidth={1.5} />
