@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
-import { useStartup } from "@/hooks/useStartup";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
+import { useDocuments } from "@/hooks/useDocuments";
+import { periodRange } from "@/lib/metricPeriod";
 import { Link } from "react-router-dom";
 import { Eye, Lock, ShieldCheck } from "lucide-react";
 import { IntegrationsSection } from "@/components/IntegrationsSection";
@@ -11,48 +12,27 @@ import { MyOrganization } from "@/components/MyOrganization";
 import { OrganizationSection } from "@/components/OrganizationSection";
 import { SectionCard } from "@/components/SectionCard";
 
-export default function Settings() {
-  const { startup } = useStartup();
-  const { role, company_id, fund_id } = useAuth();
-  const [privacySummary, setPrivacySummary] = useState({
-    metricsPrivate: 0,
-    metricsTotal: 0,
-    docsPrivate: 0,
-    docsTotal: 0,
-  });
+// Rango mínimo — acá solo hace falta el catálogo de métricas (largo +
+// privacidad), no sus valores por período.
+const now = new Date();
+const minimalRange = periodRange({ month: now.getMonth() + 1, year: now.getFullYear() }, 0);
 
-  useEffect(() => {
-    if (!startup) return;
-    (async () => {
-      const [{ count: metricsTotal }, { data: mPriv }, { count: docsTotal }, { data: dPriv }] = await Promise.all([
-        supabase
-          .from("metric_configs")
-          .select("metric_id", { count: "exact", head: true })
-          .eq("startup_id", startup.id)
-          .eq("is_active", true),
-        supabase
-          .from("metric_privacy")
-          .select("metric_id")
-          .eq("startup_id", startup.id)
-          .eq("is_public", false),
-        supabase
-          .from("documents")
-          .select("id", { count: "exact", head: true })
-          .eq("startup_id", startup.id),
-        supabase
-          .from("document_privacy")
-          .select("document_id")
-          .eq("startup_id", startup.id)
-          .eq("is_public", false),
-      ]);
-      setPrivacySummary({
-        metricsTotal: metricsTotal ?? 0,
-        metricsPrivate: mPriv?.length ?? 0,
-        docsTotal: docsTotal ?? 0,
-        docsPrivate: dPriv?.length ?? 0,
-      });
-    })();
-  }, [startup?.id]);
+export default function Settings() {
+  const { role, company_id, fund_id } = useAuth();
+  const financial = useFinancialMetrics(role === "user" ? company_id : null, minimalRange);
+  const documents = useDocuments(role === "user" ? company_id : null);
+
+  // Antes leía metric_configs/metric_privacy/documents/document_privacy
+  // directo de Supabase — mismos números, derivados de los hooks reales
+  // (list-metrics+list-metric-privacy, list-documents) que ya usan
+  // Métricas y Data Room.
+  const privacySummary = useMemo(() => {
+    const metricsTotal = financial.metrics.length;
+    const metricsPrivate = financial.metrics.filter((m) => financial.privacy[m.id] === false).length;
+    const docsTotal = documents.documents.length;
+    const docsPrivate = documents.documents.filter((d) => !d.is_public).length;
+    return { metricsTotal, metricsPrivate, docsTotal, docsPrivate };
+  }, [financial.metrics, financial.privacy, documents.documents]);
 
   return (
     <AppLayout>

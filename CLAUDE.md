@@ -27,6 +27,16 @@ si necesitás un color categórico que no es "éxito/error", agregale la variant
 oscura vos mismo (ver `RoleBadge.tsx` como referencia) y verificá el contraste
 antes de asumir que se ve bien.
 
+`--success`/`--warning`/`--destructive` como **texto** chico sobre blanco/card
+no pasan WCAG AA (verificado con la fórmula de luminancia, no a ojo: 2.22:1 /
+1.75:1 / 3.55:1, los tres por debajo de 4.5:1) — para texto (deltas, labels)
+usá `text-success-dark`/`text-warning-dark`/`text-destructive-dark`
+(agregados 2026-09-04, sí pasan: 6.11:1 / 4.81:1 / 6.20:1). El token base
+sigue siendo el correcto para fills de badge/dot/ícono, ahí aplica el piso de
+3:1 de "componente UI", no el 4.5:1 de texto. Detalle completo, contexto y
+pendiente de barrido en componentes existentes:
+`docs/design-system-command-center.md`.
+
 Tokens disponibles: `background`, `surface`, `foreground`, `muted-foreground`,
 `tertiary` (texto más apagado que `muted-foreground`, usar con moderación),
 `card`, `popover`, `primary`, `secondary`, `accent`, `destructive`, `success`,
@@ -210,9 +220,11 @@ manda (confirmado: la sesión se reutiliza bien y las pantallas autenticadas
 cargan), pero otros endpoints (confirmado con `list-import-log` y
 `query-raw-fields`, probablemente más) todavía no — esas requests puntuales siguen bloqueadas y van a aparecer
 como error de CORS en `browser_console_messages`/`browser_network_requests`,
-aunque el resto de la pantalla funcione. No es un problema de esta config ni
-algo para arreglar acá (requiere que el backend termine de agregar el origin
-a su allowlist de CORS en el resto de los endpoints). Antes de asumir que un
+aunque el resto de la pantalla funcione. `list-metric-highlights` confirmado
+en la misma lista 2026-09-04 (bloqueado en vivo al probar el Dashboard
+nuevo). No es un problema de esta config ni algo para arreglar acá (requiere
+que el backend termine de agregar el origin a su allowlist de CORS en el
+resto de los endpoints). Antes de asumir que un
 error nuevo es un bug del cambio que estás verificando, confirmá si es este
 mismo problema de CORS conocido (mirá el endpoint en el mensaje de error).
 Ver detalle y lista de qué se probó en `playwright/README.md`.

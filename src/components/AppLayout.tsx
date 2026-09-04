@@ -5,7 +5,6 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
-import { useStartup } from "@/hooks/useStartup";
 import { CompleteProfileScreen } from "@/components/CompleteProfileScreen";
 import { LogOut, Settings as SettingsIcon, UserCircle, Moon, Sun, Sparkles, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -40,6 +39,21 @@ function portfolioWideSurfaceForPath(pathname: string): PlatformAgentSurface {
   return match?.surface ?? "investor_portfolio";
 }
 
+// Mismo patrón que PORTFOLIO_WIDE_SURFACE_BY_PATH, del lado founder —
+// refactor de Dashboard/Roadmap/Data Room (2026-09-04): el Asistente antes
+// solo existía para role="investor", ahora también se habilita para
+// role="user" (founder) en estas 3 rutas, mismo componente y misma posición
+// en el header.
+const FOUNDER_SURFACE_BY_PATH: { prefix: string; surface: PlatformAgentSurface }[] = [
+  { prefix: "/roadmap", surface: "founder_roadmap" },
+  { prefix: "/data-room", surface: "founder_data_room" },
+];
+
+function founderSurfaceForPath(pathname: string): PlatformAgentSurface {
+  const match = FOUNDER_SURFACE_BY_PATH.find((s) => pathname.startsWith(s.prefix));
+  return match?.surface ?? "founder_dashboard";
+}
+
 export function AppLayout({ children }: { children: ReactNode }) {
   const {
     user,
@@ -56,7 +70,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
     portfolio_company_ids,
     portfolio_company_names,
   } = useAuth();
-  const { startup, loading: startupLoading } = useStartup();
   const navigate = useNavigate();
   const location = useLocation();
   const [profilePromptDismissed, setProfilePromptDismissed] = useState(false);
@@ -72,15 +85,21 @@ export function AppLayout({ children }: { children: ReactNode }) {
   // el botón pantalla por pantalla.
   const [assistantOpen, setAssistantOpen] = useState(false);
   const companyDetailMatch = matchPath("/companies/:companyId", location.pathname);
-  const assistantCompanyId = companyDetailMatch?.params.companyId ?? null;
-  const assistantSurface: PlatformAgentSurface = assistantCompanyId
-    ? "investor_company"
-    : portfolioWideSurfaceForPath(location.pathname);
+  const assistantCompanyId =
+    role === "user" ? company_id ?? null : companyDetailMatch?.params.companyId ?? null;
+  const assistantSurface: PlatformAgentSurface =
+    role === "user"
+      ? founderSurfaceForPath(location.pathname)
+      : assistantCompanyId
+        ? "investor_company"
+        : portfolioWideSurfaceForPath(location.pathname);
 
-  // Global Search (⌘K) — investor-only, mismo criterio de alcance que el
-  // Asistente. MVP client-side, ver GlobalSearch.tsx.
+  // Global Search (⌘K) — investor y founder, mismo criterio de alcance que
+  // el Asistente (antes investor-only). MVP client-side, ver GlobalSearch.tsx
+  // — con 0 companies de portfolio (caso founder) degrada bien: solo indexa
+  // los atajos de navegación fijos, sin sección de empresas.
   const [searchOpen, setSearchOpen] = useState(false);
-  useGlobalSearchShortcut(role === "investor" ? setSearchOpen : () => {});
+  useGlobalSearchShortcut(role === "investor" || role === "user" ? setSearchOpen : () => {});
   const searchCompanies = (portfolio_company_ids ?? []).map((id, i) => ({
     id,
     name: portfolio_company_names?.[i] ?? "—",
@@ -164,7 +183,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {role === "investor" && (
+              {(role === "investor" || role === "user") && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -176,10 +195,21 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   <span className="hidden sm:inline">Buscar</span>
                 </Button>
               )}
-              {role === "investor" && (
-                <Button variant="outline" size="sm" onClick={() => setAssistantOpen(true)} aria-label="Asistente">
-                  <Sparkles size={14} className="sm:mr-1.5" aria-hidden="true" />
+              {(role === "investor" || role === "user") && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAssistantOpen(true)}
+                  aria-label="Asistente"
+                  className="border-primary/40 bg-primary-subtle text-primary-dark hover:bg-primary-subtle/70 gap-1.5"
+                >
+                  <Sparkles size={14} aria-hidden="true" />
                   <span className="hidden sm:inline">Asistente</span>
+                  {role === "user" && (
+                    <span className="hidden sm:inline-flex items-center rounded-full bg-teal px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wide text-teal-foreground">
+                      Nuevo
+                    </span>
+                  )}
                 </Button>
               )}
               <Button
@@ -231,11 +261,17 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </div>
 
-      {role === "investor" && (
-        <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} companies={searchCompanies} />
+      {(role === "investor" || role === "user") && (
+        <GlobalSearch
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          companies={searchCompanies}
+          role={role}
+          companyId={company_id}
+        />
       )}
 
-      {role === "investor" && (
+      {(role === "investor" || role === "user") && (
         <PlatformAgentPanel
           key={assistantCompanyId ?? "portfolio"}
           open={assistantOpen}

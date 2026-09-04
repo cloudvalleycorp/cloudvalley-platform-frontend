@@ -65,14 +65,15 @@ export function RoadmapTaskList({ pillars, tasks, onOpenTask, readOnly = false, 
         ))}
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {grouped.map((p) => {
           const done = p.items.filter((t) => t.status === "done").length;
+          const pct = p.items.length > 0 ? Math.round((done / p.items.length) * 100) : 0;
           const isCollapsed = collapsed.has(p.id);
           return (
-            <section key={p.id} className="border border-border rounded-lg bg-card">
+            <section key={p.id} className="border border-border rounded-lg bg-card overflow-hidden">
               <button
-                className="w-full px-6 py-4 flex items-center justify-between text-left"
+                className="w-full px-4 py-[13px] flex items-center justify-between gap-3 text-left bg-surface/60"
                 onClick={() =>
                   setCollapsed((prev) => {
                     const next = new Set(prev);
@@ -84,25 +85,25 @@ export function RoadmapTaskList({ pillars, tasks, onOpenTask, readOnly = false, 
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
-                    <h3 className="text-base font-medium">{p.name}</h3>
+                    <h3 className="text-[13px] font-medium">{p.name}</h3>
                     <span className="text-xs text-tertiary">peso {p.weight}</span>
                   </div>
-                  <div className="flex items-center gap-3 mt-2">
-                    <div className="text-xs text-muted-foreground">
-                      {done}/{p.items.length}
-                    </div>
-                    <div className="h-0.5 flex-1 max-w-xs bg-surface rounded-full overflow-hidden">
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <div className="w-[100px] h-[5px] rounded-full bg-border overflow-hidden shrink-0">
                       <div
-                        className="h-full bg-foreground transition-all duration-150"
-                        style={{ width: `${(done / p.items.length) * 100}%` }}
+                        className="h-full bg-teal transition-all duration-150"
+                        style={{ width: `${pct}%` }}
                       />
                     </div>
+                    <span className="text-[11.5px] text-muted-foreground tabular-nums">
+                      {done}/{p.items.length}
+                    </span>
                   </div>
                 </div>
                 <ChevronDown
                   size={16}
                   strokeWidth={1.5}
-                  className={cn("text-muted-foreground transition-transform", isCollapsed && "-rotate-90")}
+                  className={cn("text-muted-foreground transition-transform shrink-0", isCollapsed && "-rotate-90")}
                 />
               </button>
               {!isCollapsed && (
@@ -110,7 +111,7 @@ export function RoadmapTaskList({ pillars, tasks, onOpenTask, readOnly = false, 
                   {p.items.map((t) => (
                     <li
                       key={t.startup_task_id}
-                      className="flex items-center gap-3 px-6 py-3 border-b border-border/50 last:border-0 group"
+                      className="flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 group"
                     >
                       {readOnly ? (
                         t.status === "done" ? (
@@ -127,8 +128,10 @@ export function RoadmapTaskList({ pillars, tasks, onOpenTask, readOnly = false, 
                       <span className={cn("flex-1 text-sm", t.status === "done" && "text-tertiary line-through")}>{t.title}</span>
                       <span
                         className={cn(
-                          "text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border",
-                          t.criticality === "critical" ? "border-foreground text-foreground" : "border-border text-muted-foreground"
+                          "text-[10px] font-semibold uppercase tracking-wide px-2 py-[1.5px] rounded-full shrink-0",
+                          t.criticality === "critical"
+                            ? "bg-destructive/10 text-destructive-dark"
+                            : "bg-secondary text-secondary-foreground"
                         )}
                       >
                         {t.criticality}

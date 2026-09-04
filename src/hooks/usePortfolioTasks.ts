@@ -34,11 +34,15 @@ async function fetchPortfolioTasks(params: ListPortfolioTasksParams): Promise<Li
 // fondo solo se podía ver una empresa a la vez (list-shared-roadmap). El
 // orden por default ya viene del backend (vencidas primero, después
 // due_date asc, después criticality) — no hay parámetro sort todavía.
-export function usePortfolioTasks(params: ListPortfolioTasksParams) {
+// `enabled` (default true, agregado 2026-09-04): este endpoint es
+// fund-scoped, no aplica a role="user" — GlobalSearch.tsx lo apaga del todo
+// para founders en vez de pedirlo igual y descartar la respuesta.
+export function usePortfolioTasks(params: ListPortfolioTasksParams, enabled = true) {
   const key = JSON.stringify(params);
   const { data = EMPTY, isLoading: loading } = useQuery({
     queryKey: ["portfolio-tasks", key],
     queryFn: () => fetchPortfolioTasks(params),
+    enabled,
   });
   return { ...data, loading };
 }

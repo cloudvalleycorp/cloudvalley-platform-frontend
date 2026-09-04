@@ -27,7 +27,6 @@ const DataRoom = lazy(() => import("./pages/DataRoom"));
 
 const Admin = lazy(() => import("./pages/Admin"));
 const AdminStartup = lazy(() => import("./pages/AdminStartup"));
-const AdminOrganizations = lazy(() => import("./pages/AdminOrganizations"));
 const AdminCompanies = lazy(() => import("./pages/AdminCompanies"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminFunds = lazy(() => import("./pages/AdminFunds"));
@@ -75,7 +74,6 @@ const App = () => (
             <Route path="/account" element={<Account />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/startup/:id" element={<AdminStartup />} />
-            <Route path="/admin/organizations" element={<AdminOrganizations />} />
             <Route path="/admin/companies" element={<AdminCompanies />} />
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/funds" element={<AdminFunds />} />
@@ -90,6 +88,12 @@ const App = () => (
                 mantienen como redirect para no romper links compartidos. */}
             <Route path="/analiticas" element={<Navigate to="/portfolio?mode=compare" replace />} />
             <Route path="/portfolio/:company_id" element={<RedirectToCompanyWorkspace />} />
+            {/* /admin/organizations es la pantalla vieja de gestión de
+                organizations (Supabase directo, pre-migración) — superada por
+                /admin/funds (manage-funds real) + la invitación self-service
+                de MyOrganization.tsx (invite-member-by-email). Redirect, no
+                404, por si algún admin tiene el link viejo guardado. */}
+            <Route path="/admin/organizations" element={<Navigate to="/admin/funds" replace />} />
             <Route path="/conexiones" element={<Connections />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -12,11 +12,13 @@ import { FundRequiredMetricsSection } from "@/components/metrics/FundRequiredMet
 import { MetricValueCard } from "@/components/metrics/MetricValueCard";
 import { MetricCoverageReviewDialog, type CoverageReviewItem } from "@/components/metrics/MetricCoverageReviewDialog";
 import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
+import { useMetricHighlights } from "@/hooks/useMetricHighlights";
 import { STANDARD_KEY_LABELS, STANDARD_KEY_ORDER, type FundRequiredMetricRow } from "@/lib/metricRequirements";
+import { loadVisibleKpis, saveVisibleKpis } from "@/lib/visibleKpis";
 import { formatMetricValue, type MetricDef, type RawField } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type { MetricClassWarning, MetricScenario } from "@/lib/financialData";
-import { EXPLAIN_METRIC_DISCREPANCY_URL, LIST_METRIC_HIGHLIGHTS_URL, type ExplainMetricDiscrepancyResponse, type MetricHighlight } from "@/lib/metricIntelligence";
+import { EXPLAIN_METRIC_DISCREPANCY_URL, type ExplainMetricDiscrepancyResponse } from "@/lib/metricIntelligence";
 import { LIST_METRIC_SOURCE_COVERAGE_URL, type ListMetricSourceCoverageResponse, type NewStandardKpiRow } from "@/lib/metricSourceCoverage";
 import { handleMembershipError } from "@/lib/membership";
 import { toPeriodString } from "@/lib/metricPeriod";
@@ -51,20 +53,9 @@ function categoryLabel(cat: string) {
 // PAGE_MODE_KEY en MetricsExplorerTab.tsx). Pedido en vivo 2026-09-03: no
 // todas las startups siguen los 8 KPIs estándar, algunas quieren ocultar los
 // que no les aplican en vez de ver "Todavía no la trackeás" x N sin poder
-// sacarlos de la vista.
-const VISIBLE_KPIS_KEY = "cv:metrics:visibleKpis";
-
-function loadVisibleKpis(): Set<string> {
-  try {
-    const raw = localStorage.getItem(VISIBLE_KPIS_KEY);
-    if (!raw) return new Set(STANDARD_KEY_ORDER);
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) return new Set(STANDARD_KEY_ORDER);
-    return new Set(parsed.filter((k) => STANDARD_KEY_ORDER.includes(k)));
-  } catch {
-    return new Set(STANDARD_KEY_ORDER);
-  }
-}
+// sacarlos de la vista. Extraído a lib/visibleKpis.ts (2026-09-04): la misma
+// preferencia también la usa el Company Health del Dashboard, no tiene
+// sentido mantener dos listas separadas de "qué KPIs me importan".
 
 type CoverageErrorKind = "rate_limit" | "unavailable" | "generic";
 const COVERAGE_ERROR_MESSAGES: Record<CoverageErrorKind, string> = {
@@ -217,7 +208,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
         toast.error("Dejá al menos un KPI visible.");
         return prev;
       }
-      localStorage.setItem(VISIBLE_KPIS_KEY, JSON.stringify(Array.from(next)));
+      saveVisibleKpis(next);
       return next;
     });
   };
@@ -229,30 +220,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
   const [scenario, setScenario] = useState<MetricScenario>("actual");
   const { values, valuesActual, loading: loadingValues } = useEvaluatedMetrics(companyId, metricIds, periodSpec, scenario);
 
-  const [highlights, setHighlights] = useState<MetricHighlight[] | null>(null);
-  const [loadingHighlights, setLoadingHighlights] = useState(false);
-  const [highlightsError, setHighlightsError] = useState(false);
-  const loadHighlights = async () => {
-    if (!companyId) return;
-    setLoadingHighlights(true);
-    setHighlightsError(false);
-    try {
-      const period = toPeriodString(new Date().getMonth() + 1, new Date().getFullYear());
-      const res = await fetch(`${LIST_METRIC_HIGHLIGHTS_URL}?company_id=${encodeURIComponent(companyId)}&period=${period}`, {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        setHighlightsError(true);
-        return;
-      }
-      const data = await res.json();
-      setHighlights(Array.isArray(data?.highlights) ? data.highlights : []);
-    } catch {
-      setHighlightsError(true);
-    } finally {
-      setLoadingHighlights(false);
-    }
-  };
+  const { highlights, loading: loadingHighlights, error: highlightsError, load: loadHighlights } = useMetricHighlights(companyId);
 
   const [discrepancy, setDiscrepancy] = useState<Record<string, ExplainMetricDiscrepancyResponse | "loading" | "error">>({});
   const explainDiscrepancy = async (standardKey: string) => {
@@ -553,7 +521,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
         title="Destacados"
         action={
           !highlights && !loadingHighlights ? (
-            <Button variant="outline" size="sm" onClick={loadHighlights}>
+            <Button variant="outline" size="sm" onClick={() => loadHighlights()}>
               <Sparkles size={13} className="mr-1.5" /> Generar
             </Button>
           ) : undefined
@@ -567,7 +535,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
             icon={Sparkles}
             title="No pudimos generar destacados ahora."
             description="Puede ser un problema temporal del servicio. Probá de nuevo en un rato."
-            action={{ label: "Reintentar", onClick: loadHighlights }}
+            action={{ label: "Reintentar", onClick: () => loadHighlights() }}
           />
         ) : !highlights ? (
           <EmptyState
@@ -575,7 +543,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
             icon={Sparkles}
             title="Todavía no generaste los destacados de este período."
             description="Resume los cambios más grandes de tus métricas principales vs. el período anterior, con evidencia real."
-            action={{ label: "Generar destacados", onClick: loadHighlights }}
+            action={{ label: "Generar destacados", onClick: () => loadHighlights() }}
           />
         ) : highlights.length === 0 ? (
           <EmptyState bordered={false} icon={Sparkles} title="Sin cambios destacados este período." description="Ningún KPI principal tuvo una variación significativa." />

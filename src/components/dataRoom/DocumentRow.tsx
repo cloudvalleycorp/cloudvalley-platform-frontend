@@ -14,6 +14,8 @@ type Props = {
   isOwner: boolean;
   /** Badge "Roadmap: <tarea>" — se oculta en la vista de inversor (metadata interna, no aporta ahí). */
   showRoadmapBadge?: boolean;
+  /** Resaltado temporal — llegada por deep-link desde ?doc= (Dashboard > Data Readiness). */
+  highlighted?: boolean;
   onOpen: () => void;
   onUpload: (file: File) => void;
   onDelete: () => void;
@@ -28,6 +30,7 @@ export function DocumentRow({
   canEdit,
   isOwner,
   showRoadmapBadge = true,
+  highlighted = false,
   onOpen,
   onUpload,
   onDelete,
@@ -36,7 +39,13 @@ export function DocumentRow({
   onSetVerified,
 }: Props) {
   return (
-    <div className="flex items-center gap-3 px-6 py-3 border-b border-border/50 last:border-0">
+    <div
+      id={`doc-${doc.id}`}
+      className={cn(
+        "flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 transition-colors",
+        highlighted && "bg-primary/5 ring-1 ring-inset ring-primary/40"
+      )}
+    >
       <DocumentStatusBadge status={doc.status} />
       <div className="flex-1 min-w-0">
         <div className="text-sm truncate">{doc.name}</div>

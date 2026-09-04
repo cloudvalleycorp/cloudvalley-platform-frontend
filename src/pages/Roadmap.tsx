@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Map, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Map, Plus, Compass } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { SkeletonSection } from "@/components/SkeletonSection";
@@ -26,6 +27,23 @@ export default function Roadmap() {
   const [openTask, setOpenTask] = useState<RoadmapTask | null>(null);
   const [addingTask, setAddingTask] = useState(false);
 
+  // Deep-link desde el Action Center del Dashboard (?task=<startup_task_id>)
+  // — mismo patrón single-use que ?report=/?doc= en InvestorCompany.tsx: se
+  // consume una sola vez y se limpia de la URL. deepLinkTaskId (ref, capturado
+  // en el primer render) sobrevive a esa limpieza para poder mostrar el
+  // banner "Llegaste desde…" mientras esa misma tarea sigue abierta.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkTaskId = useRef(searchParams.get("task")).current;
+  useEffect(() => {
+    if (!deepLinkTaskId || tasks.length === 0) return;
+    const match = tasks.find((t) => t.startup_task_id === deepLinkTaskId);
+    if (match) setOpenTask(match);
+    const next = new URLSearchParams(searchParams);
+    next.delete("task");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkTaskId, tasks]);
+
   const handleUpload = async (task: RoadmapTask, file: File) => {
     let ok: boolean;
     if (task.document_id) {
@@ -46,6 +64,7 @@ export default function Roadmap() {
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12">
         <PageHeader
+          size="compact"
           title="Fundraising Roadmap"
           subtitle={
             <span className="inline-flex items-center gap-2">
@@ -61,6 +80,13 @@ export default function Roadmap() {
             )
           }
         />
+
+        {deepLinkTaskId && openTask?.startup_task_id === deepLinkTaskId && (
+          <div className="flex items-center gap-2 rounded-lg border border-teal/30 bg-teal-subtle text-teal-dark text-sm px-4 py-2.5 mb-6">
+            <Compass size={14} strokeWidth={1.5} aria-hidden="true" />
+            Llegaste desde el Dashboard.
+          </div>
+        )}
 
         {loadingRoadmap ? (
           <SkeletonSection rows={4} columns={2} />

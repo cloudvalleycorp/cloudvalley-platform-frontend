@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate, Navigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
-import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -150,11 +149,10 @@ export default function Onboarding() {
         throw new Error(data?.error ?? "Error al crear startup");
       }
 
-      // Update profile name
-      if (founderName) {
-        // TODO: migrar a backend propio
-        await supabase.from("profiles").update({ name: founderName }).eq("id", user.id);
-      }
+      // El nombre ya se persistió arriba vía MANAGE_USERS_URL (full_name es lo
+      // que get-session devuelve y lo que lee toda la plataforma hoy) — este
+      // archivo tenía además un write redundante a la tabla profiles de
+      // Supabase que nada vuelve a leer, se saca en vez de migrarlo.
 
       // The company_id isn't in the session cookie yet — refresh before navigating,
       // otherwise the next screens see the user as if they still had no company.

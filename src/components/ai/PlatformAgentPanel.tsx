@@ -166,6 +166,12 @@ function surfaceDescription(surface: PlatformAgentSurface): string {
       return "Preguntame sobre los documentos de tu portfolio.";
     case "investor_tasks":
       return "Preguntame sobre las tareas pendientes de tu portfolio.";
+    case "founder_dashboard":
+      return "Preguntame cómo viene tu startup, qué cambió y qué deberías priorizar.";
+    case "founder_roadmap":
+      return "Preguntame sobre tu roadmap de fundraising y qué tenés pendiente.";
+    case "founder_data_room":
+      return "Preguntame sobre los documentos de tu Data Room.";
     default:
       return "Contame qué necesitás: puedo responder dudas, proponer una métrica o armarte un reporte.";
   }
@@ -193,6 +199,12 @@ function surfaceExample(surface: PlatformAgentSurface, companyIds?: string[]) {
       return <>Ej: "¿qué documentos financieros subió Acme este mes?" o "¿a quién le falta el cap table?".</>;
     case "investor_tasks":
       return <>Ej: "¿qué tengo vencido?" o "resumime mis tareas de esta semana".</>;
+    case "founder_dashboard":
+      return <>Ej: "¿por qué bajó el runway este mes?", "¿qué debería priorizar esta semana?" o "compará esto contra el plan post-ronda".</>;
+    case "founder_roadmap":
+      return <>Ej: "¿qué me falta para estar listo para levantar?" o "¿qué tareas críticas tengo pendientes?".</>;
+    case "founder_data_room":
+      return <>Ej: "¿qué documentos me faltan subir?" o "¿cuál es el estado de mi cap table?".</>;
     default:
       return (
         <>

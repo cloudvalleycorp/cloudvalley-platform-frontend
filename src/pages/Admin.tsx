@@ -60,7 +60,7 @@ export default function Admin() {
           subtitle="Vista global del portfolio"
           action={
             <Button variant="outline" asChild>
-              <Link to="/admin/organizations">Organizaciones →</Link>
+              <Link to="/admin/funds">Fondos →</Link>
             </Button>
           }
         />

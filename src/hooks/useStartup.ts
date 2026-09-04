@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_BASE_URL } from "@/lib/apiConfig";
+
+const GET_COMPANY_PROFILE_URL = `${API_BASE_URL}/get-company-profile`;
 
 export type Startup = {
   id: string;
@@ -9,45 +11,60 @@ export type Startup = {
   business_model: string | null;
   industry: string | null;
   target_raise_usd: number | null;
-  readiness_score: number;
   cohort_number: number | null;
   cohort_year: number | null;
   website: string | null;
 };
 
-async function fetchStartup(userId: string): Promise<Startup | null> {
-  const { data: members } = await supabase
-    .from("startup_members")
-    .select("startup_id")
-    .eq("user_id", userId)
-    .maybeSingle();
+// Mismo shape que CompanyProfile en InvestorCompany.tsx — get-company-profile
+// ya devuelve esto real, para cualquier company_id al que el caller tenga
+// acceso (un investor viendo una empresa conectada, o un founder viendo la
+// suya propia). readiness_score se sacó del tipo: ya viene de list-roadmap
+// (ver useRoadmap), no hace falta pedirlo acá también.
+type CompanyProfileResponse = {
+  company_id: string;
+  name: string;
+  industry: string | null;
+  website: string | null;
+  stage: "pre_seed" | "seed" | "series_a" | null;
+  business_model: string | null;
+  target_raise_usd: number | null;
+  cohort_number: number | null;
+  cohort_year: number | null;
+};
 
-  if (!members) return null;
-
-  const { data: s } = await supabase
-    .from("startups")
-    .select("*")
-    .eq("id", members.startup_id)
-    .maybeSingle();
-
-  return s as Startup | null;
+async function fetchStartup(companyId: string): Promise<Startup | null> {
+  const res = await fetch(`${GET_COMPANY_PROFILE_URL}?company_id=${encodeURIComponent(companyId)}`, {
+    credentials: "include",
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as CompanyProfileResponse;
+  return {
+    id: data.company_id,
+    name: data.name,
+    stage: data.stage,
+    business_model: data.business_model,
+    industry: data.industry,
+    target_raise_usd: data.target_raise_usd,
+    cohort_number: data.cohort_number,
+    cohort_year: data.cohort_year,
+    website: data.website,
+  };
 }
 
+/** Data layer del perfil de la propia startup (founder) — habla con el gateway de Cloud Functions, nunca Supabase. */
 export function useStartup() {
-  const { user, role } = useAuth();
+  const { company_id, role } = useAuth();
   const queryClient = useQueryClient();
+  const queryKey = ["startup", company_id] as const;
 
-  // startup_members/startups son conceptos exclusivos del lado founder
-  // (role "user"). Para investor/admin, user.id cae al fallback de email
-  // (ver AuthContext.applySessionData) y esta query rompe contra la columna
-  // uuid de startup_members — directamente no corresponde correrla.
   const { data: startup, isLoading } = useQuery({
-    queryKey: ["startup", user?.id],
-    queryFn: () => fetchStartup(user!.id),
-    enabled: !!user && role === "user",
+    queryKey,
+    queryFn: () => fetchStartup(company_id!),
+    enabled: !!company_id && role === "user",
   });
 
-  const refetch = () => queryClient.invalidateQueries({ queryKey: ["startup", user?.id] });
+  const refetch = () => queryClient.invalidateQueries({ queryKey });
 
   return { startup: startup ?? null, loading: isLoading, refetch };
 }

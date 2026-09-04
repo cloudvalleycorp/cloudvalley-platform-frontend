@@ -77,7 +77,15 @@ export type PlatformAgentSurface =
   | "investor_overview"
   | "investor_reporting"
   | "investor_data_room"
-  | "investor_tasks";
+  | "investor_tasks"
+  // 3 superficies nuevas del refactor de Dashboard/Roadmap/Data Room del
+  // founder (2026-09-04) — mismo criterio que las 4 de investor de arriba:
+  // pantallas portfolio-wide (acá, "de la propia startup") que antes no
+  // tenían contexto propio para el agente. No necesitan company_id propio en
+  // el tipo (se sigue mandando el singular de siempre, una sola startup).
+  | "founder_dashboard"
+  | "founder_roadmap"
+  | "founder_data_room";
 
 // Campos plurales agregados en el rediseño Investor (2026-08-23) — el
 // agente ahora puede responder sobre una selección activa de varias

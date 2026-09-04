@@ -1,38 +1,39 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { ArrowRight, Map, BarChart3, FolderOpen, Bell, Check } from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
-import { ReadinessScore } from "@/components/ReadinessScore";
-import { useAuth } from "@/contexts/AuthContext";
-import { useStartup } from "@/hooks/useStartup";
-import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
-import { percentChange } from "@/lib/metrics";
-import { periodRange } from "@/lib/metricPeriod";
-import { supabase } from "@/integrations/supabase/client";
-import { calculateReadinessScore, PillarBreakdown } from "@/lib/score";
-import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "sonner";
 import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershipScreen";
+import { useAuth } from "@/contexts/AuthContext";
+import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
+import { useRoadmap } from "@/hooks/useRoadmap";
+import { useDocuments } from "@/hooks/useDocuments";
+import { useSheetsSources } from "@/hooks/useSheetsSources";
+import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
+import { useMetricHighlights } from "@/hooks/useMetricHighlights";
+import { collectDataHealthIssues, summarizeHealth } from "@/lib/dataHealthIssues";
+import { LIST_DATA_HEALTH_ISSUES_URL, type DataHealthIssue } from "@/lib/metricIntelligence";
+import { LIST_METRIC_SOURCE_COVERAGE_URL, type ListMetricSourceCoverageResponse } from "@/lib/metricSourceCoverage";
+import { LIST_FINANCIAL_REPORTS_URL, type ReportSummary } from "@/lib/financialReports";
+import { handleMembershipError } from "@/lib/membership";
+import { STANDARD_KEY_ORDER } from "@/lib/metricRequirements";
+import { periodRange } from "@/lib/metricPeriod";
+import type { RoadmapTask } from "@/lib/roadmap";
 
-type DocRequest = {
-  id: string;
-  message: string | null;
-  created_at: string;
-  document: { id: string; name: string; category: string } | null;
-  organization: { name: string } | null;
-};
+import { ExecutiveSummaryCard } from "@/components/dashboard/ExecutiveSummaryCard";
+import { CompanyHealthStrip } from "@/components/dashboard/CompanyHealthStrip";
+import { WhatChangedSection } from "@/components/dashboard/WhatChangedSection";
+import { RisksOpportunitiesSection } from "@/components/dashboard/RisksOpportunitiesSection";
+import { ActionCenterSection } from "@/components/dashboard/ActionCenterSection";
+import { DataReadinessSection } from "@/components/dashboard/DataReadinessSection";
+import { PerformanceVsPlanSection } from "@/components/dashboard/PerformanceVsPlanSection";
+import { ExploreSection } from "@/components/dashboard/ExploreSection";
+
+type CoverageErrorKind = "rate_limit" | "unavailable" | "generic";
 
 export default function Dashboard() {
-  const { user, role, company_id, fund_id, email } = useAuth();
-  const { startup, refetch } = useStartup();
-  // No hay navegación de período acá (solo "último valor cargado") — un
-  // margen de 6 meses alcanza sin traer el histórico completo de la company.
-  const financialRange = useMemo(() => {
-    const now = new Date();
-    return periodRange({ month: now.getMonth() + 1, year: now.getFullYear() }, 6);
-  }, []);
-  const financial = useFinancialMetrics(company_id ?? null, financialRange);
+  const { user, role, company_id, email, full_name } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
@@ -46,105 +47,118 @@ export default function Dashboard() {
 
   const [dismissed, setDismissed] = useState(false);
   const [reopenNoMembership, setReopenNoMembership] = useState(false);
-  const [score, setScore] = useState(0);
-  const [pillars, setPillars] = useState<PillarBreakdown[]>([]);
-  const [taskStats, setTaskStats] = useState({ done: 0, total: 0 });
-  const [docStats, setDocStats] = useState({ uploaded: 0, total: 0 });
-  const [pendingTasks, setPendingTasks] = useState<any[]>([]);
-  const [profileName, setProfileName] = useState("");
-  const [docRequests, setDocRequests] = useState<DocRequest[]>([]);
 
-  useEffect(() => {
-    if (!startup || !user) return;
-    (async () => {
-      // TODO: migrar a backend propio
-      const { data: prof } = await supabase.from("profiles").select("name").eq("id", user.id).maybeSingle();
-      setProfileName(prof?.name ?? "");
+  // 12 meses alcanza para KPIs + comparación de período — mismo rango que
+  // usa Metrics > Overview para el mismo propósito.
+  const financialRange = useMemo(() => {
+    const now = new Date();
+    return periodRange({ month: now.getMonth() + 1, year: now.getFullYear() }, 12);
+  }, []);
+  // periodRange(period, N) devuelve N+1 períodos (incluye ambos extremos,
+  // ver metricPeriod.ts) — bien para financialRange (sin tope), pero
+  // evaluate-metrics rechaza más de 12 períodos por request (400 real,
+  // encontrado en vivo probando esta pantalla): acá va con 11 meses atrás,
+  // no 12, para quedar en exactamente 12.
+  const periodSpec = useMemo(() => {
+    const now = new Date();
+    const r = periodRange({ month: now.getMonth() + 1, year: now.getFullYear() }, 11);
+    return { period_from: r.from, period_to: r.to };
+  }, []);
 
-      const { total, pillars } = await calculateReadinessScore(startup.id);
-      setScore(total);
-      setPillars(pillars);
+  const financial = useFinancialMetrics(company_id ?? null, financialRange);
+  const roadmap = useRoadmap(company_id ?? null);
+  const documents = useDocuments(company_id ?? null);
+  const sources = useSheetsSources(company_id ?? null);
 
-      const { count: doneCount } = await supabase
-        .from("startup_tasks").select("id", { count: "exact", head: true })
-        .eq("startup_id", startup.id).eq("status", "done");
-      const { count: totalCount } = await supabase
-        .from("startup_tasks").select("id", { count: "exact", head: true })
-        .eq("startup_id", startup.id);
-      setTaskStats({ done: doneCount ?? 0, total: totalCount ?? 0 });
+  const standardMetricIds = useMemo(
+    () =>
+      financial.metrics
+        .filter((m) => m.metric_class === "standard" && m.standard_key && STANDARD_KEY_ORDER.includes(m.standard_key))
+        .map((m) => m.id),
+    [financial.metrics]
+  );
+  const actual = useEvaluatedMetrics(company_id ?? null, standardMetricIds, periodSpec, "actual");
+  const forecast = useEvaluatedMetrics(company_id ?? null, standardMetricIds, periodSpec, "forecast");
 
-      const { data: docs } = await supabase
-        .from("documents").select("status").eq("startup_id", startup.id);
-      setDocStats({
-        uploaded: (docs ?? []).filter((d) => d.status !== "missing").length,
-        total: (docs ?? []).length,
-      });
+  const highlights = useMetricHighlights(company_id ?? null);
 
-      // Next 3 pending tasks
-      const { data: pending } = await supabase
-        .from("startup_tasks")
-        .select("id, status, roadmap_tasks(title, criticality)")
-        .eq("startup_id", startup.id).eq("status", "pending").limit(3);
-      setPendingTasks(pending ?? []);
-
-      // Pending document update requests from organizations
-      const { data: reqs } = await supabase
-        .from("document_requests")
-        .select("id, message, created_at, document:documents(id, name, category), organization:organizations(name)")
-        .eq("startup_id", startup.id)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false });
-      setDocRequests((reqs ?? []) as any);
-    })();
-  }, [startup?.id, user?.id]);
-
-  const toggleTask = async (id: string) => {
-    // TODO: migrar a backend propio
-    await supabase.from("startup_tasks")
-      .update({ status: "done", completed_at: new Date().toISOString() })
-      .eq("id", id);
-    if (startup) {
-      const { total, pillars } = await calculateReadinessScore(startup.id);
-      setScore(total);
-      setPillars(pillars);
-      setPendingTasks(pendingTasks.filter((t) => t.id !== id));
-      setTaskStats({ done: taskStats.done + 1, total: taskStats.total });
-      await refetch();
+  // list-metric-source-coverage — mismo endpoint/criterio que "Qué podemos
+  // mejorar" en MetricsOverviewTab.tsx (disparo manual, sin hook dedicado
+  // todavía porque hoy solo lo consumen esas dos pantallas).
+  const [coverage, setCoverage] = useState<ListMetricSourceCoverageResponse | null>(null);
+  const [loadingCoverage, setLoadingCoverage] = useState(false);
+  const [coverageError, setCoverageError] = useState<CoverageErrorKind | null>(null);
+  const loadCoverage = async () => {
+    if (!company_id) return;
+    setLoadingCoverage(true);
+    setCoverageError(null);
+    try {
+      const res = await fetch(`${LIST_METRIC_SOURCE_COVERAGE_URL}?company_id=${encodeURIComponent(company_id)}`, { credentials: "include" });
+      if (res.status === 429) return setCoverageError("rate_limit");
+      if (res.status === 503) return setCoverageError("unavailable");
+      if (!res.ok) {
+        await handleMembershipError(res);
+        return setCoverageError("generic");
+      }
+      setCoverage((await res.json()) as ListMetricSourceCoverageResponse);
+    } catch {
+      setCoverageError("generic");
+    } finally {
+      setLoadingCoverage(false);
     }
   };
 
-  // Revenue: latest two loaded periods of the Revenue input metric (GCP
-  // financial module — replaces the old Supabase metric_definitions/
-  // metric_entries lookup, which is no longer read here).
-  const mrr = useMemo(() => {
-    const revenueDef = financial.metrics.find((m) => m.metric_type === "input" && m.input_key === "revenue");
-    const revenueEntries = revenueDef ? financial.entries[revenueDef.id] ?? {} : {};
-    const sorted = Object.keys(revenueEntries)
-      .map((key) => {
-        const [y, m] = key.split("-").map(Number);
-        return { key, y, m };
-      })
-      .sort((a, b) => b.y - a.y || b.m - a.m);
-    const current = sorted[0] ? revenueEntries[sorted[0].key] : null;
-    const prev = sorted[1] ? revenueEntries[sorted[1].key] : null;
-    return { value: current ?? null, change: percentChange(current ?? null, prev ?? null) };
-  }, [financial.metrics, financial.entries]);
+  // list-data-health-issues — mismo endpoint que Metrics > Salud de datos.
+  const [backendHealthIssues, setBackendHealthIssues] = useState<DataHealthIssue[]>([]);
+  useEffect(() => {
+    if (!company_id) return;
+    fetch(`${LIST_DATA_HEALTH_ISSUES_URL}?company_id=${encodeURIComponent(company_id)}`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { issues: [] }))
+      .then((data) => setBackendHealthIssues(Array.isArray(data?.issues) ? data.issues : []))
+      .catch(() => setBackendHealthIssues([]));
+  }, [company_id]);
 
-  const today = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
-  const greeting = profileName ? `Hola, ${profileName.split(" ")[0]}` : "Buen día";
+  const healthIssues = useMemo(
+    () =>
+      collectDataHealthIssues({
+        accounts: sources.accounts,
+        connections: sources.connections,
+        metrics: financial.metrics,
+        importLogs: financial.logs,
+        rawFields: sources.rawFields,
+        warnings: financial.warnings,
+        backendIssues: backendHealthIssues,
+      }),
+    [sources.accounts, sources.connections, financial.metrics, financial.logs, sources.rawFields, financial.warnings, backendHealthIssues]
+  );
+  const healthSummary = summarizeHealth(healthIssues);
 
-  const resolveRequest = async (id: string) => {
-    const { error } = await supabase
-      .from("document_requests")
-      .update({ status: "resolved", resolved_at: new Date().toISOString() })
-      .eq("id", id);
-    if (error) { toast.error("No se pudo marcar como resuelto"); return; }
-    setDocRequests((rs) => rs.filter((r) => r.id !== id));
-    toast.success("Pedido marcado como resuelto");
+  // Reportes — solo para el stat de la card "Reporting" en Explorar, mismo
+  // endpoint que ya usa Reporting.tsx.
+  const [reports, setReports] = useState<ReportSummary[]>([]);
+  useEffect(() => {
+    if (!company_id) return;
+    fetch(`${LIST_FINANCIAL_REPORTS_URL}?company_id=${encodeURIComponent(company_id)}`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { reports: [] }))
+      .then((data) => setReports(Array.isArray(data?.reports) ? data.reports : []))
+      .catch(() => setReports([]));
+  }, [company_id]);
+  const lastReportDaysAgo = useMemo(() => {
+    if (reports.length === 0) return null;
+    const mostRecent = reports.reduce<string | null>((acc, r) => (!acc || r.updated_at > acc ? r.updated_at : acc), null);
+    if (!mostRecent) return null;
+    return Math.max(0, Math.floor((Date.now() - new Date(mostRecent).getTime()) / 86_400_000));
+  }, [reports]);
+
+  const handleToggleDone = async (task: RoadmapTask) => {
+    await roadmap.toggleStatus(task.startup_task_id, "done");
   };
 
-  // role="user" sin company asignada: mostrar el flujo "sin empresa"
-  // (o un banner persistente si el usuario eligió "decidir más tarde").
+  const greeting = full_name?.trim() ? `Hola, ${full_name.trim().split(" ")[0]}` : "Buen día";
+  const today = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+
+  // role="user" sin company asignada: mostrar el flujo "sin empresa" (o un
+  // banner persistente si el usuario eligió "decidir más tarde").
   if (role === "user" && !company_id) {
     if (!dismissed || reopenNoMembership) {
       return (
@@ -172,118 +186,71 @@ export default function Dashboard() {
     );
   }
 
+  const pageLoading = financial.loading || roadmap.loading;
+
   return (
     <AppLayout>
-      <div className="max-w-6xl mx-auto px-8 py-12">
-        <PageHeader title={greeting} subtitle={<span className="capitalize">{today}</span>} className="mb-10" />
+      <div className="max-w-6xl mx-auto px-8 py-12 space-y-6">
+        <PageHeader size="compact" title={greeting} subtitle={<span className="capitalize">{today}</span>} className="mb-0" />
 
-        <div className="grid lg:grid-cols-3 gap-6 mb-8">
-          <div className="lg:col-span-2">
-            <ReadinessScore score={score} pillars={pillars} />
+        {pageLoading ? (
+          <div className="space-y-6" aria-hidden="true">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="border border-border rounded-lg h-40 bg-surface/40 animate-pulse" />
+            ))}
           </div>
+        ) : (
+          <>
+            <ExecutiveSummaryCard companyId={company_id ?? null} />
 
-          <div className="space-y-4">
-            <Link to="/roadmap" className="block border border-border rounded-lg p-5 bg-card hover:border-foreground/30 transition-all duration-150 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-              <div className="flex items-center justify-between">
-                <Map size={16} strokeWidth={1.5} className="text-muted-foreground" />
-                <ArrowRight size={14} strokeWidth={1.5} className="text-tertiary group-hover:text-foreground transition-all" />
-              </div>
-              <div className="mt-4">
-                <div className="text-2xl font-medium">{taskStats.done}<span className="text-tertiary text-base">/{taskStats.total}</span></div>
-                <div className="text-xs text-muted-foreground mt-0.5">Tareas completas</div>
-              </div>
-              <div className="h-1 w-full bg-surface rounded-full overflow-hidden mt-3">
-                <div className="h-full bg-foreground" style={{ width: `${taskStats.total ? (taskStats.done / taskStats.total) * 100 : 0}%` }} />
-              </div>
-            </Link>
+            <CompanyHealthStrip
+              metrics={financial.metrics}
+              values={actual.values}
+              loading={actual.loading}
+              onGoToMetrics={() => navigate("/metrics?tab=explorer")}
+            />
 
-            <Link to="/metrics" className="block border border-border rounded-lg p-5 bg-card hover:border-foreground/30 transition-all duration-150 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-              <div className="flex items-center justify-between">
-                <BarChart3 size={16} strokeWidth={1.5} className="text-muted-foreground" />
-                <ArrowRight size={14} strokeWidth={1.5} className="text-tertiary group-hover:text-foreground transition-all" />
-              </div>
-              <div className="mt-4">
-                <div className="text-2xl font-medium">
-                  {mrr.value != null ? `$${mrr.value.toLocaleString()}` : "—"}
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  Revenue mensual {mrr.change != null && (
-                    <span>{mrr.change >= 0 ? "↑" : "↓"} {Math.abs(mrr.change).toFixed(1)}%</span>
-                  )}
-                </div>
-              </div>
-            </Link>
+            <WhatChangedSection
+              companyId={company_id ?? null}
+              highlights={highlights.highlights}
+              loading={highlights.loading}
+              error={highlights.error}
+              onLoad={() => highlights.load()}
+            />
 
-            <Link to="/data-room" className="block border border-border rounded-lg p-5 bg-card hover:border-foreground/30 transition-all duration-150 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-              <div className="flex items-center justify-between">
-                <FolderOpen size={16} strokeWidth={1.5} className="text-muted-foreground" />
-                <ArrowRight size={14} strokeWidth={1.5} className="text-tertiary group-hover:text-foreground transition-all" />
-              </div>
-              <div className="mt-4">
-                <div className="text-2xl font-medium">{docStats.uploaded}<span className="text-tertiary text-base">/{docStats.total || "—"}</span></div>
-                <div className="text-xs text-muted-foreground mt-0.5">Documentos cargados</div>
-              </div>
-            </Link>
-          </div>
-        </div>
+            <RisksOpportunitiesSection
+              metrics={financial.metrics}
+              highlights={highlights.highlights}
+              healthIssues={healthIssues}
+              coverage={coverage}
+              hasTriggeredEither={highlights.highlights !== null || coverage !== null}
+              onLoadHighlights={() => highlights.load()}
+              onLoadCoverage={loadCoverage}
+            />
 
-        <section className="border border-border rounded-lg p-6 bg-card">
-          <h2 className="text-sm font-medium text-foreground mb-4">Próximos pasos</h2>
-          {pendingTasks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay tareas pendientes urgentes.</p>
-          ) : (
-            <ul className="space-y-1">
-              {pendingTasks.map((t) => (
-                <li key={t.id} className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-0">
-                  <Checkbox onCheckedChange={() => toggleTask(t.id)} />
-                  <span className="text-sm flex-1">{t.roadmap_tasks?.title}</span>
-                  <span className="text-xs text-tertiary capitalize">{t.roadmap_tasks?.criticality}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {docRequests.length > 0 && (
-          <section className="border border-border rounded-lg p-6 bg-card mt-6">
-            <div className="flex items-center gap-2 mb-1">
-              <Bell size={14} strokeWidth={1.5} className="text-muted-foreground" />
-              <h2 className="text-sm font-medium text-foreground">Documentos pedidos por tus inversores</h2>
+            <div className="grid lg:grid-cols-2 gap-6 items-start">
+              <ActionCenterSection tasks={roadmap.tasks} loading={roadmap.loading} currentUserId={user?.id ?? null} onToggleDone={handleToggleDone} />
+              <DataReadinessSection issues={healthIssues} loading={sources.loading || financial.loadingLogs} />
             </div>
-            <p className="text-xs text-muted-foreground mb-4">
-              {docRequests.length} pedido{docRequests.length === 1 ? "" : "s"} pendiente{docRequests.length === 1 ? "" : "s"}. Subí el documento en el Data Room y marcá como resuelto.
-            </p>
-            <ul className="space-y-1">
-              {docRequests.map((r) => (
-                <li key={r.id} className="flex items-start gap-3 py-3 border-b border-border/50 last:border-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium">{r.document?.name ?? "Documento"}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {r.organization?.name ?? "Una organización"} · {new Date(r.created_at).toLocaleDateString("es-AR")}
-                    </div>
-                    {r.message && (
-                      <p className="text-xs text-muted-foreground mt-1 italic">"{r.message}"</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Link
-                      to="/data-room"
-                      className="text-xs text-muted-foreground hover:text-foreground transition-all"
-                    >
-                      Ir al data room
-                    </Link>
-                    <button
-                      onClick={() => resolveRequest(r.id)}
-                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-all"
-                      title="Marcar resuelto"
-                    >
-                      <Check size={12} strokeWidth={1.5} /> Resuelto
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+
+            <PerformanceVsPlanSection
+              metrics={financial.metrics}
+              forecastValues={forecast.values}
+              actualValues={forecast.valuesActual}
+              loading={forecast.loading}
+            />
+
+            <ExploreSection
+              metricsCount={financial.metrics.length}
+              metricsIssueCount={healthSummary.critical + healthSummary.warning}
+              roadmapReadiness={roadmap.readinessScore}
+              roadmapPendingCount={roadmap.tasks.filter((t) => t.status !== "done").length}
+              docsUploaded={documents.documents.filter((d) => d.status !== "missing").length}
+              docsTotal={documents.documents.length}
+              reportsCount={reports.length}
+              lastReportDaysAgo={lastReportDaysAgo}
+            />
+          </>
         )}
       </div>
     </AppLayout>

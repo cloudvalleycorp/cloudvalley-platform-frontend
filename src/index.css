@@ -70,6 +70,22 @@
     --warning: 39 100% 59%;            /* #FFB830 */
     --warning-foreground: 240 28% 14%; /* texto oscuro, el amarillo no da contraste suficiente con blanco */
 
+    /* Variantes "-dark" de success/warning/destructive — para texto chico
+       sobre fondo blanco/card (deltas, "+18%"/"-2.3 meses"), no para
+       badges/dots donde el token base ya se usa como fill. El token base no
+       alcanza como texto: verificado con la fórmula WCAG, success da 2.22:1,
+       warning 1.75:1, destructive 3.55:1 contra blanco — los tres por debajo
+       de 4.5:1 (AA texto normal). Mismo hue, saturación/luminosidad bajadas
+       hasta pasar 4.5:1, siguiendo el mismo criterio que ya usa
+       --primary-dark para foco. En dark mode NO hacen falta valores propios:
+       el token base ya se sube de luminosidad ahí (mismo criterio que el
+       resto del archivo) y da de sobra (destructive ~5.77:1, success ~8.63:1,
+       warning ~10.29:1 contra el fondo oscuro), así que reusan el mismo
+       valor que su base — ver bloque .dark. */
+    --success-dark: 135 45% 30%;       /* #2A6F3B — ~6.11:1 vs blanco */
+    --warning-dark: 39 90% 32%;        /* #9B6808 — ~4.81:1 vs blanco */
+    --destructive-dark: 3 90% 40%;     /* #C2130A — ~6.20:1 vs blanco */
+
     --border: 240 15% 92%;             /* Neutral 100 #E8E8EE */
     --input: 240 15% 92%;
     /* Ring = Primary Dark, no Primary base — el foco necesita ser bien
@@ -140,6 +156,12 @@
 
     --warning: 39 90% 60%;
     --warning-foreground: 240 28% 10%;
+
+    /* Mismo valor que el token base — ya da >4.5:1 como texto acá, ver nota
+       en el bloque :root. */
+    --success-dark: 135 55% 52%;
+    --warning-dark: 39 90% 60%;
+    --destructive-dark: 3 90% 64%;
 
     --border: 240 12% 20%;
     --input: 240 12% 20%;

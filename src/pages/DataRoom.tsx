@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { Navigate } from "react-router-dom";
-import { Link2, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Navigate, useSearchParams } from "react-router-dom";
+import { Link2, Plus, Compass } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -33,6 +33,28 @@ export default function DataRoom() {
   const [deletingDoc, setDeletingDoc] = useState<DataRoomDocument | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Deep-link desde Data Readiness del Dashboard (?doc=<document_id>) — mismo
+  // patrón single-use que ?report=/?doc= en InvestorCompany.tsx. Las 7
+  // categorías ya están todas abiertas por default acá (a diferencia del
+  // acordeón de apertura única del lado investor, ver docs/design-system-
+  // command-center.md), así que no hace falta lógica de expand: alcanza con
+  // scrollear + resaltar la fila.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkDocId = useRef(searchParams.get("doc")).current;
+  const [highlightedDocId, setHighlightedDocId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!deepLinkDocId) return;
+    const el = document.getElementById(`doc-${deepLinkDocId}`);
+    if (el) {
+      setHighlightedDocId(deepLinkDocId);
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("doc");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkDocId, documents]);
+
   if (authLoading) return null;
   // Rediseño Investor (2026-08-23): misma ruta /data-room, role-branched —
   // useDocuments/useDataRoomTasks arriba no pisan nada del lado investor
@@ -64,6 +86,7 @@ export default function DataRoom() {
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12">
         <PageHeader
+          size="compact"
           title="Data Room"
           subtitle={`${totalUploaded} de ${documents.length} documentos cargados`}
           action={
@@ -73,17 +96,25 @@ export default function DataRoom() {
           }
         />
 
+        {deepLinkDocId && highlightedDocId === deepLinkDocId && (
+          <div className="flex items-center gap-2 rounded-lg border border-teal/30 bg-teal-subtle text-teal-dark text-sm px-4 py-2.5 mb-6">
+            <Compass size={14} strokeWidth={1.5} aria-hidden="true" />
+            Llegaste desde el Dashboard: este documento necesita atención.
+          </div>
+        )}
+
         {loading ? (
           <SkeletonSection rows={6} columns={3} />
         ) : (
           <Accordion type="multiple" defaultValue={DATA_ROOM_CATEGORIES.map((c) => c.id)}>
-            {DATA_ROOM_CATEGORIES.map((cat) => {
+            {DATA_ROOM_CATEGORIES.map((cat, i) => {
               const items = documents.filter((d) => d.category === cat.id);
               const uploaded = items.filter((d) => d.status !== "missing").length;
               return (
                 <CategoryAccordion
                   key={cat.id}
                   value={cat.id}
+                  num={`${i + 1}.0`}
                   title={cat.label}
                   countLabel={`${uploaded}/${items.length} cargados`}
                 >
@@ -94,6 +125,7 @@ export default function DataRoom() {
                       tasks={tasks}
                       canEdit
                       isOwner={is_owner}
+                      highlighted={doc.id === highlightedDocId}
                       onOpen={() => openDoc(doc)}
                       onUpload={(file) => uploadFile(doc.id, file)}
                       onDelete={() => setDeletingDoc(doc)}
@@ -104,7 +136,7 @@ export default function DataRoom() {
                   ))}
                   <button
                     onClick={() => setAddingCategory(cat.id)}
-                    className="w-full flex items-center gap-2 px-6 py-3 text-sm text-muted-foreground hover:text-foreground transition-all border-t border-border/50"
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground transition-all border-t border-border/50"
                   >
                     <Plus size={14} strokeWidth={1.5} /> Agregar documento
                   </button>

@@ -493,10 +493,16 @@ export default function InvestorCompany() {
                     >
                       {visibleDataRoomCategories.map((cat) => {
                         const items = sharedDocs.documents.filter((d) => d.category === cat.id);
+                        // Índice del catálogo completo, no del filtrado — así
+                        // el número coincide con el que ve el founder para la
+                        // misma categoría, aunque acá solo se listen las que
+                        // tienen documentos.
+                        const canonicalIndex = DATA_ROOM_CATEGORIES.findIndex((c) => c.id === cat.id);
                         return (
                           <CategoryAccordion
                             key={cat.id}
                             value={cat.id}
+                            num={canonicalIndex >= 0 ? `${canonicalIndex + 1}.0` : undefined}
                             title={cat.label}
                             countLabel={`${items.length} documento${items.length === 1 ? "" : "s"}`}
                           >

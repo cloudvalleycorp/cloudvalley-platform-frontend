@@ -45,17 +45,25 @@ export default {
           light: "hsl(var(--teal-light))",
           subtle: "hsl(var(--teal-subtle))",
         },
+        // "-dark" = variante segura para texto chico sobre blanco/card (ej.
+        // deltas "+18%"/"-2.3 meses") — el color base falla WCAG AA como
+        // texto (success 2.22:1, warning 1.75:1, destructive 3.55:1 contra
+        // blanco, ver src/index.css). El color base sigue siendo el correcto
+        // para fills de badge/dot, no reemplazarlo ahí.
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
+          dark: "hsl(var(--destructive-dark))",
         },
         success: {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
+          dark: "hsl(var(--success-dark))",
         },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
+          dark: "hsl(var(--warning-dark))",
         },
         muted: {
           DEFAULT: "hsl(var(--muted))",
