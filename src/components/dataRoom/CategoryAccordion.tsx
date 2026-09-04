@@ -15,12 +15,10 @@ export function CategoryAccordion({ value, title, countLabel, children, num }: P
   return (
     <AccordionItem value={value} className="border border-border rounded-lg bg-card mb-3 last:mb-0 overflow-hidden">
       <AccordionTrigger className="px-4 py-[13px] bg-surface/60 hover:no-underline">
-        <div className="flex items-center gap-3 text-left">
+        <div className="flex items-center gap-3 flex-1 text-left">
           {num && <span className="text-[11px] font-medium text-tertiary w-6 shrink-0 tabular-nums">{num}</span>}
-          <div>
-            <h2 className="text-[13px] font-medium">{title}</h2>
-            <p className="text-[11.5px] text-muted-foreground mt-0.5">{countLabel}</p>
-          </div>
+          <h2 className="text-[13px] font-medium flex-1">{title}</h2>
+          <span className="text-[11.5px] text-muted-foreground shrink-0">{countLabel}</span>
         </div>
       </AccordionTrigger>
       <AccordionContent className="pt-0 pb-0">

@@ -224,8 +224,11 @@ export function AppSidebar() {
         </Link>
         {startup && (
           <div className="mt-3 space-y-1.5">
+            {/* El nombre de la startup ya se ve en el header (orgLabel, ver
+                AppLayout.tsx) — mostrarlo también acá quedaba duplicado.
+                Se conserva la etapa: es información que no está en ningún
+                otro lado del shell. */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-foreground">{startup.name}</span>
               <StageBadge stage={startup.stage} />
             </div>
             {orgs.length > 0 && (

@@ -205,11 +205,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 >
                   <Sparkles size={14} aria-hidden="true" />
                   <span className="hidden sm:inline">Asistente</span>
-                  {role === "user" && (
-                    <span className="hidden sm:inline-flex items-center rounded-full bg-teal px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wide text-teal-foreground">
-                      Nuevo
-                    </span>
-                  )}
                 </Button>
               )}
               <Button

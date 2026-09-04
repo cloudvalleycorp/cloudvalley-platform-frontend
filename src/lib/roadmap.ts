@@ -73,6 +73,26 @@ export type RoadmapTask = {
   created_at: string | null;
 };
 
+// Compartido por RoadmapTaskList.tsx (fila de tarea) y ActionCenterSection.tsx
+// (Dashboard) — mismo texto en los dos lugares en vez de dos versiones que
+// puedan desalinearse. "Vencida hace N días" usa is_overdue+due_date reales,
+// nunca un estado inventado.
+export function dueLabel(dueDate: string | null, isOverdue: boolean): string | null {
+  if (!dueDate) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + "T00:00:00");
+  const days = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (isOverdue) {
+    const daysLate = Math.abs(days);
+    return daysLate <= 0 ? "Vencida" : `Vencida hace ${daysLate} día${daysLate === 1 ? "" : "s"}`;
+  }
+  if (days === 0) return "Vence hoy";
+  if (days === 1) return "Vence mañana";
+  if (days > 1) return `Vence en ${days} días`;
+  return "Vence hoy";
+}
+
 export type ListRoadmapResponse = {
   readiness_score: number;
   pillars: RoadmapPillar[];

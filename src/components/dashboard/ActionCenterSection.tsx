@@ -4,7 +4,7 @@ import { SectionCard } from "@/components/SectionCard";
 import { EmptyState } from "@/components/EmptyState";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SkeletonSection } from "@/components/SkeletonSection";
-import type { RoadmapTask } from "@/lib/roadmap";
+import { dueLabel, type RoadmapTask } from "@/lib/roadmap";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -13,19 +13,6 @@ type Props = {
   currentUserId: string | null;
   onToggleDone: (task: RoadmapTask) => void;
 };
-
-function dueLabel(dueDate: string | null, isOverdue: boolean): string | null {
-  if (!dueDate) return null;
-  if (isOverdue) return "Vencida";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate + "T00:00:00");
-  const days = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  if (days === 0) return "Vence hoy";
-  if (days === 1) return "Vence mañana";
-  if (days > 1) return `Vence en ${days} días`;
-  return "Vence hoy";
-}
 
 function TaskRow({ task, onToggleDone }: { task: RoadmapTask; onToggleDone: (task: RoadmapTask) => void }) {
   const due = dueLabel(task.due_date, task.is_overdue);
