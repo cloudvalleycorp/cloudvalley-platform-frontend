@@ -216,3 +216,26 @@
     letter-spacing: -0.02em;
   }
 }
+
+/* Asistente acoplado (PlatformAgentPanel.tsx) — al abrirse le corre el
+   margen derecho al shell de la app en vez de taparla con un scrim, mismo
+   patrón que el mockup aprobado (body.agent-expanded). Vive en <body> en
+   vez de en un prop porque el panel se monta en más de un punto del árbol
+   (el del header en AppLayout.tsx, y el propio de ReportEditor.tsx) y
+   ambos deben poder correr el mismo shell sin acoplarse entre sí. */
+.app-shell {
+  transition: margin-right 0.2s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell {
+    transition: none;
+  }
+}
+body.agent-panel-open .app-shell {
+  margin-right: min(380px, 92vw);
+}
+@media (max-width: 760px) {
+  body.agent-panel-open .app-shell {
+    margin-right: 0;
+  }
+}

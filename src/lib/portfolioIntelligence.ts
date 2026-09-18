@@ -9,9 +9,10 @@ import { API_BASE_URL } from "@/lib/apiConfig";
 import type { RoadmapTaskStatus, Criticality } from "@/lib/roadmap";
 
 export const LIST_PORTFOLIO_TASKS_URL = `${API_BASE_URL}/list-portfolio-tasks`;
+// mark-report-viewed/mark-report-reviewed quedaron sin backend (contrato
+// 2026-09-11): list-reporting-status ahora calcula "revisado" solo, a partir
+// de los eventos de track-report-view-event — ver useReportViewTracking.ts.
 export const LIST_REPORTING_STATUS_URL = `${API_BASE_URL}/list-reporting-status`;
-export const MARK_REPORT_VIEWED_URL = `${API_BASE_URL}/mark-report-viewed`;
-export const MARK_REPORT_REVIEWED_URL = `${API_BASE_URL}/mark-report-reviewed`;
 export const LIST_SEGMENTS_URL = `${API_BASE_URL}/list-segments`;
 export const UPSERT_SEGMENT_URL = `${API_BASE_URL}/upsert-segment`;
 export const DELETE_SEGMENT_URL = `${API_BASE_URL}/delete-segment`;

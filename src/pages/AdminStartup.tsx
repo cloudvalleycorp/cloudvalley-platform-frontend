@@ -4,50 +4,50 @@ import { AppLayout } from "@/components/AppLayout";
 import { BackLink } from "@/components/BackLink";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { ReadinessScore } from "@/components/ReadinessScore";
 import { StageBadge } from "@/components/StageBadge";
-import { SectionCard } from "@/components/SectionCard";
 import { LoadingCard } from "@/components/LoadingCard";
-import { calculateReadinessScore, PillarBreakdown } from "@/lib/score";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { useRoadmap } from "@/hooks/useRoadmap";
+import { API_BASE_URL } from "@/lib/apiConfig";
+
+const GET_COMPANY_PROFILE_URL = `${API_BASE_URL}/get-company-profile`;
+
+// Mismo shape que Startup en useStartup.ts — ese hook asume "mi propia
+// startup" (usa company_id de la sesión), acá el :id de la URL es una startup
+// arbitraria que un admin puede o no tener acceso a ver, así que se pide
+// directo en vez de reusar el hook.
+type CompanyProfile = {
+  name: string;
+  stage: "pre_seed" | "seed" | "series_a" | null;
+  business_model: string | null;
+  industry: string | null;
+};
 
 export default function AdminStartup() {
   const { id } = useParams();
-  const { isAdmin, loading, user } = useAuth();
-  const [startup, setStartup] = useState<any>(null);
-  const [score, setScore] = useState(0);
-  const [pillars, setPillars] = useState<PillarBreakdown[]>([]);
-  const [notes, setNotes] = useState<any[]>([]);
-  const [newNote, setNewNote] = useState("");
+  const { isAdmin, loading } = useAuth();
+  const [startup, setStartup] = useState<CompanyProfile | null>(null);
+  const [loadingStartup, setLoadingStartup] = useState(true);
+
+  const roadmap = useRoadmap(id ?? null);
+  // Mismo cálculo por pilar que RoadmapTaskList.tsx (% de tareas done) —
+  // ReadinessScore.tsx solo necesita {name, score}, no hace falta duplicar
+  // la lógica de src/lib/score.ts (borrado: leía Supabase directo y quedó
+  // sin ningún otro uso una vez migrado esto).
+  const pillars = roadmap.pillars.map((p) => {
+    const items = roadmap.tasks.filter((t) => t.pillar_id === p.id);
+    const done = items.filter((t) => t.status === "done").length;
+    return { name: p.name, score: items.length > 0 ? Math.round((done / items.length) * 100) : 0 };
+  });
 
   useEffect(() => {
     if (!id || !isAdmin) return;
-    (async () => {
-      // TODO: migrar a backend propio
-      const { data: s } = await supabase.from("startups").select("*").eq("id", id).maybeSingle();
-      setStartup(s);
-      const { total, pillars } = await calculateReadinessScore(id);
-      setScore(total); setPillars(pillars);
-      // TODO: migrar a backend propio
-      const { data: ns } = await supabase.from("admin_notes").select("*").eq("startup_id", id)
-        .order("created_at", { ascending: false });
-      setNotes(ns ?? []);
-    })();
+    setLoadingStartup(true);
+    fetch(`${GET_COMPANY_PROFILE_URL}?company_id=${encodeURIComponent(id)}`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setStartup(data ? { name: data.name, stage: data.stage, business_model: data.business_model, industry: data.industry } : null))
+      .finally(() => setLoadingStartup(false));
   }, [id, isAdmin]);
-
-  const addNote = async () => {
-    if (!id || !newNote || !user) return;
-    // TODO: migrar a backend propio
-    await supabase.from("admin_notes").insert({ startup_id: id, content: newNote, author_id: user.id });
-    setNewNote(""); toast.success("Nota agregada");
-    // TODO: migrar a backend propio
-    const { data } = await supabase.from("admin_notes").select("*").eq("startup_id", id)
-      .order("created_at", { ascending: false });
-    setNotes(data ?? []);
-  };
 
   if (loading) return null;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
@@ -75,31 +75,11 @@ export default function AdminStartup() {
           />
         )}
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            {startup ? <ReadinessScore score={score} pillars={pillars} /> : <LoadingCard lines={4} />}
-          </div>
-
-          <SectionCard title="Notas internas" description="Solo visible para admins de CloudValley">
-            <Textarea
-              value={newNote}
-              onChange={(e) => setNewNote(e.target.value)}
-              placeholder="Agregar una nota…"
-              className="text-sm"
-              rows={3}
-            />
-            <Button size="sm" onClick={addNote} disabled={!newNote} className="mt-2 w-full">Agregar nota</Button>
-
-            <div className="mt-6 space-y-3">
-              {notes.map((n) => (
-                <div key={n.id} className="text-sm border-t border-border pt-3">
-                  <p>{n.content}</p>
-                  <p className="text-xs text-tertiary mt-1">{new Date(n.created_at).toLocaleDateString()}</p>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-        </div>
+        {loadingStartup || roadmap.loading ? (
+          <LoadingCard lines={4} />
+        ) : (
+          <ReadinessScore score={roadmap.readinessScore} pillars={pillars} />
+        )}
       </div>
     </AppLayout>
   );

@@ -10,14 +10,14 @@ import type { DataRoomTask } from "@/lib/dataRoom";
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  categoryLabel: string;
+  folderLabel: string;
   tasks: DataRoomTask[];
   busy?: boolean;
   onSubmit: (input: { name: string; file: File; taskId: string | null; isPublic: boolean }) => void;
 };
 
 /** "Agregar documento" — elegís una tarea del Roadmap (autocompleta el nombre) o cargás uno libre. */
-export function UploadDialog({ open, onOpenChange, categoryLabel, tasks, busy = false, onSubmit }: Props) {
+export function UploadDialog({ open, onOpenChange, folderLabel, tasks, busy = false, onSubmit }: Props) {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -52,7 +52,7 @@ export function UploadDialog({ open, onOpenChange, categoryLabel, tasks, busy = 
       open={open}
       onOpenChange={onOpenChange}
       title="Agregar documento"
-      description={`Categoría: ${categoryLabel}`}
+      description={`Carpeta: ${folderLabel}`}
       onSubmit={handleSubmit}
       submitLabel="Guardar"
       busy={busy}

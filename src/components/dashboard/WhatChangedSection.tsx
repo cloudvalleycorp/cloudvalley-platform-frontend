@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/SectionCard";
+import { SectionNum } from "@/components/dashboard/SectionNum";
 import { EmptyState } from "@/components/EmptyState";
 import { usePlatformAgent } from "@/hooks/usePlatformAgent";
 import type { MetricHighlight } from "@/lib/metricIntelligence";
@@ -39,8 +40,8 @@ export function WhatChangedSection({ companyId, highlights, loading, error, onLo
     <SectionCard
       padding="sm"
       title={
-        <span className="flex items-center gap-1.5">
-          <Sparkles size={14} strokeWidth={1.5} className="text-muted-foreground" aria-hidden="true" />
+        <span className="flex items-center gap-2">
+          <SectionNum n={3} />
           Qué cambió
         </span>
       }

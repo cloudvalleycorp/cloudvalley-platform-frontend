@@ -39,10 +39,26 @@ export const SET_CONNECTION_DATA_ROLE_URL = `${API_BASE_URL}/set-connection-data
 export const SET_CONNECTION_SYNC_SETTINGS_URL = `${API_BASE_URL}/set-connection-sync-settings`;
 
 export const EXCEL_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+// Contrato 2026-09-05 — request-workbook-upload-url acepta esto además de
+// EXCEL_CONTENT_TYPE. Mismo flujo de ahí en más (upload_id, confirm-workbook-
+// upload, save-sheet-mapping) — confirm-workbook-upload devuelve un solo
+// sheet sin tabs para un CSV, con sheet_name derivado del nombre de archivo.
+export const CSV_CONTENT_TYPE = "text/csv";
 
 export type DataRole = "source_of_truth" | "operational_input" | "financial_model" | "historical_snapshot" | "report_export";
 export type SyncMode = "live" | "scheduled" | "event_based" | "manual" | "snapshot";
-export type SyncFrequency = "every_15_min" | "hourly" | "every_6_hours" | "daily" | "weekly" | "monthly" | "manual";
+// "daily_fixed_hour" (contrato 2026-09-11): sincroniza una vez por día a una
+// hora fija en vez de un intervalo rodante — requiere sync_hour_utc. Distinto
+// de "daily" (que sí es un intervalo rodante de 24hs sin hora fija).
+export type SyncFrequency =
+  | "every_15_min"
+  | "hourly"
+  | "every_6_hours"
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "daily_fixed_hour"
+  | "manual";
 export type SpreadsheetType =
   | "time_series"
   | "transaction_ledger"
@@ -98,6 +114,13 @@ export type SheetSummary = { spreadsheet_id: string; name: string; modified_time
 // métricas, es libre (snake_case).
 export type FieldMapping = {
   column: string;
+  // Posición real (0-based) de la columna en la hoja — contrato 2026-09-05.
+  // "column" sigue viajando pero ahora es solo un label de display; con dos
+  // columnas de igual nombre, column_index es lo único que las distingue de
+  // verdad (ver findDuplicateHeaders/rowKey en GrowthTrackerSheets.tsx). Se
+  // omite cuando el nombre de columna es único en la hoja — sigue funcionando
+  // igual que antes de este contrato.
+  column_index?: number;
   field_key: string;
   value_type: "number" | "text";
   // Generada por IA a partir de una muestra de la columna, o editada a mano
@@ -135,6 +158,9 @@ type SaveSheetMappingCommon = {
 export type SaveSheetMappingTabularRequest = SaveSheetMappingCommon & {
   structure?: "tabular";
   period_column: string;
+  // Contrato 2026-09-05 — mismo criterio que FieldMapping.column_index:
+  // solo hace falta cuando period_column es un nombre repetido en la hoja.
+  period_column_index?: number;
   field_mappings: FieldMapping[];
 };
 export type SaveSheetMappingGridRequest = SaveSheetMappingCommon & {
@@ -148,6 +174,11 @@ export type SaveSheetMappingEavRequest = SaveSheetMappingCommon & {
   eav_period_column: string;
   eav_metric_name_column: string;
   eav_value_column: string;
+  // Contrato 2026-09-05 — mismo criterio que period_column_index arriba,
+  // uno por cada una de las 3 columnas nombradas de este modo.
+  eav_period_column_index?: number;
+  eav_metric_name_column_index?: number;
+  eav_value_column_index?: number;
   eav_metric_mapping: EavMetricMapping[];
 };
 export type SaveSheetMappingRequest = SaveSheetMappingTabularRequest | SaveSheetMappingGridRequest | SaveSheetMappingEavRequest;
@@ -183,6 +214,11 @@ export type SheetConnection = {
   spreadsheet_name: string;
   sheet_name: string;
   period_column: string;
+  // Contrato 2026-09-05, no confirmado si backend ya lo devuelve en
+  // list-sheet-connections — se usa de forma defensiva (?? hs.indexOf(...))
+  // en GrowthTrackerSheets.tsx al editar una conexión existente, nunca se
+  // asume presente.
+  period_column_index?: number | null;
   // null para conexiones structure="grid"/"eav" (contrato 2026-08-31) — el
   // tipo decía FieldMapping[] a secas hasta que un crash real en vivo
   // (2026-09-01, primera vez que se guardó una conexión eav de verdad)
@@ -198,6 +234,11 @@ export type SheetConnection = {
   data_role: DataRole | null;
   sync_mode: SyncMode;
   sync_frequency: SyncFrequency | null;
+  // Solo tiene sentido cuando sync_frequency === "daily_fixed_hour" — entero
+  // 0-23, SIEMPRE UTC (contrato 2026-09-11). Convertir a/desde la hora local
+  // del navegador al mostrar/editar, nunca asumir una zona horaria fija —
+  // ver toLocalHour/toUtcHour en GrowthTrackerSheets.tsx.
+  sync_hour_utc: number | null;
   next_sync_at: string | null;
   freshness_sla: string | null;
 };
@@ -272,6 +313,15 @@ export type SheetsApiError = {
   // qué valores SÍ acepta — evita tener que adivinar a ciegas qué mandar.
   invalidValueTypes?: { field_key: string; value_type: string }[];
   allowedValueTypes?: string[];
+  // save-sheet-mapping, 400 (contrato 2026-09-05): dos field_mappings (o
+  // period_column/eav_*_column) comparten el mismo nombre de columna y
+  // ninguno trajo su column_index — el backend no puede resolver la
+  // ambigüedad. Mostrar "elegí cuál 'X' es cuál" en vez de un error genérico.
+  duplicateColumnNameWithoutIndex?: string[];
+  // save-sheet-mapping / sync-sheets, 400 (contrato 2026-09-05): la hoja
+  // cambió de forma (columna insertada/movida) desde que se confirmó el
+  // mapeo — la columna que se esperaba en una posición ya no está ahí.
+  shiftedColumns?: { expected_column: string; expected_index: number; found_at_index: number }[];
 };
 
 export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
@@ -293,6 +343,10 @@ export async function parseSheetsError(res: Response): Promise<SheetsApiError> {
       layoutStale: typeof data?.reason === "string",
       invalidValueTypes: Array.isArray(data?.invalid_value_types) ? data.invalid_value_types : undefined,
       allowedValueTypes: Array.isArray(data?.allowed_value_types) ? data.allowed_value_types : undefined,
+      duplicateColumnNameWithoutIndex: Array.isArray(data?.duplicate_column_name_without_index)
+        ? data.duplicate_column_name_without_index
+        : undefined,
+      shiftedColumns: Array.isArray(data?.shifted_columns) ? data.shifted_columns : undefined,
     };
   } catch {
     return { reconnectRequired: false, sourceDisabled: false, message: null };
@@ -401,10 +455,26 @@ export type ExtractSheetLayoutResponse = ExtractSheetLayoutGridResponse | Extrac
 
 export type GetWorkbookDownloadUrlResponse = { download_url: string; file_name: string };
 
+// Conversión hora local ⇄ UTC para sync_hour_utc — usa la zona horaria REAL
+// del navegador (Date interpreta setHours/getHours en horario local del
+// dispositivo, nunca un offset hardcodeado) en vez de asumir una región
+// fija. El backend siempre quiere/devuelve la hora en UTC (0-23).
+export function localHourToUtcHour(localHour: number): number {
+  const d = new Date();
+  d.setHours(localHour, 0, 0, 0);
+  return d.getUTCHours();
+}
+export function utcHourToLocalHour(utcHour: number): number {
+  const d = new Date();
+  d.setUTCHours(utcHour, 0, 0, 0);
+  return d.getHours();
+}
+
 export type SetConnectionSyncSettingsResponse = {
   connection_id: string;
   sync_mode: SyncMode | null;
   sync_frequency: SyncFrequency | null;
+  sync_hour_utc: number | null;
   next_sync_at: string | null;
   freshness_sla: string | null;
 };

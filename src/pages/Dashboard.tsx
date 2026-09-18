@@ -32,7 +32,9 @@ import { ExploreSection } from "@/components/dashboard/ExploreSection";
 type CoverageErrorKind = "rate_limit" | "unavailable" | "generic";
 
 export default function Dashboard() {
-  const { user, role, company_id, email, full_name } = useAuth();
+  // user.id NO es el id real del usuario (alias legacy a company_id, ver
+  // AuthContext.tsx) — para comparar "es mi propia tarea" hace falta user_id.
+  const { role, company_id, user_id, email, full_name } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -229,7 +231,7 @@ export default function Dashboard() {
             />
 
             <div className="grid lg:grid-cols-2 gap-6 items-start">
-              <ActionCenterSection tasks={roadmap.tasks} loading={roadmap.loading} currentUserId={user?.id ?? null} onToggleDone={handleToggleDone} />
+              <ActionCenterSection tasks={roadmap.tasks} loading={roadmap.loading} currentUserId={user_id} onToggleDone={handleToggleDone} />
               <DataReadinessSection issues={healthIssues} loading={sources.loading || financial.loadingLogs} />
             </div>
 

@@ -18,9 +18,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { SectionCard } from "@/components/SectionCard";
 import { ReportSectionView } from "@/components/metrics/ReportSectionView";
 import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
+import { ReportAnalyticsSheet } from "@/components/metrics/ReportAnalyticsSheet";
 import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { cn } from "@/lib/utils";
 import { handleMembershipError } from "@/lib/membership";
@@ -37,11 +39,13 @@ import {
   SHARE_FINANCIAL_REPORT_URL,
   UNSHARE_FINANCIAL_REPORT_URL,
   LIST_FINANCIAL_REPORT_SHARES_URL,
+  EXPORT_REPORT_PDF_URL,
   type ReportSection,
   type ReportShare,
+  type ExportReportPdfResponse,
 } from "@/lib/financialReports";
 import { toast } from "sonner";
-import { ChevronUp, ChevronDown, X, Plus, Save, GripVertical, Eye, Pencil, Share2, FileText, Sparkles } from "lucide-react";
+import { ChevronUp, ChevronDown, X, Plus, Save, GripVertical, Eye, Pencil, Share2, FileText, Sparkles, Download, BarChart3 } from "lucide-react";
 
 const now = new Date();
 
@@ -58,6 +62,8 @@ export default function ReportEditor() {
   const [saving, setSaving] = useState(false);
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
 
   const [metrics, setMetrics] = useState<MetricDef[]>([]);
   const [entries, setEntries] = useState<Record<string, Record<string, number>>>({});
@@ -212,6 +218,29 @@ export default function ReportEditor() {
     );
   };
 
+  const handleExportPdf = async () => {
+    if (!reportId) return;
+    setExportingPdf(true);
+    try {
+      const res = await fetch(EXPORT_REPORT_PDF_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report_id: reportId, period: toPeriodString(period.month, period.year) }),
+      });
+      if (!res.ok) {
+        toast.error("No se pudo generar el PDF");
+        return;
+      }
+      const data = (await res.json()) as ExportReportPdfResponse;
+      window.open(data.download_url, "_blank", "noopener,noreferrer");
+    } catch {
+      toast.error("No se pudo generar el PDF");
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const save = async () => {
     if (!reportId) return;
     if (!name.trim()) {
@@ -278,6 +307,7 @@ export default function ReportEditor() {
         ) : (
           <>
             <PageHeader
+              size="compact"
               title={name || "Reporte"}
               subtitle={mode === "preview" ? "Así lo ve un fondo con este reporte compartido." : "Armá las secciones y compartilo cuando esté listo."}
               action={
@@ -305,6 +335,14 @@ export default function ReportEditor() {
                     </div>
                   )}
                   {mode === "preview" && <PeriodSelect period={period} onChange={setPeriod} />}
+                  <Button variant="outline" onClick={handleExportPdf} disabled={exportingPdf}>
+                    <Download size={14} className="mr-1" aria-hidden="true" /> {exportingPdf ? "Generando…" : "Exportar PDF"}
+                  </Button>
+                  {is_owner && (
+                    <Button variant="outline" onClick={() => setAnalyticsOpen(true)}>
+                      <BarChart3 size={14} className="mr-1" aria-hidden="true" /> Actividad
+                    </Button>
+                  )}
                   <Button variant="outline" onClick={() => setAssistantOpen(true)}>
                     <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
                   </Button>
@@ -357,33 +395,23 @@ export default function ReportEditor() {
 
                 <div className="space-y-5">
                   {sections.map((section, si) => (
-                    <div key={si} className="border border-border rounded-lg bg-card overflow-hidden">
-                      <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-4 border-b border-border/60">
-                        <div className="flex-1 space-y-2 min-w-0">
-                          {is_owner ? (
-                            <>
-                              <Input
-                                value={section.title}
-                                onChange={(e) => updateSection(si, { title: e.target.value })}
-                                className="font-medium border-0 px-0 h-auto text-base shadow-none focus-visible:ring-0"
-                                placeholder="Título de la sección"
-                              />
-                              <Textarea
-                                value={section.subtitle ?? ""}
-                                onChange={(e) => updateSection(si, { subtitle: e.target.value || null })}
-                                placeholder="Subtítulo (opcional)"
-                                rows={1}
-                                className="text-sm text-muted-foreground border-0 px-0 min-h-0 shadow-none resize-none focus-visible:ring-0"
-                              />
-                            </>
-                          ) : (
-                            <>
-                              <h3 className="font-medium">{section.title}</h3>
-                              {section.subtitle && <p className="text-sm text-muted-foreground">{section.subtitle}</p>}
-                            </>
-                          )}
-                        </div>
-                        {is_owner && (
+                    <SectionCard
+                      key={si}
+                      title={
+                        is_owner ? (
+                          <Input
+                            value={section.title}
+                            onChange={(e) => updateSection(si, { title: e.target.value })}
+                            className="font-medium border-0 px-0 h-auto text-sm shadow-none focus-visible:ring-0"
+                            placeholder="Título de la sección"
+                          />
+                        ) : (
+                          section.title
+                        )
+                      }
+                      description={is_owner ? undefined : section.subtitle || undefined}
+                      action={
+                        is_owner ? (
                           <div className="flex items-center gap-0.5 shrink-0">
                             <Button size="sm" variant="ghost" className="h-8 w-8 p-0" disabled={si === 0} onClick={() => moveSection(si, -1)} title="Mover sección arriba" aria-label="Mover sección arriba">
                               <ChevronUp size={14} />
@@ -395,10 +423,19 @@ export default function ReportEditor() {
                               <X size={14} />
                             </Button>
                           </div>
-                        )}
-                      </div>
-
-                      <div className="px-5 py-3 space-y-1">
+                        ) : undefined
+                      }
+                    >
+                      {is_owner && (
+                        <Textarea
+                          value={section.subtitle ?? ""}
+                          onChange={(e) => updateSection(si, { subtitle: e.target.value || null })}
+                          placeholder="Subtítulo (opcional)"
+                          rows={1}
+                          className="text-xs text-muted-foreground border-0 px-0 -mt-2 mb-2 min-h-0 shadow-none resize-none focus-visible:ring-0"
+                        />
+                      )}
+                      <div className="space-y-1">
                         {section.blocks.length === 0 ? (
                           <p className="text-xs text-muted-foreground py-2">Sin métricas todavía.</p>
                         ) : (
@@ -431,24 +468,22 @@ export default function ReportEditor() {
                       </div>
 
                       {is_owner && (
-                        <div className="px-5 pb-5">
-                          <Select value="" onValueChange={(metricId) => addBlock(si, metricId)}>
-                            <SelectTrigger className="h-9">
-                              <SelectValue placeholder="+ Agregar métrica a esta sección" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {metrics
-                                .filter((m) => !section.blocks.some((b) => b.metric_id === m.id))
-                                .map((m) => (
-                                  <SelectItem key={m.id} value={m.id}>
-                                    {m.name}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        <Select value="" onValueChange={(metricId) => addBlock(si, metricId)}>
+                          <SelectTrigger className="h-9 mt-3">
+                            <SelectValue placeholder="+ Agregar métrica a esta sección" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {metrics
+                              .filter((m) => !section.blocks.some((b) => b.metric_id === m.id))
+                              .map((m) => (
+                                <SelectItem key={m.id} value={m.id}>
+                                  {m.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
                       )}
-                    </div>
+                    </SectionCard>
                   ))}
 
                   {is_owner && (
@@ -466,11 +501,14 @@ export default function ReportEditor() {
                 </div>
 
                 {is_owner && (
-                  <section className="border border-border rounded-lg bg-card p-6 space-y-4">
-                    <div className="flex items-center gap-2">
-                      <Share2 size={14} strokeWidth={1.5} className="text-muted-foreground" />
-                      <h2 className="text-sm font-medium text-foreground">Compartir con</h2>
-                    </div>
+                  <SectionCard
+                    title={
+                      <span className="flex items-center gap-2">
+                        <Share2 size={14} strokeWidth={1.5} className="text-muted-foreground" />
+                        Compartir con
+                      </span>
+                    }
+                  >
                     {connections.length === 0 ? (
                       <p className="text-sm text-muted-foreground">Todavía no tenés conexiones activas con ningún fondo.</p>
                     ) : (
@@ -487,7 +525,7 @@ export default function ReportEditor() {
                         ))}
                       </div>
                     )}
-                  </section>
+                  </SectionCard>
                 )}
               </>
             )}
@@ -496,6 +534,8 @@ export default function ReportEditor() {
       </div>
 
       <MetricInfoSheet metric={openInfo} onClose={() => setOpenInfo(null)} history={infoHistory} />
+
+      <ReportAnalyticsSheet open={analyticsOpen} onOpenChange={setAnalyticsOpen} companyId={company_id} reportId={reportId ?? null} />
 
       <PlatformAgentPanel
         open={assistantOpen}

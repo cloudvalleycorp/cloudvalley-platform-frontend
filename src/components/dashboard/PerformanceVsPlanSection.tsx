@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Target } from "lucide-react";
 import { SectionCard } from "@/components/SectionCard";
+import { SectionNum } from "@/components/dashboard/SectionNum";
 import { EmptyState } from "@/components/EmptyState";
 import { SkeletonSection } from "@/components/SkeletonSection";
 import { STANDARD_KEY_LABELS, STANDARD_KEY_ORDER } from "@/lib/metricRequirements";
@@ -62,8 +63,8 @@ export function PerformanceVsPlanSection({ metrics, forecastValues, actualValues
     <SectionCard
       padding="sm"
       title={
-        <span className="flex items-center gap-1.5">
-          <Target size={14} strokeWidth={1.5} className="text-muted-foreground" aria-hidden="true" />
+        <span className="flex items-center gap-2">
+          <SectionNum n={6} />
           Performance vs Plan
         </span>
       }

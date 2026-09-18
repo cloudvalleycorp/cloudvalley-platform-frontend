@@ -11,7 +11,6 @@ import {
   LINK_DOCUMENT_TASK_URL,
   SET_DOCUMENT_VERIFIED_URL,
   type DataRoomDocument,
-  type DocumentCategory,
 } from "@/lib/dataRoom";
 
 async function fetchDocuments(companyId: string): Promise<DataRoomDocument[]> {
@@ -48,7 +47,7 @@ export function useDocuments(companyId: string | null) {
 
   /** Crea el documento y sube el archivo en un solo paso (usado por "Agregar documento"). */
   const createAndUpload = async (
-    category: DocumentCategory,
+    folderId: string,
     name: string,
     file: File,
     taskId: string | null,
@@ -60,7 +59,7 @@ export function useDocuments(companyId: string | null) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_id: companyId, category, name, task_id: taskId, is_public: isPublic }),
+        body: JSON.stringify({ company_id: companyId, folder_id: folderId, name, task_id: taskId, is_public: isPublic }),
       });
       if (await handleMembershipError(createRes)) return false;
       const { document_id } = await createRes.json();

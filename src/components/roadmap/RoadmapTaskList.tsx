@@ -22,6 +22,10 @@ type Props = {
   // al de info, sin tener que ir a /tasks. Ausente = sin acción de editar
   // acá (ej. Roadmap.tsx del founder, que edita por otro lado).
   onEditTask?: (task: RoadmapTask) => void;
+  // Para no mostrar "Pedida por <vos mismo>" en una tarea propia — mismo
+  // criterio que ActionCenterSection.tsx del Dashboard. Ausente (ej. lado
+  // inversor) = siempre mostrar requested_by_name si está poblado.
+  currentUserId?: string | null;
 };
 
 // Lista de pilares con sus tareas, extraído de Roadmap.tsx para que founder
@@ -30,7 +34,16 @@ type Props = {
 // canEdit. Todos los pilares se muestran siempre, sin tabs de filtro ni
 // colapso — mismo criterio que el mockup aprobado (docs/design-system-
 // command-center.md): la lista completa es corta, no hace falta esconderla.
-export function RoadmapTaskList({ pillars, tasks, onOpenTask, readOnly = false, onToggleStatus, onUpload, onEditTask }: Props) {
+export function RoadmapTaskList({
+  pillars,
+  tasks,
+  onOpenTask,
+  readOnly = false,
+  onToggleStatus,
+  onUpload,
+  onEditTask,
+  currentUserId = null,
+}: Props) {
   const grouped = useMemo(
     () => pillars.map((p) => ({ ...p, items: tasks.filter((t) => t.pillar_id === p.id) })).filter((p) => p.items.length > 0),
     [tasks, pillars]
@@ -73,11 +86,18 @@ export function RoadmapTaskList({ pillars, tasks, onOpenTask, readOnly = false, 
                   )}
                   <div className="flex-1 min-w-0">
                     <span className={cn("text-sm", t.status === "done" && "text-tertiary line-through")}>{t.title}</span>
-                    {dueLabel(t.due_date, t.is_overdue) && (
-                      <p className={cn("text-xs mt-0.5", t.is_overdue ? "text-destructive-dark font-medium" : "text-muted-foreground")}>
-                        {dueLabel(t.due_date, t.is_overdue)}
-                      </p>
-                    )}
+                    {(() => {
+                      const due = dueLabel(t.due_date, t.is_overdue);
+                      const requester = t.requested_by_name && t.requested_by_user_id !== currentUserId ? t.requested_by_name : null;
+                      if (!due && !requester) return null;
+                      return (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {requester && <span>Pedida por {requester}</span>}
+                          {requester && due && <span className="mx-1.5 text-border">·</span>}
+                          {due && <span className={cn(t.is_overdue && "text-destructive-dark font-medium")}>{due}</span>}
+                        </p>
+                      );
+                    })()}
                   </div>
                   <span
                     className={cn(

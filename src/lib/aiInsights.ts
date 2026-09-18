@@ -12,9 +12,16 @@ import { toast } from "sonner";
 import { API_BASE_URL } from "@/lib/apiConfig";
 import type { FormulaSyntaxEntry } from "@/lib/formulaEngine";
 import type { QuerySpec } from "@/lib/querySpec";
+import type { ConceptAxisEntry, EavMetricMapping, PeriodAxisEntry } from "@/lib/sheetsIntegration";
 
 export const PLATFORM_AGENT_URL = `${API_BASE_URL}/platform-agent`;
 export const ANALYZE_TRANSACTIONAL_SHEET_URL = `${API_BASE_URL}/analyze-transactional-sheet`;
+// Historial de chats del Asistente (contrato 2026-09-11) — múltiples
+// conversaciones con título, retomables, en vez de un solo hilo continuo.
+export const LIST_AGENT_CONVERSATIONS_URL = `${API_BASE_URL}/list-agent-conversations`;
+export const GET_AGENT_CONVERSATION_URL = `${API_BASE_URL}/get-agent-conversation`;
+export const RENAME_AGENT_CONVERSATION_URL = `${API_BASE_URL}/rename-agent-conversation`;
+export const DELETE_AGENT_CONVERSATION_URL = `${API_BASE_URL}/delete-agent-conversation`;
 
 // Cuerpo de error compartido por ambos endpoints en 400/429/502/503 — el
 // mensaje ya viene en español, listo para mostrar directo (ver
@@ -91,7 +98,12 @@ export type PlatformAgentSurface =
 // agente ahora puede responder sobre una selección activa de varias
 // empresas/métricas/un rango de período/un segmento, sin que el investor
 // tenga que repetirlo en texto. Los 4 singulares NO se deprecan — siguen
-// siendo lo que mandan metrics/metric_property_panel/report_editor.
+// siendo lo que manda "metrics" (Metrics.tsx, desde 2026-09-06 vía el
+// Asistente único del header) y "report_editor" (ReportEditor.tsx, sigue
+// con su propio panel). "metric_property_panel" quedó sin ningún emisor
+// real ese mismo día (MetricPropertyPanel.tsx se consolidó al Asistente del
+// header, que manda surface="metrics" ahí) — el valor se deja en el tipo
+// por si backend todavía lo espera, pero el frontend no lo manda más.
 // Confirmado por backend: el agente resuelve solo comparaciones de
 // portfolio incluso en surface investor_company (una sola empresa abierta)
 // — no hace falta mandar nada distinto para que funcione ahí.
@@ -102,7 +114,10 @@ export type PlatformAgentUiContext = {
   currentPeriodId: string | null;
   selectedCompanyIds?: string[] | null;
   selectedMetricIds?: string[] | null;
-  selectedRange?: string | null; // RelativeRangeKind, ver lib/portfolioIntelligence.ts
+  // RelativeRangeKind (ver lib/portfolioIntelligence.ts) o un rango custom
+  // {key:"custom", from, to} en formato "YYYY-MM" (contrato 2026-09-11) —
+  // acota los valores mostrados cuando no hay un período puntual elegido.
+  selectedRange?: string | { key: "custom"; from: string; to: string } | null;
   selectedSegmentId?: string | null;
 };
 
@@ -146,8 +161,16 @@ export type PlatformAgentRequest = {
   question?: string;
   // conversation_history YA NO SE MANDA (cambio de contrato 2026-08-10) —
   // backend persiste el historial solo. reset_conversation:true arranca de
-  // cero (botón "Nueva conversación" en PlatformAgentPanel.tsx).
+  // cero (botón "Nueva conversación" en PlatformAgentPanel.tsx) — sigue
+  // funcionando igual para quien no migre a conversation_id/new_conversation.
   reset_conversation?: boolean;
+  // Historial de chats múltiples (contrato 2026-09-11): la primera pregunta
+  // de un chat nuevo manda new_conversation:true (sin conversation_id); la
+  // respuesta trae conversation_id, que las preguntas siguientes de ESE
+  // chat vuelven a mandar. Omitir ambos mantiene el comportamiento viejo
+  // (un solo hilo continuo), sin fecha de corte.
+  conversation_id?: string;
+  new_conversation?: boolean;
   formula_syntax?: FormulaSyntaxEntry[];
   confirm_write?: boolean;
   // Fuerza crear una métrica calculada nueva aunque el backend haya
@@ -206,6 +229,11 @@ export type PlatformAgentRequest = {
 export type ObservabilityTraceEntry = { tool: string; company_id?: string | null; result: Record<string, unknown> };
 
 export type PlatformAgentResponse = {
+  // Presente cuando el request mandó conversation_id o new_conversation
+  // (contrato 2026-09-11) — guardarlo para mandarlo de vuelta en la
+  // siguiente pregunta del mismo chat. Ausente si ninguno de los dos se
+  // mandó (comportamiento viejo, un solo hilo continuo).
+  conversation_id?: string;
   // Puede venir "metadata_edit" (cambio de contrato 2026-08-14) cuando el
   // pedido edita nombre/categoría/descripción/unidad/why_it_matters/
   // benchmark/origen de una métrica ya existente sin tocar su query — no
@@ -223,9 +251,32 @@ export type PlatformAgentResponse = {
   registry: { agent: string; domain: string; tool_count: number; tools: string[] };
 };
 
+// ---- Asistente: historial de chats múltiples (contrato 2026-09-11) ----
+
+export type AgentConversationSummary = { conversation_id: string; title: string; updated_at: string };
+
+export type ListAgentConversationsResponse = {
+  conversations: AgentConversationSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type AgentConversationMessage = { role: "user" | "assistant"; content: string };
+
+export type GetAgentConversationResponse = {
+  conversation_id: string;
+  title: string;
+  surface: PlatformAgentSurface;
+  messages: AgentConversationMessage[];
+};
+
 // ---- Sheets: analizar hoja transaccional (sigue siendo un flujo puntual) ----
 
-export type SuggestedField = { column: string; field_key: string; value_type: "number" | "text" };
+// column_index (contrato 2026-09-05): posición real de la columna, siempre
+// presente — al confirmar el mapeo sugerido, se manda tal cual en el
+// field_mappings de save-sheet-mapping (ver sheetsIntegration.ts).
+export type SuggestedField = { column: string; column_index: number; field_key: string; value_type: "number" | "text" };
 // Cambio de contrato 2026-08-14: query (QuerySpec estructurado) reemplaza a
 // formula_expression, mismo criterio que upsert-metric-definition/
 // propose-query desde el 2026-08-10 — ahora se puede confirmar directo sin
@@ -264,18 +315,54 @@ export type MetricNeedingMoreData = { name: string; missing_data_description: st
 // sample_rows salen directo de la respuesta de get-sheet-headers, ver
 // GrowthTrackerSheets.tsx. formula_syntax ya NO se manda (cambio de
 // contrato 2026-08-14, lo ignora si igual llega).
-export type AnalyzeTransactionalSheetRequest = {
-  company_id: string;
-  account_id: string;
-  spreadsheet_id: string;
-  sheet_name: string;
-  headers: string[];
-  sample_rows: string[][]; // hasta 15 filas, tal cual las devuelve get-sheet-headers
-};
+// Contrato 2026-09-05: structure ausente/"tabular" es el de siempre
+// (headers+sample_rows). "grid"/"eav" reemplazan eso por lo ya confirmado en
+// extract-sheet-layout — la hoja ya se leyó ahí, no hace falta mandarla de
+// nuevo. Response para grid/eav: solo suggested_metrics/metrics_needing_more_data
+// (sin suggested_fields, ya resuelto por extract-sheet-layout).
+export type AnalyzeTransactionalSheetRequest =
+  | {
+      structure?: "tabular";
+      company_id: string;
+      source: "sheet" | "excel";
+      account_id?: string;
+      spreadsheet_id?: string;
+      upload_id?: string;
+      sheet_name: string;
+      headers: string[];
+      sample_rows: string[][]; // hasta 15 filas, tal cual las devuelve get-sheet-headers
+      spreadsheet_type?: string;
+    }
+  | {
+      structure: "grid";
+      company_id: string;
+      source: "sheet" | "excel";
+      account_id?: string;
+      spreadsheet_id?: string;
+      upload_id?: string;
+      sheet_name: string;
+      period_orientation: "columns" | "rows";
+      period_axis: PeriodAxisEntry[];
+      concept_axis: ConceptAxisEntry[];
+    }
+  | {
+      structure: "eav";
+      company_id: string;
+      source: "sheet" | "excel";
+      account_id?: string;
+      spreadsheet_id?: string;
+      upload_id?: string;
+      sheet_name: string;
+      eav_period_column: string;
+      eav_metric_name_column: string;
+      eav_value_column: string;
+      eav_metric_mapping: EavMetricMapping[];
+    };
 // Cualquiera de las listas puede venir vacía (el backend filtra
 // internamente lo que no pasa validación) — mostrar solo lo que vino.
+// suggested_fields ausente para structure "grid"/"eav" (contrato 2026-09-05).
 export type AnalyzeTransactionalSheetResponse = {
-  suggested_fields: SuggestedField[];
+  suggested_fields?: SuggestedField[];
   suggested_metrics: SuggestedMetric[];
   metrics_needing_more_data: MetricNeedingMoreData[];
 };

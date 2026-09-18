@@ -11,9 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormDialog } from "@/components/FormDialog";
-import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
 import { handleMembershipError } from "@/lib/membership";
-import { FORMULA_SYNTAX } from "@/lib/formulaEngine";
 import {
   CREATE_FINANCIAL_REPORT_URL,
   LIST_FINANCIAL_REPORTS_URL,
@@ -23,7 +21,7 @@ import {
   type ReportShare,
 } from "@/lib/financialReports";
 import { toast } from "sonner";
-import { Plus, FileText, Pencil, Trash2, Share2, Sparkles } from "lucide-react";
+import { Plus, FileText, Pencil, Trash2, Share2 } from "lucide-react";
 import InvestorReporting from "@/pages/InvestorReporting";
 
 export default function Reporting() {
@@ -31,7 +29,6 @@ export default function Reporting() {
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(false);
   const [reopen, setReopen] = useState(false);
-  const [assistantOpen, setAssistantOpen] = useState(false);
 
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [loadingReports, setLoadingReports] = useState(true);
@@ -177,19 +174,15 @@ export default function Reporting() {
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12">
         <PageHeader
+          size="compact"
           title="Reporting"
           subtitle="Armá un reporte con las métricas que quieras y compartilo con un fondo puntual."
           action={
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setAssistantOpen(true)}>
-                <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
+            is_owner && (
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus size={14} className="mr-1" /> Nuevo reporte
               </Button>
-              {is_owner && (
-                <Button onClick={() => setCreateOpen(true)}>
-                  <Plus size={14} className="mr-1" /> Nuevo reporte
-                </Button>
-              )}
-            </div>
+            )
           }
         />
 
@@ -204,7 +197,7 @@ export default function Reporting() {
             secondaryAction={{ label: "Ver Growth Tracker", onClick: () => navigate("/metrics") }}
           />
         ) : (
-          <div className="space-y-2">
+          <div className="border border-border rounded-lg bg-card divide-y divide-border overflow-hidden">
             {reports.map((r) => (
               <div
                 key={r.report_id}
@@ -217,14 +210,14 @@ export default function Reporting() {
                     navigate(`/reporting/${r.report_id}`);
                   }
                 }}
-                className="border border-border rounded-lg p-4 bg-card flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 cursor-pointer hover:border-foreground/30 transition-all"
+                className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 cursor-pointer hover:bg-surface/60 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
+                  <div className="h-9 w-9 rounded-md bg-surface text-muted-foreground flex items-center justify-center shrink-0">
                     <FileText size={16} strokeWidth={1.5} />
                   </div>
                   <div className="min-w-0">
-                    <div className="font-medium truncate">{r.name}</div>
+                    <div className="text-sm font-medium truncate">{r.name}</div>
                     <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3">
                       <span>Actualizado {new Date(r.updated_at).toLocaleDateString("es-AR")}</span>
                       {is_owner && (
@@ -301,21 +294,6 @@ export default function Reporting() {
         variant="destructive"
         busy={deleting}
         onConfirm={deleteReport}
-      />
-
-      <PlatformAgentPanel
-        open={assistantOpen}
-        onOpenChange={setAssistantOpen}
-        companyId={company_id}
-        surface="reporting_list"
-        uiContext={{
-          selectedMetricId: null,
-          selectedCategoryId: null,
-          selectedReportId: null,
-          currentPeriodId: null,
-        }}
-        formulaSyntax={FORMULA_SYNTAX}
-        onAgentWrote={loadReports}
       />
     </AppLayout>
   );

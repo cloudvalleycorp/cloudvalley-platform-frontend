@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Sparkles, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/SectionCard";
+import { SectionNum } from "@/components/dashboard/SectionNum";
 import { usePlatformAgent } from "@/hooks/usePlatformAgent";
 
 type Props = { companyId: string | null };
@@ -35,8 +36,8 @@ export function ExecutiveSummaryCard({ companyId }: Props) {
     <SectionCard
       padding="sm"
       title={
-        <span className="flex items-center gap-1.5">
-          <Sparkles size={14} strokeWidth={1.5} className="text-primary" aria-hidden="true" />
+        <span className="flex items-center gap-2">
+          <SectionNum n={1} />
           Resumen ejecutivo
         </span>
       }

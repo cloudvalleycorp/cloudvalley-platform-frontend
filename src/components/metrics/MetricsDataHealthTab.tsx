@@ -27,10 +27,14 @@ const SEVERITY_ICON: Record<HealthIssueSeverity, typeof AlertCircle> = {
   warning: AlertTriangle,
   info: Info,
 };
-const SEVERITY_COLOR: Record<HealthIssueSeverity, string> = {
-  critical: "text-destructive",
-  warning: "text-warning",
-  info: "text-muted-foreground",
+// Chip con fondo tenue + color base (piso de contraste 3:1 de "ícono sobre
+// fondo tinte", no el 4.5:1 de texto — ver CLAUDE.md) para el ícono de cada
+// fila; el resumen de arriba en cambio es texto chico sobre blanco, ahí sí
+// hace falta la variante -dark (6.11:1/4.81:1, el token base no pasa AA).
+const SEVERITY_CHIP: Record<HealthIssueSeverity, string> = {
+  critical: "bg-destructive/10 text-destructive",
+  warning: "bg-warning/10 text-warning",
+  info: "bg-muted text-muted-foreground",
 };
 
 // Salud de datos — combina señales 100% determinísticas ya calculables en
@@ -60,13 +64,13 @@ export function MetricsDataHealthTab({ companyId, metrics, warnings, rawFields, 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4 text-sm">
-        <span className="flex items-center gap-1.5 text-destructive">
+        <span className="flex items-center gap-1.5 text-destructive-dark font-medium">
           <AlertCircle size={14} strokeWidth={1.5} /> {summary.critical} crítico{summary.critical === 1 ? "" : "s"}
         </span>
-        <span className="flex items-center gap-1.5 text-warning">
+        <span className="flex items-center gap-1.5 text-warning-dark font-medium">
           <AlertTriangle size={14} strokeWidth={1.5} /> {summary.warning} advertencia{summary.warning === 1 ? "" : "s"}
         </span>
-        <span className="flex items-center gap-1.5 text-muted-foreground">
+        <span className="flex items-center gap-1.5 text-muted-foreground font-medium">
           <Info size={14} strokeWidth={1.5} /> {summary.info} informativo{summary.info === 1 ? "" : "s"}
         </span>
         {loadingBackend && <span className="text-xs text-muted-foreground ml-auto">Cargando señales adicionales…</span>}
@@ -80,7 +84,9 @@ export function MetricsDataHealthTab({ companyId, metrics, warnings, rawFields, 
             const Icon = SEVERITY_ICON[issue.severity];
             const content = (
               <>
-                <Icon size={15} strokeWidth={1.5} className={cn("shrink-0 mt-0.5", SEVERITY_COLOR[issue.severity])} />
+                <span className={cn("flex items-center justify-center w-7 h-7 rounded-md shrink-0", SEVERITY_CHIP[issue.severity])}>
+                  <Icon size={14} strokeWidth={1.5} aria-hidden="true" />
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">{issue.title}</p>
@@ -91,7 +97,7 @@ export function MetricsDataHealthTab({ companyId, metrics, warnings, rawFields, 
                   <p className="text-xs text-muted-foreground mt-0.5">{issue.description}</p>
                 </div>
                 {issue.targetPath && (
-                  <ChevronRight size={15} strokeWidth={1.5} className="shrink-0 mt-0.5 text-muted-foreground" aria-hidden="true" />
+                  <ChevronRight size={15} strokeWidth={1.5} className="shrink-0 mt-1.5 text-muted-foreground" aria-hidden="true" />
                 )}
               </>
             );
@@ -103,12 +109,12 @@ export function MetricsDataHealthTab({ companyId, metrics, warnings, rawFields, 
               <Link
                 key={issue.id}
                 to={issue.targetPath}
-                className="border border-border rounded-md p-3 flex items-start gap-2.5 hover:bg-surface/50 hover:border-foreground/20 transition-colors"
+                className="border border-border rounded-lg p-3 flex items-start gap-3 hover:border-tertiary hover:bg-surface/60 transition-colors"
               >
                 {content}
               </Link>
             ) : (
-              <div key={issue.id} className="border border-border rounded-md p-3 flex items-start gap-2.5">
+              <div key={issue.id} className="border border-border rounded-lg p-3 flex items-start gap-3">
                 {content}
               </div>
             );

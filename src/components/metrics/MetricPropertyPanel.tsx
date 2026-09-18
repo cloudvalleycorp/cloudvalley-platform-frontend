@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { PropertyField, type PropertyFieldDef } from "@/components/metrics/PropertyField";
 import { QueryBuilder } from "@/components/metrics/query-builder/QueryBuilder";
 import { SimpleSourceList, flattenSimpleSources } from "@/components/metrics/query-builder/SimpleSourceList";
-import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
+import { useOpenAssistant } from "@/contexts/AssistantContext";
 import { type MetricDef, type RawField, sourceLabel, sourceSettingsPath } from "@/lib/metrics";
 import { blankAggregationNode } from "@/lib/querySpec";
 import { cn } from "@/lib/utils";
@@ -35,10 +35,6 @@ type Props = {
   onClose: () => void;
   onSaved: (id: string, isNew: boolean) => void;
   onDeleted: () => void;
-  // El Asistente puede escribir una métrica server-side (confirm_write) sin
-  // pasar por handleSave de este panel — sin esto el catálogo en pantalla
-  // queda desactualizado hasta refrescar a mano.
-  onAgentWrote?: () => void;
   // "Crear métrica para cumplir esto" (ver FundRequiredMetricsSection): el
   // panel se abre en modo creación con el pedido del fondo ya cargado, y al
   // guardar crea y vincula en un solo paso (fulfills_requirement_id).
@@ -72,11 +68,13 @@ export function MetricPropertyPanel({
   onClose,
   onSaved,
   onDeleted,
-  onAgentWrote,
   fulfillsRequirementId = null,
   prefill,
 }: Props) {
-  const [assistantOpen, setAssistantOpen] = useState(false);
+  // El Asistente vive solo en el header desde 2026-09-06 — esto abre ESE
+  // panel con el draft actual (sin guardar) como contexto extra, en vez de
+  // mantener un panel propio acá (ver AssistantContext.tsx).
+  const openAssistant = useOpenAssistant();
 
   const {
     draft,
@@ -236,7 +234,26 @@ export function MetricPropertyPanel({
             <div className="flex items-center justify-between gap-2">
               <SheetTitle>{creating ? "Agregar métrica" : metric?.name}</SheetTitle>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" onClick={() => setAssistantOpen(true)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    openAssistant({
+                      metricFields: {
+                        metric_id: metric?.id,
+                        name: draft.name,
+                        category: draft.category,
+                        metric_type: draft.metric_type,
+                        input_key: draft.input_key,
+                        value_type: draft.value_type,
+                        ...(draft.query ? { query: draft.query } : {}),
+                        unit: draft.unit,
+                        description: draft.description,
+                        why_it_matters: draft.why_it_matters,
+                      },
+                    })
+                  }
+                >
                   <Sparkles size={13} className="mr-1.5" aria-hidden="true" /> Asistente
                 </Button>
                 {metric && (
@@ -510,31 +527,6 @@ export function MetricPropertyPanel({
         onConfirm={confirmCreateDuplicate}
       />
 
-      <PlatformAgentPanel
-        open={assistantOpen}
-        onOpenChange={setAssistantOpen}
-        companyId={companyId}
-        surface="metric_property_panel"
-        uiContext={{
-          selectedMetricId: metric?.id ?? null,
-          selectedCategoryId: draft.category || null,
-          selectedReportId: null,
-          currentPeriodId: null,
-        }}
-        metricFields={{
-          metric_id: metric?.id,
-          name: draft.name,
-          category: draft.category,
-          metric_type: draft.metric_type,
-          input_key: draft.input_key,
-          value_type: draft.value_type,
-          ...(draft.query ? { query: draft.query } : {}),
-          unit: draft.unit,
-          description: draft.description,
-          why_it_matters: draft.why_it_matters,
-        }}
-        onAgentWrote={onAgentWrote}
-      />
     </>
   );
 }

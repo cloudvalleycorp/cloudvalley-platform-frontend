@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronRight, ShieldCheck } from "lucide-react";
+import { CheckCircle2, AlertTriangle, AlertCircle, Info, ChevronRight } from "lucide-react";
 import { SectionCard } from "@/components/SectionCard";
+import { SectionNum } from "@/components/dashboard/SectionNum";
 import { EmptyState } from "@/components/EmptyState";
 import { SkeletonSection } from "@/components/SkeletonSection";
 import { summarizeHealth, type HealthIssue, type HealthIssueSeverity } from "@/lib/dataHealthIssues";
@@ -40,8 +41,8 @@ export function DataReadinessSection({ issues, loading }: Props) {
     <SectionCard
       padding="sm"
       title={
-        <span className="flex items-center gap-1.5">
-          <ShieldCheck size={14} strokeWidth={1.5} className="text-muted-foreground" aria-hidden="true" />
+        <span className="flex items-center gap-2">
+          <SectionNum n={5} />
           Data Readiness
         </span>
       }

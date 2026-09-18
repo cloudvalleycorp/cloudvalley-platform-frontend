@@ -38,6 +38,9 @@ const InvestorPortfolio = lazy(() => import("./pages/InvestorPortfolio"));
 const InvestorCompany = lazy(() => import("./pages/InvestorCompany"));
 const FundMetricRequirements = lazy(() => import("./pages/FundMetricRequirements"));
 const InvestorTasks = lazy(() => import("./pages/InvestorTasks"));
+// Entorno aislado para validar la dirección de producto antes de migrar la UI
+// productiva. No consume APIs ni sustituye rutas existentes.
+const ProductPrototype = lazy(() => import("./prototype/ProductPrototype"));
 
 // /portfolio/:company_id es la ruta vieja (previa al rediseño Investor
 // 2026-08-23) — se mantiene funcionando para links ya compartidos,
@@ -95,6 +98,7 @@ const App = () => (
                 404, por si algún admin tiene el link viejo guardado. */}
             <Route path="/admin/organizations" element={<Navigate to="/admin/funds" replace />} />
             <Route path="/conexiones" element={<Connections />} />
+            <Route path="/prototype" element={<ProductPrototype />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>

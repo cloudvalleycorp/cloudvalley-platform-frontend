@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
@@ -8,48 +9,45 @@ import { DataTableToolbar } from "@/components/DataTableToolbar";
 import { SkeletonSection } from "@/components/SkeletonSection";
 import { EmptyState } from "@/components/EmptyState";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
-import { StageBadge } from "@/components/StageBadge";
+import { API_BASE_URL } from "@/lib/apiConfig";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Rocket } from "lucide-react";
 import { toast } from "sonner";
 
-type Row = {
-  id: string;
-  name: string;
-  stage: string | null;
-  business_model: string | null;
-  readiness_score: number;
-  updated_at: string;
-};
+const LIST_COMPANIES_URL = `${API_BASE_URL}/list-companies`;
+
+// Mismo endpoint real que ya usa AdminCompanies.tsx — antes esta pantalla
+// leía la tabla "startups" de Supabase directo (etapa/modelo/readiness_score
+// incluidos). Esos datos quedaron abandonados (no se migran, decisión
+// explícita 2026-09-08): esta pantalla ahora solo muestra lo que
+// list-companies devuelve de verdad. Si en algún momento hace falta
+// etapa/modelo/readiness por company acá, es un endpoint nuevo a pedir — no
+// hay forma de traerlo hoy sin una llamada aparte por company (N+1 real por
+// cada carga de esta pantalla, no vale la pena hasta que exista un bulk
+// endpoint para esto).
+type Company = { company_id: string; name: string; is_active: boolean; created_at: string | null };
 
 export default function Admin() {
   const { isAdmin, loading } = useAuth();
-  const [rows, setRows] = useState<Row[]>([]);
-  const [loadingRows, setLoadingRows] = useState(true);
   const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    if (!isAdmin) return;
-    (async () => {
-      const { data: startups } = await supabase
-        .from("startups")
-        .select("id, name, stage, business_model, readiness_score, updated_at");
-      setRows((startups ?? []) as Row[]);
-      setLoadingRows(false);
-    })();
-  }, [isAdmin]);
+  const { data: companies = [], isLoading: loadingRows } = useQuery({
+    queryKey: ["admin-ecosystem-companies"],
+    queryFn: async () => {
+      const res = await fetch(LIST_COMPANIES_URL, { credentials: "include" });
+      if (!res.ok) return [] as Company[];
+      const data = await res.json();
+      return (data.companies ?? []) as Company[];
+    },
+    enabled: isAdmin,
+  });
 
   if (loading) return null;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
-  const filtered = rows.filter((r) => r.name.toLowerCase().includes(search.trim().toLowerCase()));
-  const sorted = [...filtered].sort((a, b) => b.readiness_score - a.readiness_score);
-
-  const avgScore = rows.length > 0
-    ? Math.round(rows.reduce((acc, r) => acc + r.readiness_score, 0) / rows.length)
-    : 0;
-  const highScore = rows.filter((r) => r.readiness_score > 70).length;
+  const filtered = companies.filter((c) => c.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+  const activeCount = companies.filter((c) => c.is_active).length;
 
   return (
     <AppLayout>
@@ -65,10 +63,9 @@ export default function Admin() {
           }
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-          <StatCard label="Total startups" value={rows.length} />
-          <StatCard label="Score promedio" value={avgScore} />
-          <StatCard label="Score > 70" value={highScore} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
+          <StatCard label="Total startups" value={companies.length} />
+          <StatCard label="Activas" value={activeCount} />
         </div>
 
         <DataTableToolbar
@@ -78,35 +75,35 @@ export default function Admin() {
         />
 
         {loadingRows ? (
-          <SkeletonSection rows={6} columns={5} />
+          <SkeletonSection rows={6} columns={3} />
         ) : (
           <DataTable
             columns={[
               {
                 header: "Startup",
-                cell: (r) => (
-                  <Link to={`/admin/startup/${r.id}`} className="font-medium hover:underline">{r.name}</Link>
+                cell: (c) => (
+                  <Link to={`/admin/startup/${c.company_id}`} className="font-medium hover:underline">{c.name}</Link>
                 ),
               },
-              { header: "Etapa", cell: (r) => <StageBadge stage={r.stage} /> },
               {
-                header: "Modelo",
-                cell: (r) => <span className="text-muted-foreground capitalize">{r.business_model?.replace("_", " ")}</span>,
+                header: "Estado",
+                cell: (c) => (
+                  <span className={c.is_active ? "text-success-dark" : "text-muted-foreground"}>
+                    {c.is_active ? "Activa" : "Inactiva"}
+                  </span>
+                ),
               },
               {
-                header: "Readiness",
-                cell: (r) => (
-                  <div className="flex items-center gap-2">
-                    <span className="tabular-nums">{r.readiness_score}</span>
-                    <div className="h-1 w-20 bg-surface rounded-full overflow-hidden">
-                      <div className="h-full bg-foreground" style={{ width: `${r.readiness_score}%` }} />
-                    </div>
-                  </div>
+                header: "Creada",
+                cell: (c) => (
+                  <span className="text-muted-foreground">
+                    {c.created_at ? new Date(c.created_at).toLocaleDateString("es-AR") : "—"}
+                  </span>
                 ),
               },
             ]}
             rows={sorted}
-            rowKey={(r) => r.id}
+            rowKey={(c) => c.company_id}
             emptyLabel={
               <EmptyState
                 bordered={false}

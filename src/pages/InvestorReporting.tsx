@@ -6,10 +6,9 @@ import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershi
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingState } from "@/components/LoadingState";
-import { Button } from "@/components/ui/button";
 import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { ReportingStatusPill } from "@/components/investor/ReportingStatusPill";
-import { useReportingStatus, useReportingStatusMutations } from "@/hooks/useReportingStatus";
+import { useReportingStatus } from "@/hooks/useReportingStatus";
 import { toPeriodString } from "@/lib/metricPeriod";
 import { FileBarChart } from "lucide-react";
 
@@ -55,7 +54,6 @@ function InvestorReportingContent({ companies }: { companies: { id: string; name
   const periodString = toPeriodString(period.month, period.year);
 
   const { rows, loading } = useReportingStatus(periodString, companies.map((c) => c.id));
-  const { markReviewed } = useReportingStatusMutations();
   const rowByCompany = new Map(rows.map((r) => [r.company_id, r]));
 
   return (
@@ -89,11 +87,6 @@ function InvestorReportingContent({ companies }: { companies: { id: string; name
                     <span className="text-xs text-muted-foreground w-16 text-right tabular-nums">
                       {row?.updated_at ? new Date(row.updated_at).toLocaleDateString("es-AR", { day: "2-digit", month: "short" }) : "—"}
                     </span>
-                    {row?.needs_review && row.report_id && (
-                      <Button variant="ghost" size="sm" onClick={() => markReviewed(row.report_id!, true)}>
-                        Marcar revisado
-                      </Button>
-                    )}
                   </div>
                 </div>
               );

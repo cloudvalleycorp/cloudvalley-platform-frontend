@@ -1,13 +1,15 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Navigate, useNavigate, useLocation, Link, matchPath } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
 import { CompleteProfileScreen } from "@/components/CompleteProfileScreen";
-import { LogOut, Settings as SettingsIcon, UserCircle, Moon, Sun, Sparkles, Search } from "lucide-react";
+import { LogOut, Settings as SettingsIcon, Moon, Sun, Sparkles, Search, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,8 +19,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
-import type { PlatformAgentSurface } from "@/lib/aiInsights";
+import type { PlatformAgentSurface, PlatformAgentMetricFields } from "@/lib/aiInsights";
+import { FORMULA_SYNTAX } from "@/lib/formulaEngine";
+import { toPeriodString } from "@/lib/metricPeriod";
 import { GlobalSearch, useGlobalSearchShortcut } from "@/components/investor/GlobalSearch";
+import { AssistantContextProvider } from "@/contexts/AssistantContext";
+import { useStartup } from "@/hooks/useStartup";
 
 // Superficie por ruta portfolio-wide — todas comparten UNA sola
 // conversación continua (ver key={assistantCompanyId ?? "portfolio"} más
@@ -42,16 +48,43 @@ function portfolioWideSurfaceForPath(pathname: string): PlatformAgentSurface {
 // Mismo patrón que PORTFOLIO_WIDE_SURFACE_BY_PATH, del lado founder —
 // refactor de Dashboard/Roadmap/Data Room (2026-09-04): el Asistente antes
 // solo existía para role="investor", ahora también se habilita para
-// role="user" (founder) en estas 3 rutas, mismo componente y misma posición
+// role="user" (founder) en estas rutas, mismo componente y misma posición
 // en el header.
-const FOUNDER_SURFACE_BY_PATH: { prefix: string; surface: PlatformAgentSurface }[] = [
+//
+// /metrics cubre también /metrics/:metricId (mismo componente Metrics.tsx
+// para las dos rutas, ver App.tsx) — el prefijo alcanza. /reporting en
+// cambio necesita match exacto: /reporting/:reportId es ReportEditor, una
+// pantalla distinta con su Asistente propio (surface "report_editor") que
+// NO se consolidó acá — su contexto (reportId/período/métrica con el panel
+// de info abierto) es demasiado específico del editor como para resolverlo
+// solo por URL sin acoplar este layout a su estado interno. Todo lo demás
+// (Overview/Fuentes/Salud/Explorador de Metrics, y la lista de Reporting)
+// si se consolidó: ver 2026-09-06 más abajo.
+const FOUNDER_SURFACE_BY_PATH: { prefix: string; surface: PlatformAgentSurface; exact?: boolean }[] = [
   { prefix: "/roadmap", surface: "founder_roadmap" },
   { prefix: "/data-room", surface: "founder_data_room" },
+  { prefix: "/metrics", surface: "metrics" },
+  { prefix: "/reporting", surface: "reporting_list", exact: true },
 ];
 
 function founderSurfaceForPath(pathname: string): PlatformAgentSurface {
-  const match = FOUNDER_SURFACE_BY_PATH.find((s) => pathname.startsWith(s.prefix));
+  const match = FOUNDER_SURFACE_BY_PATH.find((s) => (s.exact ? pathname === s.prefix : pathname.startsWith(s.prefix)));
   return match?.surface ?? "founder_dashboard";
+}
+
+// Contrato 2026-09-06: el Asistente pasó a vivir SOLO en el header para
+// founder — Metrics.tsx y Reporting.tsx (la lista, no ReportEditor) ya no
+// arman su propio botón/panel, ver AssistantContext.tsx para cómo un
+// componente anidado (ej. el detalle de una métrica) sigue pudiendo abrirlo.
+// Antes de esto cada pantalla tenía el suyo (bug real encontrado en vivo
+// 2026-09-05: /metrics y /reporting llegaron a mostrar DOS botones
+// "Asistente" a la vez, el del header con la superficie equivocada porque
+// FOUNDER_SURFACE_BY_PATH todavía no las cubría). /reporting/:reportId
+// (ReportEditor) es la única excepción: sigue con su propio panel, no entra
+// acá — ver el comentario de FOUNDER_SURFACE_BY_PATH.
+function founderHeaderAssistantAvailable(pathname: string): boolean {
+  if (pathname.startsWith("/dashboard")) return true;
+  return FOUNDER_SURFACE_BY_PATH.some((s) => (s.exact ? pathname === s.prefix : pathname.startsWith(s.prefix)));
 }
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -69,9 +102,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
     signOut,
     portfolio_company_ids,
     portfolio_company_names,
+    avatar_url,
   } = useAuth();
+  // Logo real de la startup en el header — solo existe para role="user"
+  // (el fondo del investor todavía no tiene su propio logo, ver plan de
+  // rediseño), useStartup ya no dispara si no aplica (enabled interno).
+  const { startup } = useStartup();
+  const orgLogoUrl = role === "user" ? startup?.logo_url ?? null : null;
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const [profilePromptDismissed, setProfilePromptDismissed] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
   const [mountedTheme, setMountedTheme] = useState(false);
@@ -84,7 +124,16 @@ export function AppLayout({ children }: { children: ReactNode }) {
   // Resuelto por URL, no por props del children — así no hay que enchufar
   // el botón pantalla por pantalla.
   const [assistantOpen, setAssistantOpen] = useState(false);
+  // Draft de una métrica en edición sin guardar (MetricPropertyPanel.tsx,
+  // vía AssistantContext) — se pasa al panel del header mientras dura esa
+  // apertura puntual, se limpia al cerrar para no filtrarse a la próxima.
+  const [assistantMetricFields, setAssistantMetricFields] = useState<PlatformAgentMetricFields | undefined>(undefined);
   const companyDetailMatch = matchPath("/companies/:companyId", location.pathname);
+  // Founder en /metrics/:metricId (Metrics.tsx, surface "metrics" desde
+  // 2026-09-06) — mismo criterio que companyDetailMatch: resuelto por URL,
+  // no por props, así Metrics.tsx no necesita mantener su propio panel solo
+  // para poder mandar qué métrica está abierta.
+  const metricDetailMatch = matchPath("/metrics/:metricId", location.pathname);
   const assistantCompanyId =
     role === "user" ? company_id ?? null : companyDetailMatch?.params.companyId ?? null;
   const assistantSurface: PlatformAgentSurface =
@@ -93,6 +142,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
       : assistantCompanyId
         ? "investor_company"
         : portfolioWideSurfaceForPath(location.pathname);
+  // El del header es EL único Asistente del investor en toda la app, y desde
+  // 2026-09-06 también el único del founder salvo ReportEditor (que sigue
+  // con el suyo, ver comentario de FOUNDER_SURFACE_BY_PATH) — cubre
+  // Dashboard/Roadmap/Data Room/Métricas/Reporting(lista).
+  const showHeaderAssistant = role === "investor" || (role === "user" && founderHeaderAssistantAvailable(location.pathname));
 
   // Global Search (⌘K) — investor y founder, mismo criterio de alcance que
   // el Asistente (antes investor-only). MVP client-side, ver GlobalSearch.tsx
@@ -156,6 +210,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const displayName = full_name?.trim() || email || "Mi cuenta";
 
   return (
+    <AssistantContextProvider
+      value={{
+        openAssistant: (opts) => {
+          setAssistantMetricFields(opts?.metricFields);
+          setAssistantOpen(true);
+        },
+      }}
+    >
     <SidebarProvider>
       <a
         href="#main-content"
@@ -163,7 +225,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       >
         Saltar al contenido
       </a>
-      <div className="min-h-screen flex w-full bg-background">
+      <div className="app-shell min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="sticky top-0 z-40 h-14 flex items-center justify-between border-b border-border bg-background/95 backdrop-blur px-4 gap-3">
@@ -176,9 +238,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 CloudValley
               </Link>
               {orgLabel && (
-                <span className="text-sm text-foreground truncate min-w-0">
-                  <span className="text-muted-foreground/50 mr-2 md:hidden">/</span>
-                  {orgLabel}
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="text-muted-foreground/50 md:hidden">/</span>
+                  <Avatar className="h-6 w-6 rounded-md shrink-0 hidden md:flex">
+                    <AvatarImage src={orgLogoUrl ?? undefined} alt="" />
+                    <AvatarFallback className="rounded-md text-[10px] font-semibold">
+                      <Building2 size={12} strokeWidth={1.5} />
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium text-foreground truncate min-w-0">{orgLabel}</span>
                 </span>
               )}
             </div>
@@ -195,7 +263,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   <span className="hidden sm:inline">Buscar</span>
                 </Button>
               )}
-              {(role === "investor" || role === "user") && (
+              {showHeaderAssistant && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -222,23 +290,32 @@ export function AppLayout({ children }: { children: ReactNode }) {
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
-                    <UserCircle size={18} strokeWidth={1.5} />
+                  <Button variant="ghost" size="sm" className="gap-2 pl-1.5 pr-2.5 text-muted-foreground hover:text-foreground">
+                    <Avatar className="h-6 w-6">
+                      <AvatarImage src={avatar_url ?? undefined} alt="" />
+                      <AvatarFallback className="text-[10px] font-semibold">
+                        {displayName.trim().slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
                     <span className="hidden md:inline text-sm max-w-[180px] truncate">{displayName}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel className="flex flex-col gap-0.5">
-                    <span className="truncate text-sm">{displayName}</span>
-                    {full_name && email && (
-                      <span className="truncate text-xs font-normal text-muted-foreground">{email}</span>
-                    )}
+                  <DropdownMenuLabel className="flex items-center gap-2.5">
+                    <Avatar className="h-8 w-8 shrink-0">
+                      <AvatarImage src={avatar_url ?? undefined} alt="" />
+                      <AvatarFallback className="text-[11px] font-semibold">
+                        {displayName.trim().slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="min-w-0 flex flex-col gap-0.5">
+                      <span className="truncate text-sm font-normal">{displayName}</span>
+                      {full_name && email && (
+                        <span className="truncate text-xs font-normal text-muted-foreground">{email}</span>
+                      )}
+                    </span>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/account")}>
-                    <UserCircle size={14} strokeWidth={1.5} className="mr-2" />
-                    Actualizar mis datos
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/settings")}>
                     <SettingsIcon size={14} strokeWidth={1.5} className="mr-2" />
                     Configuración
@@ -266,18 +343,32 @@ export function AppLayout({ children }: { children: ReactNode }) {
         />
       )}
 
-      {(role === "investor" || role === "user") && (
+      {showHeaderAssistant && (
         <PlatformAgentPanel
           key={assistantCompanyId ?? "portfolio"}
           open={assistantOpen}
-          onOpenChange={setAssistantOpen}
+          onOpenChange={(o) => {
+            setAssistantOpen(o);
+            // Un metricFields de un draft puntual (MetricPropertyPanel.tsx)
+            // no debe sobrevivir a este cierre — la próxima apertura, desde
+            // donde sea, arranca limpia.
+            if (!o) setAssistantMetricFields(undefined);
+          }}
           companyId={assistantCompanyId}
           surface={assistantSurface}
+          metricFields={assistantMetricFields}
           uiContext={{
-            selectedMetricId: null,
+            // Solo se resuelve para founder en /metrics/:metricId — el resto
+            // de las superficies (incluida investor) no lo necesitaban antes
+            // y siguen sin necesitarlo.
+            selectedMetricId: role === "user" ? (metricDetailMatch?.params.metricId ?? null) : null,
             selectedCategoryId: null,
             selectedReportId: null,
-            currentPeriodId: null,
+            // "Ahora mismo" siempre — mismo valor que mandaban los paneles
+            // propios de Metrics.tsx/Reporting.tsx (ninguno rastreaba período
+            // navegado, ni siquiera Explorador pese a tener su propio
+            // año/mes en pantalla), así que no se pierde precisión real acá.
+            currentPeriodId: toPeriodString(new Date().getMonth() + 1, new Date().getFullYear()),
             // Confirmado por backend: el agente resuelve comparaciones de
             // portfolio incluso en investor_company sin mandar nada
             // distinto acá — no hace falta poblar estos campos solo para
@@ -287,8 +378,23 @@ export function AppLayout({ children }: { children: ReactNode }) {
             selectedRange: null,
             selectedSegmentId: null,
           }}
+          // Antes solo lo mandaban los PlatformAgentPanel propios de cada
+          // página (retirados de Metrics.tsx/Reporting.tsx/
+          // MetricPropertyPanel.tsx, ver comentario de
+          // FOUNDER_SURFACE_BY_PATH — ReportEditor.tsx es la única excepción
+          // que sigue con el suyo) — el del header lo manda siempre ahora: es
+          // inofensivo en superficies que no lo usan.
+          formulaSyntax={FORMULA_SYNTAX}
+          // Mismo motivo: los paneles propios recargaban solo sus datos
+          // locales (financial.reload/reloadSources/loadReports) al
+          // escribir. El del header no tiene esas funciones de cada página
+          // — invalida todo lo cacheado por React Query en su lugar, que
+          // logra el mismo resultado (la pantalla activa vuelve a pedir sus
+          // datos) sin acoplar este layout al estado interno de cada una.
+          onAgentWrote={() => queryClient.invalidateQueries()}
         />
       )}
     </SidebarProvider>
+    </AssistantContextProvider>
   );
 }

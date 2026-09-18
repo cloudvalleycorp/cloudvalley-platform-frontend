@@ -4,6 +4,7 @@ import {
   periodColumnLooksWrong,
   normalizeConceptValueType,
   findDuplicateHeaders,
+  rowKey,
 } from "@/pages/GrowthTrackerSheets";
 import {
   HEADERS_TRANSACTION_LEDGER,
@@ -46,12 +47,42 @@ describe("autoMapHeaders", () => {
   });
 
   it("headers vacíos no rompe, devuelve mapeos vacíos", () => {
-    expect(autoMapHeaders([])).toEqual({ periodColumn: null, fieldMappings: {} });
+    expect(autoMapHeaders([])).toEqual({ periodColumn: null, periodColumnIndex: null, fieldMappings: {} });
   });
 
   it("detecta la columna de período en un layout eav ('Fecha') aunque el resto lo procese extract-sheet-layout, no este mapeo", () => {
     const { periodColumn } = autoMapHeaders(HEADERS_EAV_METRICS);
     expect(periodColumn).toBe("Fecha");
+  });
+
+  it("contrato 2026-09-05: columnas con nombre repetido quedan como entradas separadas (rowKey), no se colapsan en una sola", () => {
+    const { fieldMappings } = autoMapHeaders(["Fecha", "Monto", "Monto"]);
+    expect(Object.keys(fieldMappings)).toHaveLength(2);
+    const entries = Object.values(fieldMappings);
+    expect(entries.every((m) => m.column === "Monto")).toBe(true);
+    // Cada entrada de un nombre duplicado trae column_index (la posición
+    // real) para que save-sheet-mapping pueda distinguirlas — antes de este
+    // contrato, la segunda columna pisaba a la primera en silencio (ver
+    // findDuplicateHeaders más abajo).
+    const indices = entries.map((m) => m.column_index).sort();
+    expect(indices).toEqual([1, 2]);
+  });
+
+  it("una columna sin nombre repetido nunca lleva column_index (sigue funcionando igual que antes del contrato 2026-09-05)", () => {
+    const { fieldMappings } = autoMapHeaders(["Fecha", "Monto"]);
+    expect(fieldMappings["Monto"].column_index).toBeUndefined();
+  });
+});
+
+describe("rowKey", () => {
+  it("un nombre único usa el nombre tal cual como key, sin sufijo de posición", () => {
+    expect(rowKey("Monto", 3, [])).toBe("Monto");
+  });
+
+  it("un nombre repetido usa nombre+posición, así dos columnas de igual nombre no colisionan en el mismo key", () => {
+    expect(rowKey("Monto", 1, ["Monto"])).toBe("Monto#1");
+    expect(rowKey("Monto", 2, ["Monto"])).toBe("Monto#2");
+    expect(rowKey("Monto", 1, ["Monto"])).not.toBe(rowKey("Monto", 2, ["Monto"]));
   });
 });
 

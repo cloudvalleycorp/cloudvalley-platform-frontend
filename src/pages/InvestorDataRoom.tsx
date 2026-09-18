@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AddRoadmapTaskDialog } from "@/components/roadmap/AddRoadmapTaskDialog";
 import { usePortfolioDocuments } from "@/hooks/useSharedDocuments";
-import { DATA_ROOM_CATEGORIES, type DocumentCategory } from "@/lib/dataRoom";
+import { useDocumentViewTracking } from "@/hooks/useDocumentViewTracking";
+import { groupSharedDocuments, type DataRoomDocument } from "@/lib/dataRoom";
 import { LIST_ROADMAP_PILLARS_URL, type RoadmapPillar } from "@/lib/roadmap";
 import { FolderOpen, Folder, ChevronDown, ChevronRight, Plus } from "lucide-react";
 
@@ -52,8 +53,14 @@ export default function InvestorDataRoom() {
 
 function InvestorDataRoomContent({ companies }: { companies: { id: string; name: string }[] }) {
   const [companyFilter, setCompanyFilter] = useState<string>("all");
-  const [openCategory, setOpenCategory] = useState<DocumentCategory | null>(null);
+  const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
   const [requestingFor, setRequestingFor] = useState<{ id: string; name: string } | null>(null);
+  const { trackOpen } = useDocumentViewTracking();
+  const openDoc = (doc: DataRoomDocument) => {
+    if (!doc.file_url) return;
+    trackOpen(doc.id);
+    window.open(doc.file_url, "_blank");
+  };
 
   const { documents, loading } = usePortfolioDocuments({
     companyIds: companyFilter === "all" ? undefined : [companyFilter],
@@ -69,15 +76,7 @@ function InvestorDataRoomContent({ companies }: { companies: { id: string; name:
     },
   });
 
-  const byCategory = useMemo(() => {
-    const map = new Map<DocumentCategory, typeof documents>();
-    for (const cat of DATA_ROOM_CATEGORIES) map.set(cat.id, []);
-    for (const doc of documents) {
-      const list = map.get(doc.category);
-      if (list) list.push(doc);
-    }
-    return map;
-  }, [documents]);
+  const groups = useMemo(() => groupSharedDocuments(documents, companyFilter === "all"), [documents, companyFilter]);
 
   const selectedCompany = companyFilter === "all" ? null : companies.find((c) => c.id === companyFilter) ?? null;
 
@@ -111,27 +110,29 @@ function InvestorDataRoomContent({ companies }: { companies: { id: string; name:
 
             {loading ? (
               <LoadingState variant="centered" className="py-16" />
+            ) : groups.length === 0 ? (
+              <EmptyState
+                icon={FolderOpen}
+                title="Todavía no hay documentos compartidos."
+                description="Vas a ver acá lo que la startup comparta con vos."
+              />
             ) : (
               <div className="border border-border rounded-lg divide-y divide-border">
-                {DATA_ROOM_CATEGORIES.map((cat, i) => {
-                  const docs = byCategory.get(cat.id) ?? [];
-                  const isOpen = openCategory === cat.id;
+                {groups.map((group) => {
+                  const isOpen = openGroupKey === group.key;
                   return (
-                    <div key={cat.id}>
+                    <div key={group.key}>
                       <button
                         type="button"
-                        onClick={() => setOpenCategory(isOpen ? null : cat.id)}
+                        onClick={() => setOpenGroupKey(isOpen ? null : group.key)}
                         aria-expanded={isOpen}
                         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-surface transition-colors"
                       >
-                        <span className="inline-flex items-center justify-center w-9 h-6 rounded-full bg-secondary text-secondary-foreground text-[11px] font-mono font-medium shrink-0">
-                          {i + 1}.0
-                        </span>
                         <Folder size={16} strokeWidth={1.5} className="text-muted-foreground shrink-0" aria-hidden="true" />
                         <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-medium text-foreground">{cat.label}</span>
+                          <span className="block text-sm font-medium text-foreground truncate">{group.label}</span>
                           <span className="block text-xs text-muted-foreground">
-                            {docs.length === 0 ? "Sin documentos" : `${docs.length} archivo${docs.length === 1 ? "" : "s"}`}
+                            {group.docs.length} archivo{group.docs.length === 1 ? "" : "s"}
                           </span>
                         </span>
                         {isOpen ? (
@@ -140,19 +141,28 @@ function InvestorDataRoomContent({ companies }: { companies: { id: string; name:
                           <ChevronRight size={14} strokeWidth={1.5} className="text-muted-foreground shrink-0" aria-hidden="true" />
                         )}
                       </button>
-                      {isOpen && docs.length > 0 && (
+                      {isOpen && (
                         <div className="px-4 pb-3 pl-16 space-y-1.5">
-                          {docs.map((doc) => (
+                          {group.docs.map((doc) => (
                             <button
                               key={doc.id}
                               type="button"
-                              onClick={() => doc.file_url && window.open(doc.file_url, "_blank")}
+                              onClick={() => openDoc(doc)}
                               className="w-full flex items-center justify-between gap-3 text-left text-sm py-1.5 hover:underline"
                             >
-                              <span className="min-w-0 truncate">
-                                {doc.name}
-                                {companyFilter === "all" && doc.company_name && (
-                                  <span className="text-muted-foreground"> · {doc.company_name}</span>
+                              <span className="min-w-0">
+                                <span className="truncate block">
+                                  {doc.name}
+                                  {companyFilter === "all" && doc.company_name && (
+                                    <span className="text-muted-foreground"> · {doc.company_name}</span>
+                                  )}
+                                </span>
+                                {!doc.is_public && (
+                                  <span className="block text-[11px] text-teal-dark no-underline">
+                                    Compartido con vos
+                                    {doc.expires_at &&
+                                      ` · vence el ${new Date(doc.expires_at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}`}
+                                  </span>
                                 )}
                               </span>
                               <span className="text-xs text-muted-foreground shrink-0">

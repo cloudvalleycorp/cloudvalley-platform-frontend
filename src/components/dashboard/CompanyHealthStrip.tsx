@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ArrowUpRight, ArrowDownRight, Minus, SlidersHorizontal, Activity } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ArrowDownRight, Minus, ChevronDown } from "lucide-react";
+import { SectionNum } from "@/components/dashboard/SectionNum";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -69,8 +70,8 @@ export function CompanyHealthStrip({ metrics, values, loading, onGoToMetrics }: 
     <SectionCard
       padding="sm"
       title={
-        <span className="flex items-center gap-1.5">
-          <Activity size={14} strokeWidth={1.5} className="text-muted-foreground" aria-hidden="true" />
+        <span className="flex items-center gap-2">
+          <SectionNum n={2} />
           Cómo estamos
         </span>
       }
@@ -78,8 +79,8 @@ export function CompanyHealthStrip({ metrics, values, loading, onGoToMetrics }: 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">
-              <SlidersHorizontal size={12} className="mr-1.5" aria-hidden="true" />
               KPIs ({visibleOrder.length}/{STANDARD_KEY_ORDER.length})
+              <ChevronDown size={12} className="ml-1.5" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">

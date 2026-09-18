@@ -63,7 +63,11 @@ export type AggregationNode = {
   filters: QueryFilter[];
   window?: QueryWindow;
 };
-export type MetricRefNode = { type: "metric_ref"; metric_id: string };
+// period_offset (contrato backend 2026-09-18): entero <= 0, ausente/0 =
+// período evaluado, -1 = un período (mes) atrás, -12 = mismo mes un año
+// atrás. Nunca positivo (no hay "período futuro"). El backend evalúa esto —
+// el frontend nunca lo calcula, solo arma el nodo y lo muestra.
+export type MetricRefNode = { type: "metric_ref"; metric_id: string; period_offset?: number };
 export type ConstantNode = { type: "constant"; value: number };
 export type ArithmeticOperator = "+" | "-" | "*" | "/";
 export type ArithmeticNode = { type: "arithmetic"; operator: ArithmeticOperator; left: QuerySpec; right: QuerySpec };
@@ -110,6 +114,9 @@ function validateNode(q: QuerySpec, path: string, selfMetricId: string | undefin
   } else if (q.type === "metric_ref") {
     if (!q.metric_id.trim()) issues.push({ path, message: "Falta elegir qué métrica referenciar." });
     else if (selfMetricId && q.metric_id === selfMetricId) issues.push({ path, message: "Una métrica no puede referenciarse a sí misma." });
+    if (q.period_offset !== undefined && (!Number.isInteger(q.period_offset) || q.period_offset > 0 || q.period_offset < -1200)) {
+      issues.push({ path, message: "El período de comparación tiene que ser el actual o uno anterior (hasta 1200 meses atrás)." });
+    }
   } else if (q.type === "constant") {
     if (!Number.isFinite(q.value)) issues.push({ path, message: "El valor constante no es un número válido." });
   } else {
@@ -170,9 +177,23 @@ const ARITHMETIC_SYMBOLS: Record<ArithmeticOperator, string> = { "+": "+", "-": 
 
 export type SummarizeQueryContext = { rawFieldLabel?: (key: string) => string; metricLabel?: (id: string) => string };
 
+// Etiqueta legible del desfasaje de período de un metric_ref — usada tanto
+// en el resumen de la fórmula (summarizeNode) como en el selector "Comparar
+// contra" del query-builder (QueryNodeEditor.tsx), para que digan lo mismo.
+export function periodOffsetLabel(offset: number | undefined): string {
+  if (!offset) return "";
+  if (offset === -1) return "mes anterior";
+  if (offset === -12) return "mismo mes, año anterior";
+  return `${Math.abs(offset)} meses atrás`;
+}
+
 function summarizeNode(q: QuerySpec, ctx: SummarizeQueryContext, topLevel: boolean): string {
   if (q.type === "constant") return String(q.value);
-  if (q.type === "metric_ref") return q.metric_id ? (ctx.metricLabel?.(q.metric_id) ?? q.metric_id) : "(sin elegir)";
+  if (q.type === "metric_ref") {
+    const label = q.metric_id ? (ctx.metricLabel?.(q.metric_id) ?? q.metric_id) : "(sin elegir)";
+    const offsetLabel = periodOffsetLabel(q.period_offset);
+    return offsetLabel ? `${label} (${offsetLabel})` : label;
+  }
   if (q.type === "aggregation") {
     const fieldKey = q.aggregation === "count_distinct" ? q.distinct_field_key : q.field_key;
     const fieldLabel = fieldKey ? (ctx.rawFieldLabel?.(fieldKey) ?? fieldKey) : q.aggregation === "count" ? "filas" : "(sin elegir)";

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Users, UserMinus, LogOut, Bell, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { LoadingState } from "@/components/LoadingState";
 import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { toast } from "sonner";
@@ -30,6 +31,7 @@ type OrgMember = {
   company_name?: string | null;
   fund_id?: string | null;
   fund_name?: string | null;
+  avatar_url?: string | null;
 };
 
 const roleLabel = (r: string) => {
@@ -269,19 +271,27 @@ export function OrganizationSection() {
                   key={m.user_id}
                   className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 py-3 border-b border-border/50 last:border-0"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium truncate">
-                        {m.full_name || m.email}
-                      </span>
-                      {isMe && (
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          Vos
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <Avatar className="h-8 w-8 shrink-0">
+                      <AvatarImage src={m.avatar_url ?? undefined} alt="" />
+                      <AvatarFallback className="text-[11px] font-medium">
+                        {(m.full_name || m.email || "?").trim().slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium truncate">
+                          {m.full_name || m.email}
                         </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {m.email}
+                        {isMe && (
+                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Vos
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {m.email}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 sm:gap-3 shrink-0">

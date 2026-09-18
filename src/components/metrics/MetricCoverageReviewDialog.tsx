@@ -5,9 +5,10 @@ import { FormDialog } from "@/components/FormDialog";
 import { FormField } from "@/components/FormField";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { QuerySummary } from "@/components/metrics/query-builder/QuerySummary";
 import { handleMembershipError } from "@/lib/membership";
-import { normalizeCategory } from "@/hooks/useMetricPropertyForm";
+import { normalizeCategory, slugify } from "@/hooks/useMetricPropertyForm";
 import { UPSERT_FINANCIAL_METRIC_DEFINITION_URL } from "@/lib/financialReports";
 import type { MetricCoverageRow, NewStandardKpiRow } from "@/lib/metricSourceCoverage";
 import type { MetricDef, RawField } from "@/lib/metrics";
@@ -42,17 +43,31 @@ type Props = {
 // mismo criterio que handleCombine en SuggestedMetricsReview.tsx) y
 // "new_standard" (un KPI estándar sin métrica propia se crea de cero, único
 // caso donde se manda metric_class/standard_key).
+// forceCreate: backend puede acertar mal el destino de un "connect"/
+// "enrich" — antes la única salida era Cancelar, perdiendo la fuente por
+// completo. Con esto el founder puede pedir crearla como métrica propia
+// nueva en su lugar (mismo query propuesto, sin tocar la métrica existente).
 export function MetricCoverageReviewDialog({ item, onOpenChange, companyId, allMetrics, rawFields, categories, defaultCategory, onSaved }: Props) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [unit, setUnit] = useState("");
   const [saving, setSaving] = useState(false);
+  // El "connect"/"enrich" que propone backend puede estar apuntando a la
+  // métrica equivocada — antes la única salida era Cancelar (perder la
+  // fuente por completo). Esto la pasa a crear una métrica propia nueva con
+  // el mismo query propuesto, en vez de pisar la existente.
+  const [forceCreate, setForceCreate] = useState(false);
 
   useEffect(() => {
     if (!item) return;
+    setForceCreate(false);
     if (item.kind === "new_standard") {
       setName(item.row.label);
       setCategory(defaultCategory);
+      setUnit("");
+    } else {
+      setName(`${item.row.name} (nueva)`);
+      setCategory(item.row.category);
       setUnit("");
     }
     setSaving(false);
@@ -65,9 +80,11 @@ export function MetricCoverageReviewDialog({ item, onOpenChange, companyId, allM
   const proposal = item.row.proposal;
   if (!proposal || (item.kind !== "new_standard" && !target)) return null;
 
-  const title = item.kind === "new_standard" ? `Confirmá tu ${item.row.label}` : `Confirmá "${target!.name}"`;
-  const description =
-    item.kind === "connect"
+  const showCreateFields = item.kind === "new_standard" || forceCreate;
+  const title = item.kind === "new_standard" ? `Confirmá tu ${item.row.label}` : forceCreate ? `Crear métrica nueva` : `Confirmá "${target!.name}"`;
+  const description = forceCreate
+    ? "Se crea como una métrica propia, separada, en vez de tocar la que ya tenías."
+    : item.kind === "connect"
       ? "Esta métrica se cargaba a mano. A partir de ahora se va a calcular sola con la fuente que ya conectaste."
       : item.kind === "enrich"
         ? "Esta métrica ya se calcula sola — le vamos a sumar una fuente nueva que todavía no estaba usando."
@@ -76,7 +93,33 @@ export function MetricCoverageReviewDialog({ item, onOpenChange, companyId, allM
   const handleConfirm = async () => {
     if (!companyId) return;
     let body: Record<string, unknown>;
-    if (item.kind === "new_standard") {
+    if (item.kind !== "new_standard" && forceCreate) {
+      const trimmedName = name.trim();
+      const normalizedCategory = normalizeCategory(category, categories);
+      if (!trimmedName || !normalizedCategory) {
+        toast.error("Nombre y categoría son obligatorios");
+        return;
+      }
+      const existingIds = new Set(allMetrics.map((m) => m.id));
+      const base = slugify(trimmedName);
+      let slug = base;
+      let suffix = 2;
+      while (existingIds.has(slug)) {
+        slug = `${base}_${suffix}`;
+        suffix++;
+      }
+      const displayOrder = Math.max(0, ...allMetrics.filter((m) => m.category === normalizedCategory).map((m) => m.order_index)) + 1;
+      body = {
+        company_id: companyId,
+        metric_id: slug,
+        name: trimmedName,
+        category: normalizedCategory,
+        metric_type: "calculated",
+        unit: unit.trim() || null,
+        display_order: displayOrder,
+        query: proposal.query,
+      };
+    } else if (item.kind === "new_standard") {
       // Re-leído acá (en vez de reusar el `proposal` de arriba) para que TS
       // lo tipe como NewStandardKpiProposal — el `item.kind` recién chequeado
       // no angosta una variable ya asignada afuera de este bloque.
@@ -136,7 +179,7 @@ export function MetricCoverageReviewDialog({ item, onOpenChange, companyId, allM
         setSaving(false);
         return;
       }
-      toast.success(item.kind === "new_standard" ? `${name.trim()} agregada` : `"${target!.name}" actualizada`);
+      toast.success(showCreateFields ? `${name.trim()} agregada` : `"${target!.name}" actualizada`);
       onSaved();
       onOpenChange(false);
     } catch {
@@ -155,7 +198,23 @@ export function MetricCoverageReviewDialog({ item, onOpenChange, companyId, allM
       submitLabel={saving ? "Confirmando…" : "Confirmar"}
       busy={saving}
     >
-      {item.kind === "new_standard" && (
+      {item.kind !== "new_standard" && !forceCreate && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs -mt-1"
+          onClick={() => setForceCreate(true)}
+        >
+          ¿No es esta métrica? Crear como nueva en su lugar
+        </Button>
+      )}
+      {item.kind !== "new_standard" && forceCreate && (
+        <Button type="button" size="sm" variant="ghost" className="h-7 text-xs -mt-1 -mb-1" onClick={() => setForceCreate(false)}>
+          Cancelar, volver a conectar con "{target!.name}"
+        </Button>
+      )}
+      {showCreateFields && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Nombre">
             <Input value={name} onChange={(e) => setName(e.target.value)} />

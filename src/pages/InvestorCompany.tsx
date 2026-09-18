@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Map } from "lucide-react";
+import { Plus, Map, Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import { BackLink } from "@/components/BackLink";
@@ -11,7 +11,8 @@ import { SectionCard } from "@/components/SectionCard";
 import { StageBadge } from "@/components/StageBadge";
 import { useConnectedCompanyMetrics } from "@/hooks/useConnectedCompanyMetrics";
 import { useSharedFinancialReports } from "@/hooks/useSharedFinancialReports";
-import { useReportingStatusMutations } from "@/hooks/useReportingStatus";
+import { useReportViewTracking } from "@/hooks/useReportViewTracking";
+import { EXPORT_REPORT_PDF_URL, type ExportReportPdfResponse } from "@/lib/financialReports";
 import { LoadingState } from "@/components/LoadingState";
 import { EmptyState } from "@/components/EmptyState";
 import { FileText } from "lucide-react";
@@ -29,6 +30,7 @@ import {
 import { Accordion } from "@/components/ui/accordion";
 import { CategoryAccordion } from "@/components/dataRoom/CategoryAccordion";
 import { DocumentRow } from "@/components/dataRoom/DocumentRow";
+import { groupSharedDocuments } from "@/lib/dataRoom";
 import { type MetricDef } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { percentChange, formatMetricValue } from "@/lib/metrics";
@@ -38,7 +40,6 @@ import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
 import { useSharedDocuments } from "@/hooks/useSharedDocuments";
 import { useSharedRoadmap } from "@/hooks/useSharedRoadmap";
-import { DATA_ROOM_CATEGORIES } from "@/lib/dataRoom";
 import { LIST_ROADMAP_PILLARS_URL, type RoadmapPillar, type RoadmapTask } from "@/lib/roadmap";
 import { RoadmapTaskList } from "@/components/roadmap/RoadmapTaskList";
 import { RoadmapTaskDetailSheet } from "@/components/roadmap/RoadmapTaskDetailSheet";
@@ -89,7 +90,7 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export default function InvestorCompany() {
   const { company_id } = useParams<{ company_id: string }>();
-  const { user, loading, isOrgViewer, fund_name, portfolio_company_ids, portfolio_company_names } = useAuth();
+  const { user, loading, isOrgViewer, fund_name, portfolio_company_ids, portfolio_company_names, user_id } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab: TabKey = (TABS.find((t) => t.key === searchParams.get("tab"))?.key ?? "overview");
@@ -154,7 +155,6 @@ export default function InvestorCompany() {
   const shared = useSharedFinancialReports(company_id ?? null);
   const sharedDocs = useSharedDocuments(company_id ?? null);
   const roadmap = useSharedRoadmap(company_id ?? null);
-  const { markViewed } = useReportingStatusMutations();
   const { events: activityEvents, loading: activityLoading } = useActivity({ company_id: company_id ?? undefined, page_size: 15 });
   // Mismo pedido que ya usa InvestorPortfolio.tsx para armar "Agregar
   // requisito" — cualquier rol autenticado puede listar pilares.
@@ -188,26 +188,46 @@ export default function InvestorCompany() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkReportId, shared.reports]);
 
-  // "Vi el reporte" — automático al abrir el visor (tab Updates con un
-  // reporte seleccionado), distinto de "lo revisé" (acción deliberada del
-  // investor, ver ReportingStatusPill/InvestorReporting.tsx).
-  useEffect(() => {
-    if (tab === "updates" && shared.selectedId) markViewed(shared.selectedId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, shared.selectedId]);
+  // Analítica real de lectura (contrato 2026-09-11): manda open/heartbeat/
+  // close mientras el visor del reporte (tab Updates) está abierto — el
+  // estado "revisado" de list-reporting-status ahora se calcula solo del
+  // lado backend a partir de esto (>=80% scroll y >=30s activos), reemplaza
+  // el viejo markViewed + el toggle manual "Marcar revisado".
+  useReportViewTracking(tab === "updates" ? (shared.selectedId ?? null) : null);
+
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const handleExportPdf = async () => {
+    if (!shared.selectedId) return;
+    setExportingPdf(true);
+    try {
+      const res = await fetch(EXPORT_REPORT_PDF_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report_id: shared.selectedId, period: toPeriodString(period.month, period.year) }),
+      });
+      if (!res.ok) {
+        toast.error("No se pudo generar el PDF");
+        return;
+      }
+      const data = (await res.json()) as ExportReportPdfResponse;
+      window.open(data.download_url, "_blank", "noopener,noreferrer");
+    } catch {
+      toast.error("No se pudo generar el PDF");
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   const metricById = useMemo(() => Object.fromEntries(metrics.metrics.map((m) => [m.id, m])), [metrics.metrics]);
   const allCalcDefs = useMemo(() => metrics.metrics.filter((m) => m.metric_type === "calculated"), [metrics.metrics]);
   const performanceMetrics = useMemo(() => metrics.metrics.filter((m) => m.metric_class === "standard"), [metrics.metrics]);
   const kpiMetrics = useMemo(() => metrics.metrics.filter((m) => m.metric_class !== "standard"), [metrics.metrics]);
 
-  // Solo categorías con al menos un documento visible — a diferencia del
-  // lado founder (que siempre muestra las 7), acá una categoría vacía no
-  // aporta nada y solo genera ruido.
-  const visibleDataRoomCategories = useMemo(
-    () => DATA_ROOM_CATEGORIES.filter((cat) => sharedDocs.documents.some((d) => d.category === cat.id)),
-    [sharedDocs.documents]
-  );
+  // Grupos con al menos un documento visible — o bien una carpeta real
+  // (folder_path) o el bucket legacy de una categoría vieja (folder_id
+  // null). Nunca se pide list-document-folders del lado investor.
+  const dataRoomGroups = useMemo(() => groupSharedDocuments(sharedDocs.documents, false), [sharedDocs.documents]);
 
   const { inputsForPeriod, currentInputs, prevInputs, prev, historyInputs, formulaHistory, baseRawFieldPeriods } =
     useMetricReportData({ metrics: metrics.metrics, entries: metrics.entries, period });
@@ -410,6 +430,12 @@ export default function InvestorCompany() {
                         </Select>
                       )}
                       {shared.reports.length > 0 && <PeriodSelect period={period} onChange={setPeriod} />}
+                      {shared.selectedId && (
+                        <Button size="sm" variant="outline" onClick={handleExportPdf} disabled={exportingPdf}>
+                          <Download size={13} strokeWidth={1.5} className="mr-1.5" aria-hidden="true" />
+                          {exportingPdf ? "Generando…" : "Exportar PDF"}
+                        </Button>
+                      )}
                     </>
                   }
                 >
@@ -473,7 +499,7 @@ export default function InvestorCompany() {
                     />
                   ) : sharedDocs.loading ? (
                     <LoadingState />
-                  ) : visibleDataRoomCategories.length === 0 ? (
+                  ) : dataRoomGroups.length === 0 ? (
                     <EmptyState
                       icon={FileText}
                       title="Todavía no hay documentos compartidos."
@@ -485,46 +511,35 @@ export default function InvestorCompany() {
                       type="multiple"
                       defaultValue={
                         deepLinkDocId
-                          ? visibleDataRoomCategories
-                              .filter((c) => sharedDocs.documents.some((d) => d.category === c.id && d.id === deepLinkDocId))
-                              .map((c) => c.id)
-                          : visibleDataRoomCategories.map((c) => c.id)
+                          ? dataRoomGroups.filter((g) => g.docs.some((d) => d.id === deepLinkDocId)).map((g) => g.key)
+                          : dataRoomGroups.map((g) => g.key)
                       }
                     >
-                      {visibleDataRoomCategories.map((cat) => {
-                        const items = sharedDocs.documents.filter((d) => d.category === cat.id);
-                        // Índice del catálogo completo, no del filtrado — así
-                        // el número coincide con el que ve el founder para la
-                        // misma categoría, aunque acá solo se listen las que
-                        // tienen documentos.
-                        const canonicalIndex = DATA_ROOM_CATEGORIES.findIndex((c) => c.id === cat.id);
-                        return (
-                          <CategoryAccordion
-                            key={cat.id}
-                            value={cat.id}
-                            num={canonicalIndex >= 0 ? `${canonicalIndex + 1}.0` : undefined}
-                            title={cat.label}
-                            countLabel={`${items.length} documento${items.length === 1 ? "" : "s"}`}
-                          >
-                            {items.map((doc) => (
-                              <DocumentRow
-                                key={doc.id}
-                                doc={doc}
-                                tasks={[]}
-                                canEdit={false}
-                                isOwner={false}
-                                showRoadmapBadge={false}
-                                onOpen={() => doc.file_url && window.open(doc.file_url, "_blank")}
-                                onUpload={() => {}}
-                                onDelete={() => {}}
-                                onLinkTask={() => {}}
-                                onTogglePrivacy={() => {}}
-                                onSetVerified={() => {}}
-                              />
-                            ))}
-                          </CategoryAccordion>
-                        );
-                      })}
+                      {dataRoomGroups.map((group) => (
+                        <CategoryAccordion
+                          key={group.key}
+                          value={group.key}
+                          title={group.label}
+                          countLabel={`${group.docs.length} documento${group.docs.length === 1 ? "" : "s"}`}
+                        >
+                          {group.docs.map((doc) => (
+                            <DocumentRow
+                              key={doc.id}
+                              doc={doc}
+                              tasks={[]}
+                              canEdit={false}
+                              isOwner={false}
+                              showRoadmapBadge={false}
+                              onOpen={() => doc.file_url && window.open(doc.file_url, "_blank")}
+                              onUpload={() => {}}
+                              onDelete={() => {}}
+                              onLinkTask={() => {}}
+                              onTogglePrivacy={() => {}}
+                              onSetVerified={() => {}}
+                            />
+                          ))}
+                        </CategoryAccordion>
+                      ))}
                     </Accordion>
                   )}
                 </SectionCard>
@@ -572,6 +587,7 @@ export default function InvestorCompany() {
                       tasks={roadmap.tasks}
                       onOpenTask={setOpenRoadmapTask}
                       onEditTask={setEditingTask}
+                      currentUserId={user_id}
                       readOnly
                     />
                   )}

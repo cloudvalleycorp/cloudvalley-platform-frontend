@@ -10,6 +10,7 @@ import { Eye, Lock, ShieldCheck } from "lucide-react";
 import { IntegrationsSection } from "@/components/IntegrationsSection";
 import { MyOrganization } from "@/components/MyOrganization";
 import { OrganizationSection } from "@/components/OrganizationSection";
+import { ProfileSection } from "@/components/ProfileSection";
 import { SectionCard } from "@/components/SectionCard";
 
 // Rango mínimo — acá solo hace falta el catálogo de métricas (largo +
@@ -30,8 +31,13 @@ export default function Settings() {
     const metricsTotal = financial.metrics.length;
     const metricsPrivate = financial.metrics.filter((m) => financial.privacy[m.id] === false).length;
     const docsTotal = documents.documents.length;
-    const docsPrivate = documents.documents.filter((d) => !d.is_public).length;
-    return { metricsTotal, metricsPrivate, docsTotal, docsPrivate };
+    // "Privado" ahora es de verdad solo lo que no es is_public NI tiene ningún
+    // share puntual — compartir con un fondo en particular (sin marcarlo
+    // is_public) ya no cuenta como "privado" a secas, ver ShareDialog.tsx.
+    const docsPublic = documents.documents.filter((d) => d.is_public).length;
+    const docsPartiallyShared = documents.documents.filter((d) => !d.is_public && !!d.shared_connection_count).length;
+    const docsPrivate = docsTotal - docsPublic - docsPartiallyShared;
+    return { metricsTotal, metricsPrivate, docsTotal, docsPublic, docsPartiallyShared, docsPrivate };
   }, [financial.metrics, financial.privacy, documents.documents]);
 
   return (
@@ -40,14 +46,13 @@ export default function Settings() {
           de un solo registro, no una tabla o lista — más ancho no aporta. */}
       <div className="max-w-2xl mx-auto px-8 py-12 space-y-8">
         <PageHeader
+          size="compact"
           title="Configuración"
           subtitle={
             <>
-              {role === "investor" ? "Tu organización, equipo e integraciones." : "Tu startup, equipo e integraciones."} Para editar tu perfil personal, andá a{" "}
-              <Link to="/account" className="underline underline-offset-2 hover:text-foreground">
-                Mi cuenta
-              </Link>
-              . Para gestionar {role === "investor" ? "las startups conectadas" : "los fondos conectados"}, andá a{" "}
+              Tu perfil, tu {role === "investor" ? "organización" : "startup"}, quién forma parte
+              {role === "user" ? " y tus integraciones" : ""}. Para gestionar{" "}
+              {role === "investor" ? "las startups conectadas" : "los fondos conectados"}, andá a{" "}
               <Link to="/conexiones" className="underline underline-offset-2 hover:text-foreground">
                 Conexiones
               </Link>
@@ -57,10 +62,14 @@ export default function Settings() {
           className="mb-0"
         />
 
+        {/* Perfil (antes era la pantalla /account aparte — mockup aprobado
+            la fusiona acá, un solo shell de Configuración) */}
+        <ProfileSection />
+
         {/* Mi organización + Miembros */}
         {((role === "user" && !!company_id) || (role === "investor" && !!fund_id)) && (
           <>
-            <MyOrganization hideProfile />
+            <MyOrganization />
             <OrganizationSection />
           </>
         )}
@@ -71,6 +80,8 @@ export default function Settings() {
             startup se gestiona en /conexiones, no acá. */}
         {role === "user" && (
           <>
+            <IntegrationsSection />
+
             {/* Privacidad */}
             <SectionCard
               title={
@@ -116,18 +127,20 @@ export default function Settings() {
                     )}
                   </div>
                   <div className="mt-2 text-sm">
-                    <span className="text-foreground tabular-nums">
-                      {privacySummary.docsTotal - privacySummary.docsPrivate}
-                    </span>
-                    <span className="text-muted-foreground"> visibles · </span>
+                    <span className="text-foreground tabular-nums">{privacySummary.docsPublic}</span>
+                    <span className="text-muted-foreground"> públicos · </span>
+                    {privacySummary.docsPartiallyShared > 0 && (
+                      <>
+                        <span className="text-foreground tabular-nums">{privacySummary.docsPartiallyShared}</span>
+                        <span className="text-muted-foreground"> compartidos · </span>
+                      </>
+                    )}
                     <span className="text-foreground tabular-nums">{privacySummary.docsPrivate}</span>
                     <span className="text-muted-foreground"> privados</span>
                   </div>
                 </Link>
               </div>
             </SectionCard>
-
-            <IntegrationsSection />
           </>
         )}
       </div>

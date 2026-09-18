@@ -14,6 +14,8 @@ import {
   Trash2,
   Upload,
   Sparkles,
+  Settings2,
+  MoreVertical,
 } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -30,6 +32,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
@@ -70,8 +79,11 @@ import {
   EXTRACT_SHEET_LAYOUT_URL,
   GET_WORKBOOK_DOWNLOAD_URL,
   EXCEL_CONTENT_TYPE,
+  CSV_CONTENT_TYPE,
   parseSheetsError,
   fieldCountLabel,
+  localHourToUtcHour,
+  utcHourToLocalHour,
   type GoogleAccount,
   type GoogleAccountsResponse,
   type SheetSummary,
@@ -113,6 +125,11 @@ const SHEETS_STEP_LABELS = ["Planilla", "Hoja", "Reconociendo", "Mapear columnas
 // columna se lee y cómo se llama."
 export type DraftFieldMapping = {
   column: string;
+  // Posición real (0-based) de la columna en la hoja — contrato 2026-09-05.
+  // Presente solo cuando "column" es un nombre repetido en la hoja (ver
+  // rowKey más abajo); ausente en el caso normal, sigue funcionando igual
+  // que siempre.
+  column_index?: number;
   field_key: string;
   value_type: "number" | "text";
   // "" = todavía sin descripción (columna nueva, o mapeo viejo de antes de
@@ -202,24 +219,28 @@ export function findMissingOrNewConcepts(submitted: string[], fresh: string[]): 
 // vacía se resuelve en 1-2 reintentos.
 const MAX_LAYOUT_STALE_ATTEMPTS = 3;
 
-// Bug real encontrado en vivo 2026-09-01: fieldMappings está indexado por
+// Bug real encontrado en vivo 2026-09-01: fieldMappings estaba indexado por
 // NOMBRE de columna (Record<string, DraftFieldMapping>), no por posición —
-// con headers repetidos (ej. "Cliente" dos veces), ambas columnas colisionan
-// en la misma entrada y una se pierde en silencio al guardar (confirmado:
-// el field_mappings mandado a save-sheet-mapping solo traía 1 "Cliente" y 1
-// "Monto" en vez de 2 de cada uno, y el ingest_result terminó usando los
-// valores de la SEGUNDA columna física, descartando la primera sin ningún
-// aviso). Arreglar el modelo de datos para indexar por posición es un
-// cambio de arquitectura más grande — mientras tanto, esto se detecta y
-// BLOQUEA el guardado (a diferencia de los demás avisos de este wizard, que
-// nunca bloquean): acá no hay ambigüedad de negocio que el founder pueda
-// resolver desde la UI, es pérdida de datos garantizada.
+// con headers repetidos (ej. "Cliente" dos veces), ambas columnas colisionaban
+// en la misma entrada y una se perdía en silencio al guardar. Arreglado
+// 2026-09-05 con el contrato de column_index (ver FieldMapping en
+// sheetsIntegration.ts): fieldMappings sigue keyed por nombre para el caso
+// normal (un solo campo con ese nombre), pero para un nombre repetido usa
+// rowKey (nombre+posición) para no colapsar las dos columnas en una — ver el
+// loop de "Columnas a traer" más abajo.
 export function findDuplicateHeaders(headers: string[]): string[] {
   const counts = new Map<string, number>();
   for (const h of headers) counts.set(h, (counts.get(h) ?? 0) + 1);
   return Array.from(counts.entries())
     .filter(([, c]) => c > 1)
     .map(([h]) => h);
+}
+
+// Key estable para fieldMappings: el nombre de columna solo, salvo que ese
+// nombre esté repetido en la hoja — ahí hace falta la posición para no
+// colapsar las dos columnas en la misma entrada (ver comentario arriba).
+export function rowKey(header: string, index: number, duplicateHeaders: string[]): string {
+  return duplicateHeaders.includes(header) ? `${header}#${index}` : header;
 }
 
 export function periodColumnLooksWrong(header: string | null, headers: string[], sampleRows: string[][]): boolean {
@@ -232,15 +253,20 @@ export function periodColumnLooksWrong(header: string | null, headers: string[],
   return parseable / values.length < 0.5;
 }
 
-export function autoMapHeaders(headers: string[]): { periodColumn: string | null; fieldMappings: Record<string, DraftFieldMapping> } {
+export function autoMapHeaders(
+  headers: string[]
+): { periodColumn: string | null; periodColumnIndex: number | null; fieldMappings: Record<string, DraftFieldMapping> } {
+  const dupes = findDuplicateHeaders(headers);
   let periodColumn: string | null = null;
+  let periodColumnIndex: number | null = null;
   const fieldMappings: Record<string, DraftFieldMapping> = {};
   const usedKeys = new Set<string>();
-  for (const header of headers) {
+  headers.forEach((header, index) => {
     const norm = normalizeForMatch(header);
     if (!periodColumn && PERIOD_PATTERNS.includes(norm)) {
       periodColumn = header;
-      continue;
+      if (dupes.includes(header)) periodColumnIndex = index;
+      return;
     }
     const base = slugifyFieldKey(header);
     let key = base;
@@ -250,9 +276,17 @@ export function autoMapHeaders(headers: string[]): { periodColumn: string | null
       suffix++;
     }
     usedKeys.add(key);
-    fieldMappings[header] = { column: header, field_key: key, value_type: "number", description: "", originalDescription: "" };
-  }
-  return { periodColumn, fieldMappings };
+    const isDup = dupes.includes(header);
+    fieldMappings[rowKey(header, index, dupes)] = {
+      column: header,
+      field_key: key,
+      value_type: "number",
+      description: "",
+      originalDescription: "",
+      ...(isDup ? { column_index: index } : {}),
+    };
+  });
+  return { periodColumn, periodColumnIndex, fieldMappings };
 }
 
 const DATA_ROLE_LABELS: Record<DataRole, string> = {
@@ -278,6 +312,7 @@ const SYNC_FREQUENCY_LABELS: Record<SyncFrequency, string> = {
   daily: "Diario",
   weekly: "Semanal",
   monthly: "Mensual",
+  daily_fixed_hour: "Diario a una hora fija",
   manual: "Manual",
 };
 
@@ -353,6 +388,10 @@ export default function GrowthTrackerSheets() {
   const [sampleRows, setSampleRows] = useState<string[][]>([]);
   const [loadingHeaders, setLoadingHeaders] = useState(false);
   const [periodColumn, setPeriodColumn] = useState<string | null>(null);
+  // Solo tiene valor cuando periodColumn es un nombre repetido en la hoja —
+  // es lo que manda period_column_index a save-sheet-mapping para distinguir
+  // cuál ocurrencia física es el período (ver rowKey/autoMapHeaders).
+  const [periodColumnIndex, setPeriodColumnIndex] = useState<number | null>(null);
   // Keyed por columna — cada columna de la hoja se usa (con su field_key +
   // tipo) o no aparece acá. Reemplaza el viejo metricConfigs (agregación +
   // filtros por métrica), que ya no existe: eso vive en las fórmulas de
@@ -449,12 +488,18 @@ export default function GrowthTrackerSheets() {
   }, [usedFieldKeys.join(",")]);
   const allMappingsValid = Object.values(fieldMappings).every((m) => m.field_key.trim().length > 0);
   const duplicateHeaders = useMemo(() => findDuplicateHeaders(headers), [headers]);
+  // Columnas repetidas ya no bloquean el guardado en modo tabular (contrato
+  // 2026-09-05, column_index) — cada ocurrencia se mapea por separado, ver
+  // rowKey. Lo único que sigue bloqueando: elegir período cuando su nombre
+  // está repetido pero todavía no se sabe CUÁL ocurrencia es (periodColumnIndex
+  // null pese al nombre ser un duplicado) — ahí sí hay ambigüedad real.
+  const periodColumnAmbiguous = !!periodColumn && duplicateHeaders.includes(periodColumn) && periodColumnIndex == null;
   const canSaveMappingTabular =
     !!periodColumn &&
+    !periodColumnAmbiguous &&
     usedColumnsCount > 0 &&
     allMappingsValid &&
-    duplicateFieldKeys.length === 0 &&
-    duplicateHeaders.length === 0;
+    duplicateFieldKeys.length === 0;
 
   // Para SuggestedMetricsReview: las categorías (tabs) que ya existen en el
   // catálogo real de la company, así una métrica sugerida por IA cae en un
@@ -647,9 +692,12 @@ export default function GrowthTrackerSheets() {
       setHeaders(hs);
       setSampleRows(sampleRowsData);
       if (seed) {
+        const dupes = findDuplicateHeaders(hs);
         const missing: string[] = [];
         const seededPeriod = hs.includes(seed.period_column) ? seed.period_column : null;
         if (!seededPeriod) missing.push(seed.period_column);
+        const seededPeriodIndex =
+          seededPeriod && dupes.includes(seededPeriod) ? (seed.period_column_index ?? hs.indexOf(seededPeriod)) : null;
         const seededMappings: Record<string, DraftFieldMapping> = {};
         for (const fm of seed.field_mappings ?? []) {
           if (!hs.includes(fm.column)) {
@@ -657,20 +705,25 @@ export default function GrowthTrackerSheets() {
             continue;
           }
           const seededDescription = fm.description ?? "";
-          seededMappings[fm.column] = {
+          const isDup = dupes.includes(fm.column);
+          const idx = fm.column_index ?? hs.indexOf(fm.column);
+          seededMappings[rowKey(fm.column, idx, dupes)] = {
             column: fm.column,
             field_key: fm.field_key,
             value_type: fm.value_type,
             description: seededDescription,
             originalDescription: seededDescription,
+            ...(isDup ? { column_index: idx } : {}),
           };
         }
         setPeriodColumn(seededPeriod);
+        setPeriodColumnIndex(seededPeriodIndex);
         setFieldMappings(seededMappings);
         setStaleHeaders(Array.from(new Set(missing)));
       } else {
         const auto = autoMapHeaders(hs);
         setPeriodColumn(auto.periodColumn);
+        setPeriodColumnIndex(auto.periodColumnIndex);
         setFieldMappings(auto.fieldMappings);
         setStaleHeaders([]);
         autoMapped = { hs, periodColumn: auto.periodColumn, sampleRows: sampleRowsData };
@@ -698,7 +751,8 @@ export default function GrowthTrackerSheets() {
     setLayoutOverride(null);
     setLayoutExtraction(null);
     if (layout === "grid" || layout === "eav") {
-      await extractSheetLayout(layout, { sheetName, excel: false, accountId, spreadsheetId });
+      const extraction = await extractSheetLayout(layout, { sheetName, excel: false, accountId, spreadsheetId });
+      if (extraction) await analyzeExtractedLayout(extraction, { sheetName, excel: false, accountId, spreadsheetId });
       return;
     }
 
@@ -717,13 +771,23 @@ export default function GrowthTrackerSheets() {
       return;
     }
 
-    const suggestedCount = analysis.suggested_fields.filter((f) => f.column !== autoMapped!.periodColumn).length;
+    const dupes = findDuplicateHeaders(autoMapped.hs);
+    const suggestedFields = analysis.suggested_fields ?? [];
+    const suggestedCount = suggestedFields.filter((f) => f.column !== autoMapped!.periodColumn).length;
     if (suggestedCount > 0) {
       setFieldMappings((prev) => {
         const next = { ...prev };
-        for (const f of analysis.suggested_fields) {
+        for (const f of suggestedFields) {
           if (f.column === autoMapped!.periodColumn) continue;
-          next[f.column] = { column: f.column, field_key: f.field_key, value_type: f.value_type, description: "", originalDescription: "" };
+          const isDup = dupes.includes(f.column);
+          next[rowKey(f.column, f.column_index, dupes)] = {
+            column: f.column,
+            field_key: f.field_key,
+            value_type: f.value_type,
+            description: "",
+            originalDescription: "",
+            ...(isDup ? { column_index: f.column_index } : {}),
+          };
         }
         return next;
       });
@@ -784,15 +848,25 @@ export default function GrowthTrackerSheets() {
     // fix compilaba y no tiraba error, pero el remap nunca se aplicaba).
     let newlyMapped = 0;
     const keyRemap: Record<string, string> = {};
+    const dupes = findDuplicateHeaders(headers);
     const nextFieldMappings = { ...fieldMappings };
-    for (const f of analysis.suggested_fields) {
+    for (const f of analysis.suggested_fields ?? []) {
       if (f.column === periodColumn) continue;
-      const existing = fieldMappings[f.column];
+      const key = rowKey(f.column, f.column_index, dupes);
+      const existing = fieldMappings[key];
       if (existing) {
         if (existing.field_key !== f.field_key) keyRemap[f.field_key] = existing.field_key;
         continue; // no pisa un mapeo ya guardado
       }
-      nextFieldMappings[f.column] = { column: f.column, field_key: f.field_key, value_type: f.value_type, description: "", originalDescription: "" };
+      const isDup = dupes.includes(f.column);
+      nextFieldMappings[key] = {
+        column: f.column,
+        field_key: f.field_key,
+        value_type: f.value_type,
+        description: "",
+        originalDescription: "",
+        ...(isDup ? { column_index: f.column_index } : {}),
+      };
       newlyMapped++;
     }
     setFieldMappings(nextFieldMappings);
@@ -922,26 +996,106 @@ export default function GrowthTrackerSheets() {
     }
   };
 
+  // Contrato 2026-09-05: analyze-transactional-sheet ahora acepta
+  // structure "grid"/"eav" — mismo paso "Revisá las métricas sugeridas" que
+  // ya existía para tabular, ahora también acá. Antes de esto, el flujo
+  // grid/eav nunca llamaba a analyze-transactional-sheet (saltaba directo de
+  // extract-sheet-layout a guardar) y esas conexiones nunca ofrecían
+  // métricas sugeridas — bug real encontrado en vivo 2026-09-04 con un
+  // Estado de Resultados (grid). Se llama después de que el founder confirmó
+  // (o volvió a analizar) el concept_axis/eav_metric_mapping, nunca antes:
+  // los field_keys que referencia suggested_metrics son los mismos que ese
+  // concept_axis/eav_metric_mapping va a guardar.
+  const analyzeExtractedLayout = async (
+    extraction: ExtractSheetLayoutResponse,
+    ctx: { sheetName: string; excel: boolean; uploadId?: string | null; accountId?: string | null; spreadsheetId?: string | null }
+  ) => {
+    const common = {
+      source: (ctx.excel ? "excel" : "sheet") as "sheet" | "excel",
+      accountId: ctx.excel ? undefined : (ctx.accountId ?? undefined),
+      spreadsheetId: ctx.excel ? undefined : (ctx.spreadsheetId ?? undefined),
+      uploadId: ctx.excel ? (ctx.uploadId ?? undefined) : undefined,
+      sheetName: ctx.sheetName,
+    };
+    const analysis =
+      extraction.layout === "grid"
+        ? await analyzeTransactionalSheet({
+            ...common,
+            structure: "grid",
+            periodOrientation: extraction.period_orientation,
+            periodAxis: extraction.period_axis,
+            conceptAxis: extraction.concept_axis,
+          })
+        : await analyzeTransactionalSheet({
+            ...common,
+            structure: "eav",
+            eavPeriodColumn: extraction.eav_period_column,
+            eavMetricNameColumn: extraction.eav_metric_name_column,
+            eavValueColumn: extraction.eav_value_column,
+            eavMetricMapping: extraction.eav_metric_mapping,
+          });
+    if (analysis && (analysis.suggested_metrics.length > 0 || analysis.metrics_needing_more_data.length > 0)) {
+      setSuggestedMetrics(analysis.suggested_metrics);
+      setMetricsNeedingMoreData(analysis.metrics_needing_more_data);
+    }
+  };
+
   // El founder cambia el mecanismo a mano (selector en el paso 3) —
   // dispara extract-sheet-layout si hace falta, o vuelve al mapeo de
   // columnas de siempre si elige "row_based".
   const handleLayoutOverride = (next: SheetLayout) => {
     setLayoutOverride(next);
     if (next === "grid" || next === "eav") {
-      if (!layoutExtraction || layoutExtraction.layout !== next) extractSheetLayout(next);
+      if (!layoutExtraction || layoutExtraction.layout !== next) {
+        extractSheetLayout(next).then((extraction) => {
+          if (extraction) {
+            analyzeExtractedLayout(extraction, {
+              sheetName: selectedSheetName ?? "",
+              excel: excelMode,
+              uploadId: excelUploadId,
+              accountId: wizardAccountId,
+              spreadsheetId: selectedSpreadsheetId,
+            });
+          }
+        });
+      }
     }
   };
 
   const handleReanalyzeLayout = () => {
-    if (effectiveLayout === "grid" || effectiveLayout === "eav") extractSheetLayout(effectiveLayout, undefined, true);
+    if (effectiveLayout === "grid" || effectiveLayout === "eav") {
+      extractSheetLayout(effectiveLayout, undefined, true).then((extraction) => {
+        if (extraction) {
+          analyzeExtractedLayout(extraction, {
+            sheetName: selectedSheetName ?? "",
+            excel: excelMode,
+            uploadId: excelUploadId,
+            accountId: wizardAccountId,
+            spreadsheetId: selectedSpreadsheetId,
+          });
+        }
+      });
+    }
   };
 
+  // Modo tabular: columnas repetidas ya no bloquean acá (contrato 2026-09-05,
+  // column_index) — canSaveMappingTabular ya lo resuelve por posición, ver
+  // rowKey. Grid/eav SÍ siguen bloqueados por duplicateHeaders: ese contrato
+  // no llegó todavía a concept_axis/eav_metric_mapping (backend no expone un
+  // column_index ahí), así que la ambigüedad de nombre repetido sigue sin
+  // forma de resolverse desde esta UI para esos dos modos. Bug real
+  // encontrado en vivo 2026-09-04, antes de tener este chequeo: "Guardar
+  // mapeo" quedaba habilitado en grid/eav pese al banner de error, el
+  // guardado fallaba con layoutStale una y otra vez (ese reintento solo
+  // excluye filas sin datos, nunca corrige un nombre de columna duplicado) y
+  // el usuario quedaba en un loop entre este paso y el 4 sin salida real.
   const canSaveMapping =
     effectiveLayout === "row_based"
       ? canSaveMappingTabular
-      : effectiveLayout === "grid"
-        ? !extractingLayout && layoutExtraction?.layout === "grid" && gridConceptAxis.length > 0
-        : !extractingLayout && layoutExtraction?.layout === "eav" && eavMetricMapping.length > 0;
+      : duplicateHeaders.length === 0 &&
+        (effectiveLayout === "grid"
+          ? !extractingLayout && layoutExtraction?.layout === "grid" && gridConceptAxis.length > 0
+          : !extractingLayout && layoutExtraction?.layout === "eav" && eavMetricMapping.length > 0);
 
   // loadTabs/loadHeaders are deliberately called directly from the click
   // (or from openEditConnection) instead of a useEffect keyed off the
@@ -1049,10 +1203,17 @@ export default function GrowthTrackerSheets() {
 
   const handleExcelFileChange = async (file: File | undefined) => {
     if (!file || !company_id) return;
-    if (file.type !== EXCEL_CONTENT_TYPE && !file.name.toLowerCase().endsWith(".xlsx")) {
-      toast.error("Solo se soportan archivos .xlsx");
+    const isCsv = file.type === CSV_CONTENT_TYPE || file.name.toLowerCase().endsWith(".csv");
+    const isXlsx = file.type === EXCEL_CONTENT_TYPE || file.name.toLowerCase().endsWith(".xlsx");
+    if (!isCsv && !isXlsx) {
+      toast.error("Solo se soportan archivos .xlsx o .csv");
       return;
     }
+    // Contrato 2026-09-05 — mismo flujo de acá en más para .csv y .xlsx
+    // (mismo upload_id, mismo confirm-workbook-upload, mismo
+    // save-sheet-mapping); lo único que cambia es el content_type que se
+    // manda a request-workbook-upload-url y al PUT de subida.
+    const contentType = isCsv ? CSV_CONTENT_TYPE : EXCEL_CONTENT_TYPE;
     setExcelFileName(file.name);
     setExcelStep("uploading");
     try {
@@ -1063,7 +1224,7 @@ export default function GrowthTrackerSheets() {
         body: JSON.stringify({
           company_id,
           file_name: file.name,
-          content_type: EXCEL_CONTENT_TYPE,
+          content_type: contentType,
           ...(excelReuploadConnectionId ? { connection_id: excelReuploadConnectionId } : {}),
         }),
       });
@@ -1078,7 +1239,7 @@ export default function GrowthTrackerSheets() {
         return;
       }
       const { upload_id, upload_url } = await res.json();
-      const putRes = await fetch(upload_url, { method: "PUT", headers: { "Content-Type": EXCEL_CONTENT_TYPE }, body: file });
+      const putRes = await fetch(upload_url, { method: "PUT", headers: { "Content-Type": contentType }, body: file });
       if (!putRes.ok) {
         toast.error("No se pudo subir el archivo. Probá de nuevo.");
         setExcelStep("pick_file");
@@ -1096,7 +1257,7 @@ export default function GrowthTrackerSheets() {
       }
       const confirmData = await confirmRes.json();
       if (confirmData?.status === "error") {
-        toast.error("No pudimos leer este archivo como un .xlsx válido. Probá con otro.");
+        toast.error(`No pudimos leer este archivo como un .${isCsv ? "csv" : "xlsx"} válido. Probá con otro.`);
         setExcelStep("pick_file");
         return;
       }
@@ -1131,6 +1292,7 @@ export default function GrowthTrackerSheets() {
     setSampleRows(sampleRowsData);
     const auto = autoMapHeaders(sheet.headers);
     setPeriodColumn(auto.periodColumn);
+    setPeriodColumnIndex(auto.periodColumnIndex);
     setFieldMappings(auto.fieldMappings);
     setStaleHeaders([]);
     setStep(3);
@@ -1142,7 +1304,14 @@ export default function GrowthTrackerSheets() {
     const layout: SheetLayout = cls?.layout ?? "row_based";
     setSheetLayout(layout);
     if (layout === "grid" || layout === "eav") {
-      extractSheetLayout(layout, { sheetName: sheet.sheet_name, excel: true, uploadId: uploadIdOverride ?? excelUploadId });
+      const extraction = await extractSheetLayout(layout, {
+        sheetName: sheet.sheet_name,
+        excel: true,
+        uploadId: uploadIdOverride ?? excelUploadId,
+      });
+      if (extraction) {
+        await analyzeExtractedLayout(extraction, { sheetName: sheet.sheet_name, excel: true, uploadId: uploadIdOverride ?? excelUploadId });
+      }
       return;
     }
     // analyze-transactional-sheet ahora acepta Excel (contrato 2026-09-01,
@@ -1161,13 +1330,23 @@ export default function GrowthTrackerSheets() {
       setAiEnrichmentFailed(true);
       return;
     }
-    const suggestedCount = analysis.suggested_fields.filter((f) => f.column !== auto.periodColumn).length;
+    const dupes = findDuplicateHeaders(sheet.headers);
+    const suggestedFields = analysis.suggested_fields ?? [];
+    const suggestedCount = suggestedFields.filter((f) => f.column !== auto.periodColumn).length;
     if (suggestedCount > 0) {
       setFieldMappings((prev) => {
         const next = { ...prev };
-        for (const f of analysis.suggested_fields) {
+        for (const f of suggestedFields) {
           if (f.column === auto.periodColumn) continue;
-          next[f.column] = { column: f.column, field_key: f.field_key, value_type: f.value_type, description: "", originalDescription: "" };
+          const isDup = dupes.includes(f.column);
+          next[rowKey(f.column, f.column_index, dupes)] = {
+            column: f.column,
+            field_key: f.field_key,
+            value_type: f.value_type,
+            description: "",
+            originalDescription: "",
+            ...(isDup ? { column_index: f.column_index } : {}),
+          };
         }
         return next;
       });
@@ -1292,11 +1471,11 @@ export default function GrowthTrackerSheets() {
         body: JSON.stringify({ company_id, connection_id: connectionId }),
       });
       if (await handleMembershipError(res)) return;
-      toast.success("Hoja quitada");
+      toast.success("Hoja y sus datos eliminados");
       setConfirmRemoveConnection(null);
       await loadConnections();
     } catch {
-      toast.error("No se pudo quitar la hoja");
+      toast.error("No se pudo eliminar la hoja");
     } finally {
       setRemovingConnectionId(null);
     }
@@ -1324,7 +1503,12 @@ export default function GrowthTrackerSheets() {
 
   const handleSetSyncSettings = async (
     connectionId: string,
-    settings: { sync_mode?: SyncMode | null; sync_frequency?: SyncFrequency | null; freshness_sla?: string | null }
+    settings: {
+      sync_mode?: SyncMode | null;
+      sync_frequency?: SyncFrequency | null;
+      sync_hour_utc?: number | null;
+      freshness_sla?: string | null;
+    }
   ) => {
     if (!company_id) return;
     setSavingSyncSettings(true);
@@ -1442,6 +1626,9 @@ export default function GrowthTrackerSheets() {
       } else {
         const field_mappings: FieldMapping[] = Object.values(fieldMappings).map((m) => ({
           column: m.column,
+          // Contrato 2026-09-05 — solo se manda cuando "column" es un nombre
+          // repetido en la hoja, ver DraftFieldMapping.column_index.
+          ...(m.column_index != null ? { column_index: m.column_index } : {}),
           field_key: m.field_key.trim(),
           value_type: m.value_type,
           // Ausente cuando está vacía — así el backend la genera con IA. Si
@@ -1449,7 +1636,13 @@ export default function GrowthTrackerSheets() {
           // anterior), se manda tal cual: el backend nunca la sobrescribe.
           ...(m.description.trim() ? { description: m.description.trim() } : {}),
         }));
-        requestBody = { ...common, structure: "tabular", period_column: periodColumn!, field_mappings };
+        requestBody = {
+          ...common,
+          structure: "tabular",
+          period_column: periodColumn!,
+          ...(periodColumnIndex != null ? { period_column_index: periodColumnIndex } : {}),
+          field_mappings,
+        };
       }
       const res = await fetch(SAVE_SHEET_MAPPING_URL, {
         method: "POST",
@@ -1461,6 +1654,20 @@ export default function GrowthTrackerSheets() {
         const err = await parseSheetsError(res);
         if (err.sourceDisabled || err.reconnectRequired) {
           await loadAccounts();
+          return;
+        }
+        if (err.duplicateColumnNameWithoutIndex?.length) {
+          toast.error(
+            `Elegí cuál "${err.duplicateColumnNameWithoutIndex.join('", "')}" es cuál: esta hoja tiene más de una columna con ese nombre y no quedó claro cuál usar en "Columna de período" o en la lista de columnas. Revisalas de nuevo abajo (cada ocurrencia aparece por separado) y volvé a guardar.`,
+            { duration: 9000 }
+          );
+          return;
+        }
+        if (err.shiftedColumns?.length) {
+          toast.error(
+            "La hoja cambió de estructura desde que confirmaste este mapeo (se insertó o movió una columna). Revisá el mapeo de nuevo antes de guardar.",
+            { duration: 8000 }
+          );
           return;
         }
         if (err.layoutStale) {
@@ -1636,6 +1843,13 @@ export default function GrowthTrackerSheets() {
           setMissingHeadersByConnection((prev) => ({ ...prev, [connectionId]: err.missingHeaders! }));
           return;
         }
+        if (err.shiftedColumns?.length) {
+          toast.error(
+            "La hoja cambió de estructura desde que se confirmó este mapeo (se insertó o movió una columna). Editá la conexión y confirmá el mapeo de nuevo antes de sincronizar.",
+            { duration: 8000 }
+          );
+          return;
+        }
         toast.error(err.message ?? "No se pudo sincronizar");
         return;
       }
@@ -1721,8 +1935,9 @@ export default function GrowthTrackerSheets() {
       <div className="max-w-3xl mx-auto px-8 py-12">
         <BackLink to="/metrics" label="Volver a Growth Tracker" className="mb-6" />
         <PageHeader
+          size="compact"
           title="Fuentes de datos"
-          subtitle="Conectá Google Sheets o subí un Excel para sincronizar tus métricas automáticamente, en vez de cargarlas a mano."
+          subtitle="Conectá Google Sheets o subí un Excel/CSV para sincronizar tus métricas automáticamente, en vez de cargarlas a mano."
         />
 
         {/* Estos 4 botones no van en el `action` de PageHeader a propósito: ese
@@ -1750,7 +1965,7 @@ export default function GrowthTrackerSheets() {
             )}
             <Button variant="outline" size="sm" onClick={() => openExcelUpload()} disabled={sourcePaused}>
               <Upload size={13} className="mr-1.5" />
-              Subir Excel
+              Subir archivo
             </Button>
             {accounts.length > 0 && (
               <Button size="sm" onClick={handleConnect} disabled={connecting || sourcePaused}>
@@ -1781,8 +1996,8 @@ export default function GrowthTrackerSheets() {
           <EmptyState
             icon={FileSpreadsheet}
             title="Google Sheets está pausado para tu startup"
-            description="Un administrador de CloudValley tiene que habilitar esta fuente antes de que puedas conectar una cuenta. Podés seguir subiendo archivos Excel mientras tanto."
-            action={{ label: "Subir Excel", onClick: () => openExcelUpload() }}
+            description="Un administrador de CloudValley tiene que habilitar esta fuente antes de que puedas conectar una cuenta. Podés seguir subiendo archivos Excel o CSV mientras tanto."
+            action={{ label: "Subir archivo", onClick: () => openExcelUpload() }}
           />
         )}
 
@@ -1790,7 +2005,7 @@ export default function GrowthTrackerSheets() {
           <EmptyState
             icon={FileSpreadsheet}
             title="Todavía no conectaste ninguna fuente de datos"
-            description="Conectá una cuenta de Google o subí un Excel, elegís una hoja, mapeás sus columnas a tus métricas, y a partir de ahí queda disponible en Métricas. Podés conectar más de una fuente si tus datos están repartidos."
+            description="Conectá una cuenta de Google o subí un Excel/CSV, elegís una hoja, mapeás sus columnas a tus métricas, y a partir de ahí queda disponible en Métricas. Podés conectar más de una fuente si tus datos están repartidos."
             action={{ label: connecting ? "Conectando…" : "Conectar cuenta de Google", onClick: handleConnect }}
           />
         )}
@@ -1869,7 +2084,11 @@ export default function GrowthTrackerSheets() {
                                 </p>
                                 <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                   <Badge variant="outline" className="text-[10px]">
-                                    {conn.source === "excel" ? "Excel" : "Google Sheets"}
+                                    {conn.source === "excel"
+                                      ? conn.spreadsheet_name.toLowerCase().endsWith(".csv")
+                                        ? "CSV"
+                                        : "Excel"
+                                      : "Google Sheets"}
                                   </Badge>
                                   {conn.data_role && (
                                     <Badge variant="secondary" className="text-[10px]">
@@ -1879,6 +2098,8 @@ export default function GrowthTrackerSheets() {
                                   <Badge variant="outline" className="text-[10px] text-muted-foreground">
                                     {SYNC_MODE_LABELS[conn.sync_mode]}
                                     {conn.sync_frequency && ` · ${SYNC_FREQUENCY_LABELS[conn.sync_frequency]}`}
+                                    {conn.sync_frequency === "daily_fixed_hour" && conn.sync_hour_utc != null &&
+                                      ` (${String(utcHourToLocalHour(conn.sync_hour_utc)).padStart(2, "0")}:00)`}
                                   </Badge>
                                 </div>
                               </div>
@@ -1916,39 +2137,45 @@ export default function GrowthTrackerSheets() {
                                   Editar
                                 </Button>
                                 <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2 text-xs"
-                                  onClick={() => setEntityResolutionConnection(conn)}
-                                  title="Agrupa nombres distintos que son la misma entidad (ej: 'Acme Inc' y 'Acme Inc.') para que no se cuenten dos veces."
-                                >
-                                  Resolver entidades
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2 text-xs"
-                                  onClick={() => setDuplicatesConnection(conn)}
-                                >
-                                  Ver duplicados
-                                </Button>
-                                <Button
-                                  variant="ghost"
+                                  variant={settingsConnectionId === conn.connection_id ? "secondary" : "ghost"}
                                   size="sm"
                                   className="h-7 px-2 text-xs"
                                   onClick={() => setSettingsConnectionId((prev) => (prev === conn.connection_id ? null : conn.connection_id))}
                                 >
+                                  <Settings2 size={11} className="mr-1" />
                                   {settingsConnectionId === conn.connection_id ? "Cerrar" : "Configurar"}
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() => setConfirmRemoveConnection(conn)}
-                                  aria-label={`Quitar ${conn.spreadsheet_name} · ${conn.sheet_name}`}
-                                >
-                                  <Trash2 size={12} strokeWidth={1.5} />
-                                </Button>
+                                {/* El resto (entidades/duplicados/eliminar) son
+                                    acciones menos frecuentes — antes estaban
+                                    todas sueltas en la fila y competían por
+                                    atención con Sincronizar/Editar/Configurar,
+                                    que son las que se usan seguido. */}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Más acciones">
+                                      <MoreVertical size={13} strokeWidth={1.5} />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={() => setEntityResolutionConnection(conn)}
+                                      title="Agrupa nombres distintos que son la misma entidad (ej: 'Acme Inc' y 'Acme Inc.') para que no se cuenten dos veces."
+                                    >
+                                      Resolver entidades
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setDuplicatesConnection(conn)}>
+                                      Ver duplicados
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() => setConfirmRemoveConnection(conn)}
+                                      className="text-destructive focus:text-destructive"
+                                    >
+                                      <Trash2 size={12} strokeWidth={1.5} className="mr-2" />
+                                      Eliminar
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               </div>
                             </div>
 
@@ -2050,7 +2277,7 @@ export default function GrowthTrackerSheets() {
 
         {!loadingConnections && !showWizard && excelConnections.length > 0 && (
           <div className="space-y-4 mt-4">
-            <SectionCard title="Archivos Excel subidos">
+            <SectionCard title="Archivos subidos">
               <div className="space-y-2">
                 {excelConnections.map((conn) => {
                   const missing = missingHeadersByConnection[conn.connection_id];
@@ -2069,7 +2296,7 @@ export default function GrowthTrackerSheets() {
                           </p>
                           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                             <Badge variant="outline" className="text-[10px]">
-                              Excel
+                              {conn.spreadsheet_name.toLowerCase().endsWith(".csv") ? "CSV" : "Excel"}
                             </Badge>
                             {conn.data_role && (
                               <Badge variant="secondary" className="text-[10px]">
@@ -2084,44 +2311,52 @@ export default function GrowthTrackerSheets() {
                             Subir nueva versión
                           </Button>
                           <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => handleViewOriginalFile(conn.connection_id)}
-                            disabled={downloadingConnectionId === conn.connection_id}
-                            title="Abre el archivo Excel tal como se subió, para confirmar qué se cargó."
-                          >
-                            {downloadingConnectionId === conn.connection_id ? "Abriendo…" : "Ver archivo original"}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => setEntityResolutionConnection(conn)}
-                            title="Agrupa nombres distintos que son la misma entidad (ej: 'Acme Inc' y 'Acme Inc.') para que no se cuenten dos veces."
-                          >
-                            Resolver entidades
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setDuplicatesConnection(conn)}>
-                            Ver duplicados
-                          </Button>
-                          <Button
-                            variant="ghost"
+                            variant={settingsConnectionId === conn.connection_id ? "secondary" : "ghost"}
                             size="sm"
                             className="h-7 px-2 text-xs"
                             onClick={() => setSettingsConnectionId((prev) => (prev === conn.connection_id ? null : conn.connection_id))}
                           >
+                            <Settings2 size={11} className="mr-1" />
                             {settingsConnectionId === conn.connection_id ? "Cerrar" : "Configurar"}
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => setConfirmRemoveConnection(conn)}
-                            aria-label={`Quitar ${conn.spreadsheet_name} · ${conn.sheet_name}`}
-                          >
-                            <Trash2 size={12} strokeWidth={1.5} />
-                          </Button>
+                          {/* Mismo criterio que en el bloque de cuentas de
+                              Google Sheets de más arriba: acciones menos
+                              frecuentes agrupadas en un menú, no sueltas en
+                              la fila (antes 6 botones se enroscaban a 2
+                              líneas acá). */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Más acciones">
+                                <MoreVertical size={13} strokeWidth={1.5} />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => handleViewOriginalFile(conn.connection_id)}
+                                disabled={downloadingConnectionId === conn.connection_id}
+                                title="Abre el archivo tal como se subió, para confirmar qué se cargó."
+                              >
+                                {downloadingConnectionId === conn.connection_id ? "Abriendo…" : "Ver archivo original"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setEntityResolutionConnection(conn)}
+                                title="Agrupa nombres distintos que son la misma entidad (ej: 'Acme Inc' y 'Acme Inc.') para que no se cuenten dos veces."
+                              >
+                                Resolver entidades
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setDuplicatesConnection(conn)}>
+                                Ver duplicados
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => setConfirmRemoveConnection(conn)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 size={12} strokeWidth={1.5} className="mr-2" />
+                                Eliminar
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
                       {settingsConnectionId === conn.connection_id && (
@@ -2153,7 +2388,7 @@ export default function GrowthTrackerSheets() {
         {showWizard && (
           <div className="space-y-6">
             <p className="text-xs text-muted-foreground truncate">
-              {excelMode ? excelFileName || "Subir Excel" : wizardAccount?.google_account_email}
+              {excelMode ? excelFileName || "Subir archivo" : wizardAccount?.google_account_email}
             </p>
             <StepRail
               labels={excelMode ? EXCEL_STEP_LABELS : SHEETS_STEP_LABELS}
@@ -2161,16 +2396,16 @@ export default function GrowthTrackerSheets() {
             />
 
             {excelMode && step === 1 && excelStep === "pick_file" && (
-              <SectionCard title="Subí tu archivo Excel">
+              <SectionCard title="Subí tu archivo">
                 <p className="text-xs text-muted-foreground mb-3">
-                  Solo archivos .xlsx. Una vez subido, vas a poder mapear sus columnas igual que con Google Sheets.
+                  Archivos .xlsx o .csv. Una vez subido, vas a poder mapear sus columnas igual que con Google Sheets.
                 </p>
                 <input
                   ref={excelFileInputRef}
                   type="file"
-                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.csv,text/csv"
                   onChange={(e) => handleExcelFileChange(e.target.files?.[0])}
-                  aria-label="Elegir archivo Excel"
+                  aria-label="Elegir archivo"
                   className="text-sm"
                 />
                 <div className="mt-4">
@@ -2405,8 +2640,8 @@ export default function GrowthTrackerSheets() {
                       <table className="text-[11px] font-mono border-collapse min-w-full">
                         <thead>
                           <tr>
-                            {headers.map((h) => (
-                              <th key={h} className="px-1.5 py-1 text-left text-muted-foreground border-b border-border whitespace-nowrap">
+                            {headers.map((h, i) => (
+                              <th key={i} className="px-1.5 py-1 text-left text-muted-foreground border-b border-border whitespace-nowrap">
                                 {h}
                               </th>
                             ))}
@@ -2475,14 +2710,27 @@ export default function GrowthTrackerSheets() {
                     </p>
                   </div>
                 )}
-                {duplicateHeaders.length > 0 && (
+                {duplicateHeaders.length > 0 && effectiveLayout === "row_based" && (
+                  <div className="border border-warning/40 bg-warning/10 rounded-md p-3 mb-4 text-xs" aria-live="polite">
+                    <p className="font-medium text-warning-dark">
+                      Esta hoja tiene columnas con el mismo nombre repetido: {duplicateHeaders.join(", ")}
+                    </p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Elegí cada una por posición: en "Columna de período" y en "Columnas a traer" cada ocurrencia
+                      aparece por separado (ej. "Monto (columna 3)"), así podés mapearlas de forma independiente sin
+                      editar el archivo.
+                    </p>
+                  </div>
+                )}
+                {duplicateHeaders.length > 0 && effectiveLayout !== "row_based" && (
                   <div className="border border-destructive/40 bg-destructive/5 rounded-md p-3 mb-4 text-xs" aria-live="polite">
                     <p className="font-medium text-destructive">
                       Esta hoja tiene columnas con el mismo nombre repetido: {duplicateHeaders.join(", ")}
                     </p>
                     <p className="text-muted-foreground mt-0.5">
-                      No podemos distinguir cuál es cuál — si guardás así, se pierden los datos de una de las dos.
-                      Renombrá las columnas repetidas en el archivo (ej. "Monto" y "Monto 2") y subilo de nuevo.
+                      No podemos distinguir cuál es cuál en este modo de mapeo — si guardás así, se pierden los datos
+                      de una de las dos. Renombrá las columnas repetidas en el archivo (ej. "Monto" y "Monto 2") y
+                      subilo de nuevo.
                     </p>
                   </div>
                 )}
@@ -2548,13 +2796,18 @@ export default function GrowthTrackerSheets() {
                       <div className="max-w-xs">
                         <HeaderCombobox
                           headers={headers}
+                          duplicateHeaders={duplicateHeaders}
                           value={periodColumn}
-                          onChange={(v) => {
-                            setPeriodColumn(v);
+                          valueIndex={periodColumnIndex}
+                          onChange={(header, index) => {
+                            const isDup = duplicateHeaders.includes(header);
+                            setPeriodColumn(header);
+                            setPeriodColumnIndex(isDup ? index : null);
                             setFieldMappings((prev) => {
-                              if (!prev[v]) return prev;
+                              const key = rowKey(header, index, duplicateHeaders);
+                              if (!prev[key]) return prev;
                               const next = { ...prev };
-                              delete next[v];
+                              delete next[key];
                               return next;
                             });
                           }}
@@ -2576,34 +2829,40 @@ export default function GrowthTrackerSheets() {
                       <label className="text-xs font-medium block mb-1.5">Columnas a traer</label>
                       <div className="space-y-1.5">
                         {headers
-                          .filter((h) => h !== periodColumn)
-                          .map((header) => (
-                            <FieldMappingRow
-                              key={header}
-                              header={header}
-                              mapping={fieldMappings[header] ?? null}
-                              onChange={(next) =>
-                                setFieldMappings((prev) => ({ ...prev, [header]: next }))
-                              }
-                              onRemove={() =>
-                                setFieldMappings((prev) => {
-                                  const next = { ...prev };
-                                  delete next[header];
-                                  return next;
-                                })
-                              }
-                            />
-                          ))}
+                          .map((header, index) => ({ header, index }))
+                          .filter(
+                            ({ header, index }) =>
+                              !(header === periodColumn && (periodColumnIndex == null || index === periodColumnIndex))
+                          )
+                          .map(({ header, index }) => {
+                            const key = rowKey(header, index, duplicateHeaders);
+                            return (
+                              <FieldMappingRow
+                                key={key}
+                                header={header}
+                                columnIndex={duplicateHeaders.includes(header) ? index : null}
+                                mapping={fieldMappings[key] ?? null}
+                                onChange={(next) => setFieldMappings((prev) => ({ ...prev, [key]: next }))}
+                                onRemove={() =>
+                                  setFieldMappings((prev) => {
+                                    const nextState = { ...prev };
+                                    delete nextState[key];
+                                    return nextState;
+                                  })
+                                }
+                              />
+                            );
+                          })}
                       </div>
                     </div>
                   </div>
                 )}
                 {!loadingHeaders && headers.length > 0 && effectiveLayout === "row_based" && (
                   <p className="text-xs text-muted-foreground pt-3">
-                    {duplicateHeaders.length > 0
-                      ? "Renombrá las columnas repetidas en el archivo antes de guardar."
-                      : !periodColumn
-                        ? "Falta elegir la columna de período (mes)."
+                    {!periodColumn
+                      ? "Falta elegir la columna de período (mes)."
+                      : periodColumnAmbiguous
+                        ? "Esta hoja tiene más de una columna llamada así — elegí cuál de las dos es el período."
                         : usedColumnsCount === 0
                           ? "Elegí al menos una columna para traer."
                           : !allMappingsValid
@@ -2652,6 +2911,25 @@ export default function GrowthTrackerSheets() {
                         >
                           <Sparkles size={14} className="mr-1.5" aria-hidden="true" />
                           {analyzingSheet ? "Analizando…" : "Volver a analizar con IA"}
+                        </Button>
+                      ) : (effectiveLayout === "grid" || effectiveLayout === "eav") && headers.length > 0 ? (
+                        // Mismo botón que la rama tabular de arriba, para
+                        // grid/eav — handleReanalyzeLayout/analyzeExtractedLayout
+                        // ya existían para esto pero no estaban conectados a
+                        // ningún control: código muerto real encontrado en vivo
+                        // 2026-09-08. Sin esto, si el founder agrega una columna
+                        // nueva a una hoja grid/eav ya conectada, no había forma
+                        // de pedirle a la IA que vuelva a mirar la estructura ni
+                        // que proponga métricas para eso.
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleReanalyzeLayout}
+                          disabled={extractingLayout}
+                          title="Vuelve a mirar la estructura de la hoja — nunca pisa un mapeo que ya guardaste, solo propone métricas nuevas si aparecieron conceptos nuevos."
+                        >
+                          <Sparkles size={14} className="mr-1.5" aria-hidden="true" />
+                          {extractingLayout ? "Analizando…" : "Volver a analizar con IA"}
                         </Button>
                       ) : undefined
                     ) : excelMode ? undefined : (
@@ -2714,15 +2992,15 @@ export default function GrowthTrackerSheets() {
       <ConfirmationDialog
         open={!!confirmRemoveConnection}
         onOpenChange={(o) => !o && setConfirmRemoveConnection(null)}
-        title="Quitar hoja conectada"
+        title="Eliminar hoja conectada"
         description={
           confirmRemoveConnection
             ? confirmRemoveConnection.field_mappings === null
-              ? `Se deja de sincronizar "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}". Sus campos crudos dejan de estar disponibles: cualquier fórmula que los use (FIELDSUM, etc.) va a dejar de calcular hasta que mapees la hoja de nuevo. No afecta la cuenta de Google ni tus otras conexiones.`
-              : `Se deja de sincronizar "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}". Sus ${confirmRemoveConnection.field_mappings.length} campo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} crudo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} deja${confirmRemoveConnection.field_mappings.length === 1 ? "" : "n"} de estar disponibles: cualquier fórmula que los use (FIELDSUM, etc.) va a dejar de calcular hasta que mapees el campo de nuevo. No afecta la cuenta de Google ni tus otras conexiones.`
+              ? `Se elimina "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}" y TODOS los datos que ya se sincronizaron desde ahí — no solo se desconecta. Cualquier fórmula que use sus campos (FIELDSUM, etc.) deja de calcular. Esta acción no se puede deshacer: si volvés a conectar la misma hoja después, es una carga nueva desde cero. No afecta la cuenta de Google ni tus otras conexiones.`
+              : `Se elimina "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}" y TODOS los datos que ya se sincronizaron desde sus ${confirmRemoveConnection.field_mappings.length} campo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} crudo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} — no solo se desconecta. Cualquier fórmula que los use (FIELDSUM, etc.) deja de calcular. Esta acción no se puede deshacer: si volvés a conectar la misma hoja después, es una carga nueva desde cero. No afecta la cuenta de Google ni tus otras conexiones.`
             : ""
         }
-        confirmLabel="Quitar hoja"
+        confirmLabel="Eliminar hoja"
         variant="destructive"
         busy={!!removingConnectionId}
         onConfirm={handleRemoveConnection}
@@ -2786,7 +3064,7 @@ function StepRail({ labels, current }: { labels: string[]; current: number }) {
                 className={cn(
                   "w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-medium shrink-0",
                   state === "active" && "bg-primary border-primary text-primary-foreground",
-                  state === "done" && "bg-foreground border-foreground text-background",
+                  state === "done" && "bg-success border-success text-success-foreground",
                   state === "pending" && "border-border text-tertiary"
                 )}
               >
@@ -2803,7 +3081,7 @@ function StepRail({ labels, current }: { labels: string[]; current: number }) {
               </span>
             </div>
             {i < labels.length - 1 && (
-              <div className={cn("h-px mx-2.5 flex-1 min-w-4", n < current ? "bg-foreground" : "bg-border")} />
+              <div className={cn("h-px mx-2.5 flex-1 min-w-4", n < current ? "bg-success" : "bg-border")} />
             )}
           </div>
         );
@@ -2829,9 +3107,13 @@ function ConnectionSettingsPanel({
   savingDataRole: boolean;
   savingSyncSettings: boolean;
   onSetDataRole: (role: DataRole | null) => void;
-  onSetSyncSettings: (settings: { sync_mode?: SyncMode | null; sync_frequency?: SyncFrequency | null }) => void;
+  onSetSyncSettings: (settings: { sync_mode?: SyncMode | null; sync_frequency?: SyncFrequency | null; sync_hour_utc?: number | null }) => void;
 }) {
   const isExcel = connection.source === "excel";
+  const isDailyFixedHour = connection.sync_frequency === "daily_fixed_hour";
+  // sync_hour_utc siempre viaja en UTC — se muestra/edita en la hora local
+  // real del navegador, nunca una zona horaria asumida.
+  const localHour = connection.sync_hour_utc != null ? utcHourToLocalHour(connection.sync_hour_utc) : 9;
   const syncModeOptions: SyncMode[] = isExcel ? ["manual", "snapshot"] : ["live", "scheduled", "event_based", "manual", "snapshot"];
   return (
     <div className="border-t border-border mt-3 pt-3 grid sm:grid-cols-2 gap-4">
@@ -2880,7 +3162,15 @@ function ConnectionSettingsPanel({
           </Select>
           <Select
             value={connection.sync_frequency ?? "manual"}
-            onValueChange={(v) => onSetSyncSettings({ sync_frequency: v as SyncFrequency })}
+            onValueChange={(v) => {
+              const freq = v as SyncFrequency;
+              // Al recién elegir "daily_fixed_hour" se manda ya con una hora
+              // por default (9am local convertida a UTC) — el backend
+              // rechaza esta frecuencia con 400 si sync_hour_utc falta.
+              onSetSyncSettings(
+                freq === "daily_fixed_hour" ? { sync_frequency: freq, sync_hour_utc: localHourToUtcHour(localHour) } : { sync_frequency: freq }
+              );
+            }}
             disabled={savingSyncSettings || isExcel}
           >
             <SelectTrigger className="h-8 text-xs flex-1" aria-label="Frecuencia de sincronización">
@@ -2894,6 +3184,24 @@ function ConnectionSettingsPanel({
               ))}
             </SelectContent>
           </Select>
+          {isDailyFixedHour && (
+            <Select
+              value={String(localHour)}
+              onValueChange={(v) => onSetSyncSettings({ sync_hour_utc: localHourToUtcHour(Number(v)) })}
+              disabled={savingSyncSettings || isExcel}
+            >
+              <SelectTrigger className="h-8 text-xs w-[84px] flex-none" aria-label="Hora local de sincronización">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 24 }, (_, h) => (
+                  <SelectItem key={h} value={String(h)}>
+                    {String(h).padStart(2, "0")}:00
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <p className="text-[11px] text-muted-foreground mt-1.5">
           {connection.next_sync_at
@@ -2905,29 +3213,39 @@ function ConnectionSettingsPanel({
   );
 }
 
-// Searchable combobox over the sheet's headers — same Popover+Command pattern
-// as FormulaField's variable picker. Reused for period_column, value_column,
-// distinct_column and every filter's column, so there's one place that knows
-// how to pick "a column from this sheet."
+// Searchable combobox sobre los encabezados de la hoja — mismo patrón
+// Popover+Command que el picker de variables de FormulaField. Hoy solo se
+// usa para elegir la columna de período.
+// duplicateHeaders (contrato 2026-09-05, column_index): con un nombre
+// repetido, cada ocurrencia se lista por separado con su posición ("Monto
+// (columna 3)") y onChange manda también el índice — sin esto, dos columnas
+// de igual nombre eran indistinguibles acá (cmdk las trataba como un solo
+// ítem con `value` duplicado).
 function HeaderCombobox({
   headers,
+  duplicateHeaders,
   value,
+  valueIndex,
   onChange,
   placeholder,
   ariaLabel,
 }: {
   headers: string[];
+  duplicateHeaders: string[];
   value: string | null;
-  onChange: (v: string) => void;
+  valueIndex: number | null;
+  onChange: (header: string, index: number) => void;
   placeholder: string;
   ariaLabel: string;
 }) {
   const [open, setOpen] = useState(false);
+  const displayLabel = (h: string, i: number) => (duplicateHeaders.includes(h) ? `${h} (columna ${i + 1})` : h);
+  const triggerValue = value == null ? null : duplicateHeaders.includes(value) && valueIndex != null ? displayLabel(value, valueIndex) : value;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="h-9 w-full justify-between font-normal" aria-label={ariaLabel}>
-          <span className="truncate font-mono text-xs">{value ?? placeholder}</span>
+          <span className="truncate font-mono text-xs">{triggerValue ?? placeholder}</span>
           <ChevronsUpDown size={12} className="opacity-50 shrink-0" />
         </Button>
       </PopoverTrigger>
@@ -2937,18 +3255,21 @@ function HeaderCombobox({
           <CommandList>
             <CommandEmpty>Sin resultados.</CommandEmpty>
             <CommandGroup>
-              {headers.map((h) => (
-                <CommandItem
-                  key={h}
-                  value={h}
-                  onSelect={() => {
-                    onChange(h);
-                    setOpen(false);
-                  }}
-                >
-                  {h}
-                </CommandItem>
-              ))}
+              {headers.map((h, i) => {
+                const label = displayLabel(h, i);
+                return (
+                  <CommandItem
+                    key={i}
+                    value={label}
+                    onSelect={() => {
+                      onChange(h, i);
+                      setOpen(false);
+                    }}
+                  >
+                    {label}
+                  </CommandItem>
+                );
+              })}
             </CommandGroup>
           </CommandList>
         </Command>
@@ -2963,16 +3284,22 @@ function HeaderCombobox({
 // arriba de DraftFieldMapping.
 function FieldMappingRow({
   header,
+  columnIndex,
   mapping,
   onChange,
   onRemove,
 }: {
   header: string;
+  // Distinto de null solo cuando "header" es un nombre repetido en la hoja
+  // — se muestra como "(columna N)" para distinguir esta fila de la otra
+  // ocurrencia del mismo nombre (contrato 2026-09-05, column_index).
+  columnIndex: number | null;
   mapping: DraftFieldMapping | null;
   onChange: (next: DraftFieldMapping) => void;
   onRemove: () => void;
 }) {
   const used = !!mapping;
+  const displayLabel = columnIndex != null ? `${header} (columna ${columnIndex + 1})` : header;
   // "Editado": el usuario cambió el texto respecto a lo sembrado (generado
   // por IA en un guardado anterior, o ya editado antes — el backend no
   // distingue entre esos dos casos, así que acá tampoco). "Generada": tiene
@@ -2996,6 +3323,7 @@ function FieldMappingRow({
               if (c === true)
                 onChange({
                   column: header,
+                  ...(columnIndex != null ? { column_index: columnIndex } : {}),
                   field_key: slugifyFieldKey(header),
                   value_type: "number",
                   description: "",
@@ -3003,9 +3331,9 @@ function FieldMappingRow({
                 });
               else onRemove();
             }}
-            aria-label={`Usar la columna ${header}`}
+            aria-label={`Usar la columna ${displayLabel}`}
           />
-          <span className="text-sm font-mono truncate">{header}</span>
+          <span className="text-sm font-mono truncate">{displayLabel}</span>
         </label>
         {used && mapping && (
           <>
@@ -3013,14 +3341,14 @@ function FieldMappingRow({
               value={mapping.field_key}
               onChange={(e) => onChange({ ...mapping, field_key: e.target.value })}
               placeholder="nombre_del_campo"
-              aria-label={`Nombre del campo para la columna ${header}`}
+              aria-label={`Nombre del campo para la columna ${displayLabel}`}
               className="h-8 text-xs font-mono w-40 shrink-0"
             />
             <Select
               value={mapping.value_type}
               onValueChange={(v: "number" | "text") => onChange({ ...mapping, value_type: v })}
             >
-              <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label={`Tipo de dato para ${header}`}>
+              <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label={`Tipo de dato para ${displayLabel}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -3037,7 +3365,7 @@ function FieldMappingRow({
             value={mapping.description}
             onChange={(e) => onChange({ ...mapping, description: e.target.value })}
             placeholder="Qué significa este campo: se genera automáticamente al guardar si lo dejás vacío"
-            aria-label={`Descripción del campo para la columna ${header}`}
+            aria-label={`Descripción del campo para la columna ${displayLabel}`}
             className="h-7 text-xs flex-1 min-w-0"
           />
           {descriptionState === "edited" && (

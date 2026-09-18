@@ -31,6 +31,11 @@ type AuthContextType = {
   portfolio_company_names: string[];
   isAdmin: boolean;
   isOrgViewer: boolean;
+  // avatar_url es una signed URL con vencimiento (~60min) — nunca cachearla
+  // más allá de esta sesión en memoria; refreshSession() la vuelve a pedir.
+  avatar_url: string | null;
+  role_title: string | null;
+  linkedin_url: string | null;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<boolean>;
 };
@@ -51,6 +56,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isOwner, setIsOwner] = useState(false);
   const [portfolioIds, setPortfolioIds] = useState<string[]>([]);
   const [portfolioNames, setPortfolioNames] = useState<string[]>([]);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [roleTitle, setRoleTitle] = useState<string | null>(null);
+  const [linkedinUrl, setLinkedinUrl] = useState<string | null>(null);
 
   const applySessionData = (data: any) => {
     setEmail(data.email ?? null);
@@ -66,6 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsOwner(!!data.is_owner);
     setPortfolioIds(Array.isArray(data.portfolio_company_ids) ? data.portfolio_company_ids : []);
     setPortfolioNames(Array.isArray(data.portfolio_company_names) ? data.portfolio_company_names : []);
+    setAvatarUrl(data.avatar_url ?? null);
+    setRoleTitle(data.role_title ?? null);
+    setLinkedinUrl(data.linkedin_url ?? null);
     setUser({ id: data.company_id ?? data.email, email: data.email });
     // get-session ya devuelve full_name. Este fallback a get-my-organization queda
     // como red de contención para sesiones emitidas antes de ese cambio de backend
@@ -116,6 +127,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsOwner(false);
           setPortfolioIds([]);
           setPortfolioNames([]);
+          setAvatarUrl(null);
+          setRoleTitle(null);
+          setLinkedinUrl(null);
         }
       } catch {
         if (!cancelled) setUser(null);
@@ -146,6 +160,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsOwner(false);
     setPortfolioIds([]);
     setPortfolioNames([]);
+    setAvatarUrl(null);
+    setRoleTitle(null);
+    setLinkedinUrl(null);
     window.location.assign("/login");
   };
 
@@ -181,6 +198,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         is_owner: isOwner,
         portfolio_company_ids: portfolioIds,
         portfolio_company_names: portfolioNames,
+        avatar_url: avatarUrl,
+        role_title: roleTitle,
+        linkedin_url: linkedinUrl,
         isAdmin: role === "admin",
         isOrgViewer: role === "investor",
         signOut,

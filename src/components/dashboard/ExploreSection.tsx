@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { BarChart3, Map, FolderOpen, FileText, ArrowRight, Compass } from "lucide-react";
+import { BarChart3, Map, FolderOpen, FileText, ArrowRight } from "lucide-react";
 import { SectionCard } from "@/components/SectionCard";
+import { SectionNum } from "@/components/dashboard/SectionNum";
 
 type ExploreCard = {
   to: string;
@@ -71,8 +72,8 @@ export function ExploreSection({
     <SectionCard
       padding="sm"
       title={
-        <span className="flex items-center gap-1.5">
-          <Compass size={14} strokeWidth={1.5} className="text-muted-foreground" aria-hidden="true" />
+        <span className="flex items-center gap-2">
+          <SectionNum n={7} />
           Explorar
         </span>
       }

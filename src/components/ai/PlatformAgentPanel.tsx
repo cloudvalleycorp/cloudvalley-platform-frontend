@@ -1,22 +1,33 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, Send, RotateCcw } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { toast } from "sonner";
+import { Sparkles, Send, RotateCcw, History, Pencil, Trash2, MessageSquare, X } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { InfoRow } from "@/components/InfoRow";
 import { QuerySummary } from "@/components/metrics/query-builder/QuerySummary";
 import { usePlatformAgent } from "@/hooks/usePlatformAgent";
 import { slugify } from "@/hooks/useMetricPropertyForm";
+import { handleMembershipError } from "@/lib/membership";
 import { isQuerySpec, type QuerySpec } from "@/lib/querySpec";
-import type {
-  PlatformAgentSurface,
-  PlatformAgentUiContext,
-  PlatformAgentMetricFields,
-  PlatformAgentResponse,
-  ObservabilityTraceEntry,
-  FormulaSyntaxEntry,
+import { cn } from "@/lib/utils";
+import {
+  LIST_AGENT_CONVERSATIONS_URL,
+  GET_AGENT_CONVERSATION_URL,
+  RENAME_AGENT_CONVERSATION_URL,
+  DELETE_AGENT_CONVERSATION_URL,
+  type PlatformAgentSurface,
+  type PlatformAgentUiContext,
+  type PlatformAgentMetricFields,
+  type PlatformAgentResponse,
+  type ObservabilityTraceEntry,
+  type FormulaSyntaxEntry,
+  type AgentConversationSummary,
+  type ListAgentConversationsResponse,
+  type GetAgentConversationResponse,
 } from "@/lib/aiInsights";
 
 type Exchange = {
@@ -42,6 +53,27 @@ const METRIC_FIELD_LABELS: Record<string, string> = {
   value_type: "Tipo de valor",
 };
 const METRIC_TYPE_LABELS: Record<string, string> = { calculated: "Calculada", input: "Dato crudo existente" };
+
+// get-agent-conversation devuelve mensajes planos {role, content} — no el
+// PlatformAgentResponse completo (con tool_plan/observability_trace/etc.)
+// que solo existe en el momento real de la llamada a /platform-agent. Un
+// mensaje histórico se envuelve en esta forma vacía para reusar el mismo
+// render de exchanges sin duplicar JSX: los arrays vacíos hacen que todas
+// las secciones de acciones (confirmar/crear/etc.) no rendericen nada,
+// mostrando solo la burbuja de texto — correcto, esas acciones eran de un
+// solo uso en su momento, no se pueden "revivir" desde el historial.
+function stubResponseFromHistory(answer: string): PlatformAgentResponse {
+  return {
+    intent_recognized: "",
+    tool_plan: [],
+    data_used: [],
+    answer,
+    pending_clarifications: [],
+    action_requests: [],
+    observability_trace: [],
+    registry: { agent: "", domain: "", tool_count: 0, tools: [] },
+  };
+}
 
 function asString(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v : undefined;
@@ -172,6 +204,8 @@ function surfaceDescription(surface: PlatformAgentSurface): string {
       return "Preguntame sobre tu roadmap de fundraising y qué tenés pendiente.";
     case "founder_data_room":
       return "Preguntame sobre los documentos de tu Data Room.";
+    case "report_editor":
+      return "Preguntame sobre este reporte o pedime que agregue una métrica.";
     default:
       return "Contame qué necesitás: puedo responder dudas, proponer una métrica o armarte un reporte.";
   }
@@ -205,6 +239,8 @@ function surfaceExample(surface: PlatformAgentSurface, companyIds?: string[]) {
       return <>Ej: "¿qué me falta para estar listo para levantar?" o "¿qué tareas críticas tengo pendientes?".</>;
     case "founder_data_room":
       return <>Ej: "¿qué documentos me faltan subir?" o "¿cuál es el estado de mi cap table?".</>;
+    case "report_editor":
+      return <>Ej: "agregá el ARR a este reporte" o "¿qué métricas me faltan para un board update completo?".</>;
     default:
       return (
         <>
@@ -257,6 +293,42 @@ export function PlatformAgentPanel({
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
 
+  // Historial de chats múltiples (contrato 2026-09-11) — conversationId
+  // null significa "todavía no se le mandó ninguna pregunta a este chat":
+  // la próxima pregunta manda new_conversation:true y arranca uno nuevo del
+  // lado del backend. Una vez que llega un conversation_id en la respuesta,
+  // las preguntas siguientes lo reusan para seguir la misma conversación.
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [conversations, setConversations] = useState<AgentConversationSummary[]>([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [loadingConversation, setLoadingConversation] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<AgentConversationSummary | null>(null);
+  const [deletingConversation, setDeletingConversation] = useState(false);
+  const panelRef = useRef<HTMLElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Panel acoplado, no modal (ver comentario junto al JSX de más abajo): en
+  // vez de un scrim que bloquea el resto de la página, achica el contenido
+  // corriéndole el margen derecho — mismo patrón que el mockup aprobado
+  // (body.agent-expanded), vía una clase en <body> para que esto funcione
+  // sin importar en qué punto del árbol esté montado este panel (acá en
+  // AppLayout, o el propio de ReportEditor.tsx).
+  useEffect(() => {
+    document.body.classList.toggle("agent-panel-open", open);
+    return () => {
+      document.body.classList.remove("agent-panel-open");
+    };
+  }, [open]);
+
+  // Ya no hay Radix Dialog que mueva el foco solo al abrir/cerrar (panel no
+  // modal) — se hace a mano: entra al botón de cerrar al abrir.
+  useEffect(() => {
+    if (open) closeBtnRef.current?.focus();
+  }, [open]);
+
   const send = async (text: string, opts?: { confirmDuplicate?: boolean }) => {
     const q = text.trim();
     if (!q) return;
@@ -268,9 +340,16 @@ export function PlatformAgentPanel({
       metricFields,
       confirmDuplicate: opts?.confirmDuplicate,
       companyIds,
+      conversationId: conversationId ?? undefined,
+      newConversation: !conversationId,
     });
     setPendingQuestion(null);
-    if (response) setExchanges((prev) => [...prev, { question: q, response, resolvedTraceIndices: new Set() }]);
+    if (response) {
+      if (response.conversation_id && response.conversation_id !== conversationId) {
+        setConversationId(response.conversation_id);
+      }
+      setExchanges((prev) => [...prev, { question: q, response, resolvedTraceIndices: new Set() }]);
+    }
   };
 
   const handleAsk = () => send(question);
@@ -294,15 +373,113 @@ export function PlatformAgentPanel({
     void send(question, { confirmDuplicate: true });
   };
 
-  // Backend persiste el historial solo (cambio de contrato 2026-08-10) — el
-  // panel ya no le manda conversation_history, así que "vaciar" acá es
-  // puramente visual salvo que además se le pida reset_conversation:true
-  // para que el próximo turno arranque de cero del lado del servidor.
+  // Con historial de chats múltiples ya no hace falta un round-trip vacío
+  // al servidor para "vaciar" — alcanza con soltar el conversationId actual,
+  // la próxima pregunta real arranca uno nuevo (new_conversation:true).
   const handleNewConversation = () => {
     setExchanges([]);
     setQuestion("");
     setPendingQuestion(null);
-    void ask("", { uiContext, resetConversation: true });
+    setConversationId(null);
+  };
+
+  const loadConversations = async () => {
+    setLoadingConversations(true);
+    try {
+      const params = new URLSearchParams({ surface });
+      if (companyId) params.set("company_id", companyId);
+      const res = await fetch(`${LIST_AGENT_CONVERSATIONS_URL}?${params.toString()}`, { credentials: "include" });
+      if (await handleMembershipError(res)) return;
+      const data = (await res.json()) as ListAgentConversationsResponse;
+      setConversations(data.conversations ?? []);
+    } catch {
+      toast.error("No se pudieron cargar tus conversaciones");
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  const openHistory = (open: boolean) => {
+    setHistoryOpen(open);
+    if (open) void loadConversations();
+  };
+
+  const loadConversation = async (id: string) => {
+    setHistoryOpen(false);
+    setLoadingConversation(true);
+    try {
+      const res = await fetch(`${GET_AGENT_CONVERSATION_URL}?conversation_id=${encodeURIComponent(id)}`, {
+        credentials: "include",
+      });
+      if (await handleMembershipError(res)) return;
+      const data = (await res.json()) as GetAgentConversationResponse;
+      // Los mensajes vienen planos (role/content) — se emparejan de a
+      // user→assistant para reusar el mismo Exchange[] que arma send().
+      const loaded: Exchange[] = [];
+      let pendingUserText: string | null = null;
+      for (const m of data.messages ?? []) {
+        if (m.role === "user") {
+          pendingUserText = m.content;
+        } else if (pendingUserText !== null) {
+          loaded.push({ question: pendingUserText, response: stubResponseFromHistory(m.content), resolvedTraceIndices: new Set() });
+          pendingUserText = null;
+        }
+      }
+      setExchanges(loaded);
+      setConversationId(data.conversation_id);
+      setQuestion("");
+      setPendingQuestion(null);
+    } catch {
+      toast.error("No se pudo abrir esa conversación");
+    } finally {
+      setLoadingConversation(false);
+    }
+  };
+
+  const startRename = (c: AgentConversationSummary) => {
+    setRenamingId(c.conversation_id);
+    setRenameDraft(c.title);
+  };
+
+  const submitRename = async () => {
+    if (!renamingId) return;
+    const title = renameDraft.trim();
+    if (!title) return;
+    try {
+      const res = await fetch(RENAME_AGENT_CONVERSATION_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: renamingId, title }),
+      });
+      if (await handleMembershipError(res)) return;
+      setConversations((prev) => prev.map((c) => (c.conversation_id === renamingId ? { ...c, title } : c)));
+      setRenamingId(null);
+    } catch {
+      toast.error("No se pudo renombrar la conversación");
+    }
+  };
+
+  const confirmDeleteConversation = async () => {
+    if (!deleteTarget) return;
+    setDeletingConversation(true);
+    try {
+      const res = await fetch(DELETE_AGENT_CONVERSATION_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: deleteTarget.conversation_id }),
+      });
+      if (await handleMembershipError(res)) return;
+      setConversations((prev) => prev.filter((c) => c.conversation_id !== deleteTarget.conversation_id));
+      if (conversationId === deleteTarget.conversation_id) handleNewConversation();
+      toast.success("Conversación eliminada");
+    } catch {
+      toast.error("No se pudo eliminar la conversación");
+    } finally {
+      setDeletingConversation(false);
+      setDeleteTarget(null);
+    }
   };
 
   const handleConfirmWrite = async (exchangeIdx: number, traceIdx: number, proposed: Record<string, unknown>) => {
@@ -326,9 +503,14 @@ export function PlatformAgentPanel({
       confirmWrite: true,
       reportId: uiContext.selectedReportId ?? undefined,
       metricFields: { ...proposed, ...(metricId ? { metric_id: metricId } : {}) } as PlatformAgentMetricFields,
+      conversationId: conversationId ?? undefined,
+      newConversation: !conversationId,
     });
     setPendingQuestion(null);
     if (response) {
+      if (response.conversation_id && response.conversation_id !== conversationId) {
+        setConversationId(response.conversation_id);
+      }
       setExchanges((prev) => [
         ...prev,
         { question: "Confirmado", response, resolvedTraceIndices: new Set() },
@@ -344,29 +526,117 @@ export function PlatformAgentPanel({
     if (!o) {
       setExchanges([]);
       setQuestion("");
+      setConversationId(null);
     }
   };
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent className="w-full sm:max-w-xl flex flex-col gap-0 p-0">
-        <SheetHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0 text-left">
+    <>
+    {/* Panel acoplado, no modal: sin scrim, se desliza desde el borde
+        derecho y achica el contenido en vez de taparlo (ver useEffect de
+        agent-panel-open más arriba). Reemplaza al Sheet/Dialog modal de
+        antes — ese patrón dejaba un bug real en vivo (2026-09-10): abrir el
+        Asistente desde adentro de otro diálogo apilaba dos scrims y
+        bloqueaba toda interacción. Siempre montado (nunca open && (...))
+        para que la transición de deslizamiento tenga algo que animar la
+        primera vez que se abre, igual que el mockup aprobado. */}
+    <aside
+      ref={panelRef}
+      aria-label="Asistente"
+      aria-hidden={!open}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") handleOpenChange(false);
+      }}
+      className={cn(
+        "fixed inset-y-0 right-0 z-[70] flex w-full flex-col gap-0 border-l border-border bg-background shadow-2xl transition-transform duration-200 motion-reduce:transition-none sm:w-[380px] sm:max-w-[92vw]",
+        open ? "translate-x-0" : "translate-x-full pointer-events-none"
+      )}
+    >
+        <div className="px-4 py-3.5 border-b border-border shrink-0 text-left">
           <div className="flex items-center justify-between gap-2">
-            <SheetTitle className="flex items-center gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
               <Sparkles size={16} className="text-primary" aria-hidden="true" />
               Asistente
-            </SheetTitle>
-            {exchanges.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={handleNewConversation}>
-                <RotateCcw size={12} className="mr-1.5" aria-hidden="true" /> Nueva conversación
+            </h2>
+            <div className="flex items-center gap-1">
+              <DropdownMenu open={historyOpen} onOpenChange={openHistory}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" aria-label="Historial de conversaciones">
+                    <History size={14} aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72 max-h-80 overflow-y-auto p-1.5">
+                  <p className="text-xs font-medium text-muted-foreground px-2 py-1.5">Chats recientes</p>
+                  {loadingConversations ? (
+                    <p className="text-xs text-muted-foreground px-2 py-2">Cargando…</p>
+                  ) : conversations.length === 0 ? (
+                    <p className="text-xs text-muted-foreground px-2 py-2">Todavía no tuviste ninguna conversación.</p>
+                  ) : (
+                    conversations.map((c) => (
+                      <div key={c.conversation_id} className="group flex items-center gap-1 rounded-md hover:bg-surface px-1">
+                        {renamingId === c.conversation_id ? (
+                          <input
+                            autoFocus
+                            value={renameDraft}
+                            onChange={(e) => setRenameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void submitRename();
+                              if (e.key === "Escape") setRenamingId(null);
+                            }}
+                            onBlur={() => void submitRename()}
+                            className="flex-1 min-w-0 text-xs px-2 py-2 bg-transparent border-b border-border focus:outline-none"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void loadConversation(c.conversation_id)}
+                            className="flex-1 min-w-0 flex items-center gap-1.5 text-left text-xs px-2 py-2"
+                          >
+                            <MessageSquare size={12} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                            <span className="truncate">{c.title}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          aria-label={`Renombrar "${c.title}"`}
+                          className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                          onClick={() => startRename(c)}
+                        >
+                          <Pencil size={11} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Eliminar "${c.title}"`}
+                          className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            setHistoryOpen(false);
+                            setDeleteTarget(c);
+                          }}
+                        >
+                          <Trash2 size={11} aria-hidden="true" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {exchanges.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={handleNewConversation}>
+                  <RotateCcw size={12} className="mr-1.5" aria-hidden="true" /> Nueva conversación
+                </Button>
+              )}
+              <Button ref={closeBtnRef} variant="ghost" size="sm" aria-label="Minimizar Asistente" onClick={() => handleOpenChange(false)}>
+                <X size={14} aria-hidden="true" />
               </Button>
-            )}
+            </div>
           </div>
-          <SheetDescription>{surfaceDescription(surface)}</SheetDescription>
-        </SheetHeader>
+          <p className="text-xs text-muted-foreground mt-1.5">{surfaceDescription(surface)}</p>
+        </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          {exchanges.length === 0 && !pendingQuestion && (
+          {loadingConversation && <p className="text-sm text-muted-foreground">Cargando conversación…</p>}
+
+          {!loadingConversation && exchanges.length === 0 && !pendingQuestion && (
             <p className="text-sm text-muted-foreground">{surfaceExample(surface, companyIds)}</p>
           )}
 
@@ -578,7 +848,17 @@ export function PlatformAgentPanel({
             <Send size={14} aria-hidden="true" className={asking ? "animate-pulse" : undefined} />
           </Button>
         </div>
-      </SheetContent>
-    </Sheet>
+    </aside>
+    <ConfirmationDialog
+      open={!!deleteTarget}
+      onOpenChange={(o) => !o && setDeleteTarget(null)}
+      title="Eliminar conversación"
+      description={deleteTarget ? `Se elimina "${deleteTarget.title}" de tu historial. No se puede deshacer.` : ""}
+      confirmLabel="Eliminar"
+      variant="destructive"
+      busy={deletingConversation}
+      onConfirm={confirmDeleteConversation}
+    />
+    </>
   );
 }

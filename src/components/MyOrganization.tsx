@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Copy, Check, Building2, Pencil, RefreshCw, User as UserIcon, Link2, Rocket, Mail } from "lucide-react";
+import { Copy, Check, Building2, Pencil, RefreshCw, Link2, Rocket, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FormActions } from "@/components/FormActions";
 import { FormField } from "@/components/FormField";
-import { InfoRow } from "@/components/InfoRow";
 import { LoadingCard } from "@/components/LoadingCard";
+import { ImageUploadField } from "@/components/ImageUploadField";
 import {
   MANAGE_COMPANIES_URL,
   MANAGE_FUNDS_URL,
@@ -14,10 +14,11 @@ import {
   entityWords,
 } from "@/lib/membership";
 import { useAuth } from "@/contexts/AuthContext";
+import { useStartup } from "@/hooks/useStartup";
+import { useImageUpload } from "@/hooks/useImageUpload";
 import { API_BASE_URL } from "@/lib/apiConfig";
 
 const GET_MY_ORGANIZATION_URL = `${API_BASE_URL}/get-my-organization`;
-const MANAGE_USERS_URL = `${API_BASE_URL}/manage-users`;
 const INVITE_MEMBER_BY_EMAIL_URL = `${API_BASE_URL}/invite-member-by-email`;
 
 type OrgInfo = {
@@ -25,8 +26,6 @@ type OrgInfo = {
   id: string;
   name: string;
   join_code: string;
-  full_name?: string;
-  user_id?: string;
   is_owner: boolean;
   industry: string;
   website: string;
@@ -53,12 +52,6 @@ type OrganizationResponse = Partial<{
   new_join_code: string | null;
   joinCode: string | null;
   inviteCode: string | null;
-  full_name: string;
-  user_full_name: string;
-  member_full_name: string;
-  user_name: string;
-  user_id: string;
-  member_id: string;
   is_owner: boolean;
   industry: string | null;
   website: string | null;
@@ -83,8 +76,16 @@ const getJoinCode = (raw: OrganizationResponse | null | undefined) =>
     raw?.inviteCode
   );
 
-export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean } = {}) {
-  const { refreshSession, email, role, user_id: sessionUserId } = useAuth();
+export function MyOrganization() {
+  const { refreshSession, role, company_id } = useAuth();
+  // logo_url/vertical/linkedin_url/website_url viven en get-company-profile,
+  // no en get-my-organization (endpoint que arma el resto de este
+  // componente) — se leen del hook que ya usa el resto de la app para lo
+  // mismo, en vez de duplicar el fetch acá. Solo aplica a startups: el
+  // backend de logo/vertical es company_id-only, no hay equivalente de
+  // fondo todavía.
+  const { startup, refetch: refetchStartup } = useStartup();
+  const { upload: uploadLogo, uploading: uploadingLogo } = useImageUpload({ kind: "logo", companyId: company_id ?? "" });
   const [org, setOrg] = useState<OrgInfo | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -92,10 +93,6 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
-
-  const [editingFullName, setEditingFullName] = useState(false);
-  const [fullNameDraft, setFullNameDraft] = useState("");
-  const [savingFullName, setSavingFullName] = useState(false);
 
   const [regenerating, setRegenerating] = useState(false);
 
@@ -113,7 +110,21 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
   const [targetDraft, setTargetDraft] = useState("");
   const [cohortNumberDraft, setCohortNumberDraft] = useState("");
   const [cohortYearDraft, setCohortYearDraft] = useState("");
+  const [verticalDraft, setVerticalDraft] = useState("");
+  const [linkedinDraft, setLinkedinDraft] = useState("");
+  const [websiteUrlDraft, setWebsiteUrlDraft] = useState("");
   const [savingDetails, setSavingDetails] = useState(false);
+
+  useEffect(() => {
+    setVerticalDraft(startup?.vertical ?? "");
+    setLinkedinDraft(startup?.linkedin_url ?? "");
+    setWebsiteUrlDraft(startup?.website_url ?? "");
+  }, [startup]);
+
+  const handleLogoSelect = async (file: File) => {
+    const ok = await uploadLogo(file);
+    if (ok) refetchStartup();
+  };
 
   const load = async () => {
     try {
@@ -133,8 +144,6 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
         id: firstText(raw.id, raw.company_id, raw.fund_id),
         name: firstText(raw.name, raw.organization_name, raw.company_name, raw.fund_name),
         join_code: getJoinCode(raw),
-        full_name: firstText(raw.full_name, raw.user_full_name, raw.member_full_name, raw.user_name),
-        user_id: raw.user_id ?? raw.member_id ?? undefined,
         is_owner: !!raw.is_owner,
         industry: raw.industry ?? "",
         website: raw.website ?? "",
@@ -144,7 +153,6 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
       };
       setOrg(normalized);
       setNameDraft(normalized.name);
-      setFullNameDraft(normalized.full_name ?? "");
       setIndustryDraft(normalized.industry);
       setWebsiteDraft(normalized.website);
       setTargetDraft(normalized.target_raise_usd?.toString() ?? "");
@@ -305,47 +313,22 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
           target_raise_usd: targetDraft ? Number(targetDraft) : null,
           cohort_number: cohortNumberDraft ? Number(cohortNumberDraft) : null,
           cohort_year: cohortYearDraft ? Number(cohortYearDraft) : null,
+          ...(org.type === "company"
+            ? {
+                vertical: verticalDraft.trim() || null,
+                linkedin_url: linkedinDraft.trim() || null,
+                website_url: websiteUrlDraft.trim() || null,
+              }
+            : {}),
         }),
       });
       if (await handleMembershipError(res)) return;
       toast.success("Detalles actualizados");
       setEditingDetails(false);
       await load();
+      if (org.type === "company") refetchStartup();
     } finally {
       setSavingDetails(false);
-    }
-  };
-
-  const saveFullName = async () => {
-    const next = fullNameDraft.trim();
-    if (!next || next === (org.full_name ?? "")) {
-      setEditingFullName(false);
-      return;
-    }
-    // manage-users only accepts user_id, no email fallback — org.user_id (from
-    // get-my-organization) and sessionUserId (from get-session) are two reads of
-    // the same value; try both before giving up, since sending email instead
-    // would just 400 "user_id es requerido".
-    const userId = org.user_id ?? sessionUserId;
-    if (!userId) {
-      toast.error("No se pudo identificar tu usuario. Recargá la página e intentá de nuevo.");
-      return;
-    }
-    setSavingFullName(true);
-    try {
-      const body: Record<string, unknown> = { user_id: userId, full_name: next };
-      const res = await fetch(MANAGE_USERS_URL, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (await handleMembershipError(res)) return;
-      toast.success("Nombre actualizado");
-      setEditingFullName(false);
-      await load();
-    } finally {
-      setSavingFullName(false);
     }
   };
 
@@ -506,10 +489,30 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
             )}
           </div>
 
+          <div className="mb-4">
+            <ImageUploadField
+              imageUrl={startup?.logo_url ?? null}
+              fallback={org.name.trim().slice(0, 2).toUpperCase()}
+              shape="square"
+              size={56}
+              uploading={uploadingLogo}
+              onSelect={handleLogoSelect}
+              hint="PNG, JPG o WEBP, hasta 5MB."
+            />
+          </div>
+
           {editingDetails ? (
             <div className="space-y-3">
               <FormField label="Industria">
                 <Input value={industryDraft} onChange={(e) => setIndustryDraft(e.target.value)} className="h-9" />
+              </FormField>
+              <FormField label="Vertical">
+                <Input
+                  placeholder="Ej: Fintech B2B"
+                  value={verticalDraft}
+                  onChange={(e) => setVerticalDraft(e.target.value)}
+                  className="h-9"
+                />
               </FormField>
               <FormField label="Website">
                 <Input
@@ -517,6 +520,23 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
                   placeholder="https://"
                   value={websiteDraft}
                   onChange={(e) => setWebsiteDraft(e.target.value)}
+                  className="h-9"
+                />
+              </FormField>
+              <FormField label="Sitio web (público)">
+                <Input
+                  type="url"
+                  placeholder="https://tuempresa.com"
+                  value={websiteUrlDraft}
+                  onChange={(e) => setWebsiteUrlDraft(e.target.value)}
+                  className="h-9"
+                />
+              </FormField>
+              <FormField label="LinkedIn">
+                <Input
+                  placeholder="linkedin.com/company/tu-startup"
+                  value={linkedinDraft}
+                  onChange={(e) => setLinkedinDraft(e.target.value)}
                   className="h-9"
                 />
               </FormField>
@@ -557,6 +577,9 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
                   setTargetDraft(org.target_raise_usd?.toString() ?? "");
                   setCohortNumberDraft(org.cohort_number?.toString() ?? "");
                   setCohortYearDraft(org.cohort_year?.toString() ?? "");
+                  setVerticalDraft(startup?.vertical ?? "");
+                  setLinkedinDraft(startup?.linkedin_url ?? "");
+                  setWebsiteUrlDraft(startup?.website_url ?? "");
                 }}
                 onSubmit={saveDetails}
                 submitLabel="Guardar cambios"
@@ -570,8 +593,20 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
                 <dd className="text-foreground">{org.industry || "—"}</dd>
               </div>
               <div>
+                <dt className="text-xs text-muted-foreground">Vertical</dt>
+                <dd className="text-foreground">{startup?.vertical || "—"}</dd>
+              </div>
+              <div>
                 <dt className="text-xs text-muted-foreground">Website</dt>
                 <dd className="text-foreground truncate">{org.website || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Sitio web</dt>
+                <dd className="text-foreground truncate">{startup?.website_url || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">LinkedIn</dt>
+                <dd className="text-foreground truncate">{startup?.linkedin_url || "—"}</dd>
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">Objetivo de ronda</dt>
@@ -588,54 +623,6 @@ export function MyOrganization({ hideProfile = false }: { hideProfile?: boolean 
             </dl>
           )}
         </div>
-      )}
-
-      {/* Perfil */}
-      {!hideProfile && (
-      <div className="border-t border-border pt-6">
-        <div className="flex items-center gap-2 mb-4">
-          <UserIcon size={14} strokeWidth={1.5} className="text-muted-foreground" />
-          <h2 className="text-sm font-medium text-foreground">Mi perfil</h2>
-        </div>
-        <div className="space-y-1">
-          <InfoRow label="Email" value={email ?? "—"} />
-          {editingFullName ? (
-            <div className="py-2 space-y-2">
-              <div className="text-xs text-muted-foreground">Nombre completo</div>
-              <Input
-                value={fullNameDraft}
-                onChange={(e) => setFullNameDraft(e.target.value)}
-                className="h-9"
-                autoFocus
-              />
-              <FormActions
-                onCancel={() => {
-                  setEditingFullName(false);
-                  setFullNameDraft(org.full_name ?? "");
-                }}
-                onSubmit={saveFullName}
-                busy={savingFullName}
-              />
-            </div>
-          ) : (
-            <InfoRow
-              label="Nombre completo"
-              value={org.full_name || "—"}
-              action={
-                <button
-                  type="button"
-                  onClick={() => setEditingFullName(true)}
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                  title="Editar nombre"
-                >
-                  <Pencil size={12} strokeWidth={1.5} />
-                  Editar
-                </button>
-              }
-            />
-          )}
-        </div>
-      </div>
       )}
     </section>
   );

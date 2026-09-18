@@ -521,10 +521,6 @@ export function MetricsExplorerTab({ companyId, isOwner, metricId, navigate, raw
             onDataChanged();
             navigate("/metrics?tab=explorer");
           }}
-          onAgentWrote={() => {
-            financial.reload();
-            onDataChanged();
-          }}
           fulfillsRequirementId={fulfillingRequirement?.requirement_id ?? null}
           prefill={
             fulfillingRequirement

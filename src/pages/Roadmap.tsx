@@ -6,26 +6,53 @@ import { PageHeader } from "@/components/PageHeader";
 import { SkeletonSection } from "@/components/SkeletonSection";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
 import { useRoadmap } from "@/hooks/useRoadmap";
 import { useDocuments } from "@/hooks/useDocuments";
-import { categoryForPillarName } from "@/lib/dataRoom";
+import { useDocumentFolders } from "@/hooks/useDocumentFolders";
+import { useRoadmapCatalogMutations } from "@/hooks/useRoadmapCatalogMutations";
 import { type RoadmapTask } from "@/lib/roadmap";
-import { toast } from "sonner";
 import { StageBadge } from "@/components/StageBadge";
 import { RoadmapTaskList } from "@/components/roadmap/RoadmapTaskList";
 import { RoadmapTaskDetailSheet } from "@/components/roadmap/RoadmapTaskDetailSheet";
 import { AddRoadmapTaskDialog } from "@/components/roadmap/AddRoadmapTaskDialog";
+import { FolderPickerDialog } from "@/components/dataRoom/FolderPickerDialog";
 
 export default function Roadmap() {
-  const { company_id } = useAuth();
+  // user.id NO es el id real del usuario (alias legacy a company_id, ver
+  // AuthContext.tsx) — para "es mi propia tarea" hace falta user_id.
+  const { user_id, company_id } = useAuth();
   const { startup } = useStartup();
   const { pillars, tasks, readinessScore, loading: loadingRoadmap, toggleStatus, reload } = useRoadmap(company_id);
   const { createAndUpload, uploadFile } = useDocuments(company_id);
+  const folders = useDocumentFolders(company_id);
+  const { deleteTask } = useRoadmapCatalogMutations();
+  // Data Room ya no infiere sola en qué carpeta va un documento pedido por
+  // una tarea de Roadmap (las carpetas no llevan vínculo a pilar en esta
+  // versión) — se le pide al founder que elija (o cree) la carpeta a mano.
+  const [pendingUpload, setPendingUpload] = useState<{ task: RoadmapTask; file: File } | null>(null);
 
   const [openTask, setOpenTask] = useState<RoadmapTask | null>(null);
   const [addingTask, setAddingTask] = useState(false);
+  // Editar/eliminar solo existe para tareas propias (requested_by_user_id
+  // === el propio founder) — ver RoadmapTaskDetailSheet.tsx. Antes de esto
+  // no había forma de corregir o sacar una tarea propia ya creada.
+  const [editingTask, setEditingTask] = useState<RoadmapTask | null>(null);
+  const [confirmDeleteTask, setConfirmDeleteTask] = useState<RoadmapTask | null>(null);
+  const [deletingTask, setDeletingTask] = useState(false);
+
+  const handleDeleteTask = async () => {
+    if (!confirmDeleteTask) return;
+    setDeletingTask(true);
+    const ok = await deleteTask(confirmDeleteTask.task_id);
+    setDeletingTask(false);
+    if (ok) {
+      setConfirmDeleteTask(null);
+      reload();
+    }
+  };
 
   // Deep-link desde el Action Center del Dashboard (?task=<startup_task_id>)
   // — mismo patrón single-use que ?report=/?doc= en InvestorCompany.tsx: se
@@ -45,19 +72,23 @@ export default function Roadmap() {
   }, [deepLinkTaskId, tasks]);
 
   const handleUpload = async (task: RoadmapTask, file: File) => {
-    let ok: boolean;
     if (task.document_id) {
-      ok = await uploadFile(task.document_id, file);
-    } else {
-      const pillarName = pillars.find((p) => p.id === task.pillar_id)?.name ?? "";
-      const category = categoryForPillarName(pillarName);
-      if (!category) {
-        toast.error("No se pudo determinar la categoría del documento para esta tarea");
-        return;
-      }
-      ok = await createAndUpload(category, task.title, file, task.task_id, true);
+      const ok = await uploadFile(task.document_id, file);
+      if (ok) reload();
+      return;
     }
-    if (ok) reload();
+    // Documento nuevo: hace falta elegir en qué carpeta va (ver comentario
+    // de pendingUpload más arriba).
+    setPendingUpload({ task, file });
+  };
+
+  const confirmPendingUpload = async (folderId: string | null) => {
+    if (!pendingUpload || !folderId) return;
+    const ok = await createAndUpload(folderId, pendingUpload.task.title, pendingUpload.file, pendingUpload.task.task_id, true);
+    if (ok) {
+      setPendingUpload(null);
+      reload();
+    }
   };
 
   return (
@@ -103,11 +134,29 @@ export default function Roadmap() {
             onOpenTask={setOpenTask}
             onToggleStatus={toggleStatus}
             onUpload={handleUpload}
+            currentUserId={user_id}
           />
         )}
       </div>
 
-      <RoadmapTaskDetailSheet task={openTask} onClose={() => setOpenTask(null)} />
+      <RoadmapTaskDetailSheet
+        task={openTask}
+        onClose={() => setOpenTask(null)}
+        ownTaskActions={
+          openTask && user_id && openTask.requested_by_user_id === user_id
+            ? {
+                onEdit: () => {
+                  setEditingTask(openTask);
+                  setOpenTask(null);
+                },
+                onDelete: () => {
+                  setConfirmDeleteTask(openTask);
+                  setOpenTask(null);
+                },
+              }
+            : undefined
+        }
+      />
 
       {pillars.length > 0 && (
         <AddRoadmapTaskDialog
@@ -118,6 +167,57 @@ export default function Roadmap() {
           title="Agregar tarea propia"
           description="Solo la ves vos (y CloudValley), no cuenta para el readiness score, que se calcula solo con el catálogo estándar."
           onSaved={reload}
+        />
+      )}
+
+      {editingTask && (
+        <AddRoadmapTaskDialog
+          open={!!editingTask}
+          onOpenChange={(o) => !o && setEditingTask(null)}
+          pillars={pillars}
+          defaultPillarId={editingTask.pillar_id}
+          title="Editar tarea propia"
+          description="Solo la ves vos (y CloudValley), no cuenta para el readiness score, que se calcula solo con el catálogo estándar."
+          task={{
+            task_id: editingTask.task_id,
+            pillar_id: editingTask.pillar_id,
+            title: editingTask.title,
+            description: editingTask.description,
+            why_it_matters: editingTask.why_it_matters,
+            how_to_do_it: editingTask.how_to_do_it,
+            criticality: editingTask.criticality,
+            requires_doc: editingTask.requires_doc,
+            requires_report: editingTask.requires_report,
+            due_date: editingTask.due_date,
+          }}
+          onSaved={() => {
+            setEditingTask(null);
+            reload();
+          }}
+        />
+      )}
+
+      <ConfirmationDialog
+        open={!!confirmDeleteTask}
+        onOpenChange={(o) => !o && setConfirmDeleteTask(null)}
+        title="Eliminar tarea"
+        description={confirmDeleteTask ? `Se elimina "${confirmDeleteTask.title}" de tu Roadmap. No se puede deshacer.` : ""}
+        confirmLabel="Eliminar"
+        variant="destructive"
+        busy={deletingTask}
+        onConfirm={handleDeleteTask}
+      />
+
+      {pendingUpload && (
+        <FolderPickerDialog
+          open={!!pendingUpload}
+          onOpenChange={(o) => !o && setPendingUpload(null)}
+          title="¿En qué carpeta va este documento?"
+          description={`"${pendingUpload.task.title}" se sube al Data Room dentro de la carpeta que elijas.`}
+          tree={folders.tree}
+          confirmLabel="Subir acá"
+          onCreateFolder={folders.createFolder}
+          onConfirm={confirmPendingUpload}
         />
       )}
     </AppLayout>

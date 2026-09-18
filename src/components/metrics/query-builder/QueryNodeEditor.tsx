@@ -17,6 +17,16 @@ type LeafType = "aggregation" | "metric_ref" | "constant";
 
 const ARITHMETIC_LABELS: Record<ArithmeticOperator, string> = { "+": "+ Sumar", "-": "− Restar", "*": "× Multiplicar", "/": "÷ Dividir" };
 
+// Presets del selector "Comparar contra" de un metric_ref — cualquier otro
+// entero <= 0 es válido para el backend (ver querySpec.ts), pero estos 3 son
+// los únicos casos de uso reales hoy (KPIs "vs. mes anterior"/"vs. año
+// anterior"). Ampliar la lista si aparece un caso real nuevo, no antes.
+const PERIOD_OFFSET_OPTIONS: { value: number; label: string }[] = [
+  { value: 0, label: "Período actual" },
+  { value: -1, label: "Mes anterior" },
+  { value: -12, label: "Mismo mes, año anterior" },
+];
+
 type Props = {
   value: QuerySpec;
   onChange: (next: QuerySpec) => void;
@@ -94,7 +104,27 @@ export function QueryNodeEditor({ value, onChange, onRemove, rawFields, metricOp
 
       {value.type === "aggregation" && <AggregationFields value={value} onChange={onChange} rawFields={rawFields} />}
       {value.type === "metric_ref" && (
-        <MetricRefPicker value={value.metric_id} onChange={(id) => onChange({ type: "metric_ref", metric_id: id })} metricOptions={metricOptions} />
+        <div className="flex flex-wrap items-center gap-2">
+          <MetricRefPicker value={value.metric_id} onChange={(id) => onChange({ ...value, metric_id: id })} metricOptions={metricOptions} />
+          <Select
+            value={String(value.period_offset ?? 0)}
+            onValueChange={(v) => {
+              const offset = Number(v);
+              onChange(offset === 0 ? { type: "metric_ref", metric_id: value.metric_id } : { ...value, period_offset: offset });
+            }}
+          >
+            <SelectTrigger className="h-8 w-44 text-xs shrink-0" aria-label="Comparar contra">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PERIOD_OFFSET_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={String(o.value)}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       )}
       {value.type === "constant" && (
         <Input

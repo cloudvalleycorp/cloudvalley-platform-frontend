@@ -37,8 +37,17 @@ export type AskOptions = {
   // que se agrega la métrica (uiContext.selectedReportId en report_editor).
   reportId?: string;
   // "Nueva conversación" — backend persiste el historial solo (cambio de
-  // contrato 2026-08-10), esto le pide arrancar de cero.
+  // contrato 2026-08-10), esto le pide arrancar de cero. Superado por
+  // conversation_id/new_conversation si el caller ya migró al historial de
+  // chats múltiples (ver PlatformAgentPanel.tsx) — se puede seguir usando
+  // solo para quien no migró, no son mutuamente excluyentes a nivel tipo.
   resetConversation?: boolean;
+  // Historial de chats múltiples (contrato 2026-09-11). conversationId: el
+  // chat al que pertenece esta pregunta (ausente en la primera pregunta de
+  // uno nuevo). newConversation:true en esa primera pregunta. Omitir ambos
+  // mantiene el comportamiento viejo (un solo hilo continuo).
+  conversationId?: string;
+  newConversation?: boolean;
   // Solo surface "investor_portfolio" (cambio de contrato 2026-08-15):
   // acota la pregunta a estas companies del portfolio. Ausente/vacío = todo
   // el portfolio conectado del fondo.
@@ -73,6 +82,8 @@ export function usePlatformAgent(companyId: string | null, surface: PlatformAgen
           uiContext: opts.uiContext,
           ...(question.trim() ? { question: question.trim() } : {}),
           ...(opts.resetConversation ? { reset_conversation: true } : {}),
+          ...(opts.conversationId ? { conversation_id: opts.conversationId } : {}),
+          ...(opts.newConversation ? { new_conversation: true } : {}),
           ...(opts.formulaSyntax ? { formula_syntax: opts.formulaSyntax } : {}),
           ...(opts.confirmWrite ? { confirm_write: true } : {}),
           ...(opts.confirmDuplicate ? { confirm_duplicate: true } : {}),

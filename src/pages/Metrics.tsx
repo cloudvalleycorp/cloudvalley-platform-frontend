@@ -1,15 +1,12 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFinancialMetrics } from "@/hooks/useFinancialMetrics";
 import { useSheetsSources } from "@/hooks/useSheetsSources";
-import { PlatformAgentPanel } from "@/components/ai/PlatformAgentPanel";
-import { Button } from "@/components/ui/button";
-import { Sparkles } from "lucide-react";
-import { FORMULA_SYNTAX } from "@/lib/formulaEngine";
-import { toPeriodString, periodRange } from "@/lib/metricPeriod";
+import { useOpenAssistant } from "@/contexts/AssistantContext";
+import { periodRange } from "@/lib/metricPeriod";
 import { parseMetricsTab, type MetricsTab } from "@/lib/metricsNavigation";
 import { MetricsOverviewTab } from "@/components/metrics/MetricsOverviewTab";
 import { MetricsDataSourcesTab } from "@/components/metrics/MetricsDataSourcesTab";
@@ -35,7 +32,10 @@ export default function Metrics() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab: MetricsTab = metricId ? "explorer" : parseMetricsTab(searchParams);
-  const [assistantOpen, setAssistantOpen] = useState(false);
+  // El Asistente vive solo en el header desde 2026-09-06 (ver AppLayout.tsx,
+  // ya resuelve surface="metrics" + selectedMetricId por URL solo) — esto
+  // abre ESE panel en vez de mantener uno propio acá.
+  const openAssistant = useOpenAssistant();
 
   // Rango compartido por Overview/Fuentes/Salud — no depende de navegación
   // de período como Explorador (que tiene su propio year/period, ver
@@ -54,15 +54,7 @@ export default function Metrics() {
   return (
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12">
-        <PageHeader
-          title={TAB_HEADER[activeTab].title}
-          subtitle={TAB_HEADER[activeTab].subtitle}
-          action={
-            <Button variant="outline" onClick={() => setAssistantOpen(true)}>
-              <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
-            </Button>
-          }
-        />
+        <PageHeader size="compact" title={TAB_HEADER[activeTab].title} subtitle={TAB_HEADER[activeTab].subtitle} />
 
         {activeTab === "overview" && (
           <MetricsOverviewTab
@@ -115,7 +107,7 @@ export default function Metrics() {
             metricId={metricId}
             navigate={navigate}
             rawFields={rawFields}
-            onOpenAssistant={() => setAssistantOpen(true)}
+            onOpenAssistant={openAssistant}
             onDataChanged={() => {
               financial.reload();
               reloadSources();
@@ -123,24 +115,6 @@ export default function Metrics() {
           />
         )}
       </div>
-
-      <PlatformAgentPanel
-        open={assistantOpen}
-        onOpenChange={setAssistantOpen}
-        companyId={company_id}
-        surface="metrics"
-        uiContext={{
-          selectedMetricId: metricId ?? null,
-          selectedCategoryId: null,
-          selectedReportId: null,
-          currentPeriodId: toPeriodString(now.getMonth() + 1, now.getFullYear()),
-        }}
-        formulaSyntax={FORMULA_SYNTAX}
-        onAgentWrote={() => {
-          financial.reload();
-          reloadSources();
-        }}
-      />
     </AppLayout>
   );
 }

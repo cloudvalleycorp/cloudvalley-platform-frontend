@@ -14,6 +14,14 @@ export type Startup = {
   cohort_number: number | null;
   cohort_year: number | null;
   website: string | null;
+  // logo_url es una signed URL con vencimiento (~60min) — se vuelve a pedir
+  // en cada carga, nunca se cachea más allá de esta query. vertical/
+  // linkedin_url/website_url son campos nuevos 2026-09-11, distintos de
+  // website (legacy, no tocar/unificar sin que backend lo confirme).
+  logo_url: string | null;
+  vertical: string | null;
+  linkedin_url: string | null;
+  website_url: string | null;
 };
 
 // Mismo shape que CompanyProfile en InvestorCompany.tsx — get-company-profile
@@ -31,6 +39,10 @@ type CompanyProfileResponse = {
   target_raise_usd: number | null;
   cohort_number: number | null;
   cohort_year: number | null;
+  logo_url?: string | null;
+  vertical?: string | null;
+  linkedin_url?: string | null;
+  website_url?: string | null;
 };
 
 async function fetchStartup(companyId: string): Promise<Startup | null> {
@@ -49,6 +61,10 @@ async function fetchStartup(companyId: string): Promise<Startup | null> {
     cohort_number: data.cohort_number,
     cohort_year: data.cohort_year,
     website: data.website,
+    logo_url: data.logo_url ?? null,
+    vertical: data.vertical ?? null,
+    linkedin_url: data.linkedin_url ?? null,
+    website_url: data.website_url ?? null,
   };
 }
 

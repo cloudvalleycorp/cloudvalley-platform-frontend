@@ -15,12 +15,13 @@ import {
   ChevronDown,
   type LucideIcon,
 } from "lucide-react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -32,11 +33,64 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Settings as SettingsIcon, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStartup } from "@/hooks/useStartup";
 import { StageBadge } from "./StageBadge";
 import { cn } from "@/lib/utils";
 import { parseMetricsTab, metricsTabUrl, type MetricsTab } from "@/lib/metricsNavigation";
+
+// Pie del sidebar (avatar + nombre + rol), mismo dato que ya arma el menú
+// del topbar en AppLayout.tsx — acá es un atajo más corto (sin nombre de
+// pantalla completo) para que la identidad de quien está logueado también
+// quede fija en la nav, como en el mockup aprobado ("sidebar-foot").
+function SidebarUserFooter() {
+  const { full_name, email, avatar_url, role_title, role, fund_name, signOut } = useAuth();
+  const navigate = useNavigate();
+  const displayName = full_name?.trim() || email || "Mi cuenta";
+  const subLabel =
+    role_title?.trim() ||
+    (role === "investor" ? fund_name ?? "Inversor" : role === "admin" ? "Admin" : "Founder");
+  return (
+    <SidebarFooter className="border-t border-sidebar-border p-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex items-center gap-2.5 w-full rounded-md p-1.5 text-left hover:bg-sidebar-accent transition-colors">
+            <Avatar className="h-8 w-8 shrink-0">
+              <AvatarImage src={avatar_url ?? undefined} alt="" />
+              <AvatarFallback className="text-[11px] font-semibold">
+                {displayName.trim().slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-medium truncate">{displayName}</span>
+              <span className="block text-[11px] text-muted-foreground truncate">{subLabel}</span>
+            </span>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" className="w-56">
+          <DropdownMenuItem onClick={() => navigate("/settings")}>
+            <SettingsIcon size={14} strokeWidth={1.5} className="mr-2" />
+            Configuración
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={signOut} className="text-destructive focus:text-destructive">
+            <LogOut size={14} strokeWidth={1.5} className="mr-2" />
+            Cerrar sesión
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SidebarFooter>
+  );
+}
 
 // `end: false` para las secciones que tienen sub-rutas propias (/metrics/:id,
 // /reporting/:id, /portfolio/:id) — si no, el ítem solo se marca activo en la
@@ -211,6 +265,7 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
+        <SidebarUserFooter />
       </Sidebar>
     );
   }
@@ -273,6 +328,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarUserFooter />
     </Sidebar>
   );
 }

@@ -114,6 +114,14 @@ export function SuggestedMetricsReview({
   const setRow = (i: number, patch: Partial<ReviewRow>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
+  // backend puede errar el destino de un "connect"/"enrich" — antes la única
+  // salida era rechazar la fila entera (la fuente no quedaba trackeada en
+  // ningún lado). Esto la pasa a "create" sin perder el query propuesto, así
+  // el founder decide con qué métrica (si alguna) se relaciona esta fuente,
+  // en vez de que backend se lo imponga.
+  const switchRowToCreate = (i: number) =>
+    setRow(i, { mode: "create", target_metric_id: null, possibleDuplicate: null });
+
   const approvedCount = rows.filter((r) => r.approved).length;
 
   const handleConfirm = async () => {
@@ -423,10 +431,23 @@ export function SuggestedMetricsReview({
                     </div>
                   </label>
                   {row.approved && (
-                    <div className="pl-7">
+                    <div className="pl-7 space-y-2">
                       <div className="rounded-md bg-surface border border-border p-2.5">
                         <QuerySummary query={row.query} className="text-xs" />
                       </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          switchRowToCreate(i);
+                        }}
+                      >
+                        ¿No es esta métrica? Crear como nueva en su lugar
+                      </Button>
                     </div>
                   )}
                 </div>
