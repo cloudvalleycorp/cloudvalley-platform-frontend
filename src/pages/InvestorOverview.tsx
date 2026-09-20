@@ -6,11 +6,14 @@ import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershi
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingState } from "@/components/LoadingState";
+import { SectionCard } from "@/components/SectionCard";
 import { useMetricRequirements } from "@/hooks/useMetricRequirements";
 import { usePortfolioMetricsDashboard } from "@/hooks/usePortfolioMetricsDashboard";
 import { usePortfolioTasks } from "@/hooks/usePortfolioTasks";
 import { useReportingStatus } from "@/hooks/useReportingStatus";
 import { useActivity } from "@/hooks/useActivity";
+import { useSegmentFilter } from "@/hooks/useSegmentFilter";
+import { SegmentFilterSelect } from "@/components/investor/SegmentFilterSelect";
 import { formatRequirementValue } from "@/lib/metricRequirements";
 import { toPeriodString } from "@/lib/metricPeriod";
 import { CRITICALITY_LABELS } from "@/lib/roadmap";
@@ -56,6 +59,7 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
   const now = new Date();
   const currentPeriod = toPeriodString(now.getMonth() + 1, now.getFullYear());
 
+  const { segments, selectedSegmentId, setSelectedSegmentId, filteredCompanies } = useSegmentFilter(companies);
   const { requirements } = useMetricRequirements();
   const standardMandatory = useMemo(
     () => requirements.filter((r) => r.mandatory && r.metric_class === "standard"),
@@ -63,13 +67,17 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
   );
   const { rows, portfolioAggregates, loading: dashLoading } = usePortfolioMetricsDashboard(
     { range: "last_6_months" },
-    { requirementIds: standardMandatory.map((r) => r.requirement_id) }
+    { requirementIds: standardMandatory.map((r) => r.requirement_id), segmentId: selectedSegmentId }
   );
   const latestPeriod = rows[0]?.values ? Object.keys(rows[0].values).sort().at(-1) : undefined;
 
-  const { rows: reportingRows, loading: reportingLoading } = useReportingStatus(currentPeriod, companies.map((c) => c.id));
-  const { tasks, loading: tasksLoading } = usePortfolioTasks({ page_size: 100 });
-  const { events, loading: activityLoading } = useActivity({ page_size: 8 });
+  const { rows: reportingRows, loading: reportingLoading } = useReportingStatus(
+    currentPeriod,
+    filteredCompanies.map((c) => c.id),
+    selectedSegmentId
+  );
+  const { tasks, loading: tasksLoading } = usePortfolioTasks({ page_size: 100, segment_id: selectedSegmentId });
+  const { events, loading: activityLoading } = useActivity({ page_size: 8, segment_id: selectedSegmentId });
 
   const attention = useMemo(() => {
     const items: { company_id: string; company_name: string; reason: string }[] = [];
@@ -81,11 +89,11 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
       if (t.is_overdue && t.status !== "done") overdueByCompany.set(t.company_id, (overdueByCompany.get(t.company_id) ?? 0) + 1);
     }
     for (const [company_id, count] of overdueByCompany) {
-      const name = companies.find((c) => c.id === company_id)?.name ?? "—";
+      const name = filteredCompanies.find((c) => c.id === company_id)?.name ?? "—";
       items.push({ company_id, company_name: name, reason: `${count} tarea${count === 1 ? "" : "s"} vencida${count === 1 ? "" : "s"}` });
     }
     return items;
-  }, [reportingRows, tasks, companies]);
+  }, [reportingRows, tasks, filteredCompanies]);
 
   const pendingTasks = useMemo(
     () => tasks.filter((t) => t.status !== "done").slice(0, 6),
@@ -101,10 +109,16 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
   return (
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12 space-y-8">
-        <PageHeader title="Overview" subtitle={`${companies.length} empresa${companies.length === 1 ? "" : "s"}`} />
+        <PageHeader
+          title="Overview"
+          subtitle={`${filteredCompanies.length} empresa${filteredCompanies.length === 1 ? "" : "s"}`}
+          action={<SegmentFilterSelect segments={segments} value={selectedSegmentId} onChange={setSelectedSegmentId} />}
+        />
 
         {companies.length === 0 ? (
           <EmptyState icon={Compass} title="Tu fondo todavía no tiene empresas conectadas." description="Las conexiones con startups se gestionan desde Conexiones." />
+        ) : filteredCompanies.length === 0 ? (
+          <EmptyState icon={Compass} title="Ninguna empresa de este segmento." description="Elegí otro segmento o volvé a Todos los segmentos." />
         ) : loading ? (
           <LoadingState variant="centered" className="py-16" />
         ) : (
@@ -131,16 +145,20 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
                 })}
                 <div className="border border-border rounded-lg bg-card p-3">
                   <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Empresas</p>
-                  <p className="text-lg font-medium text-foreground tabular-nums mt-1">{companies.length}</p>
+                  <p className="text-lg font-medium text-foreground tabular-nums mt-1">{filteredCompanies.length}</p>
                 </div>
               </div>
             )}
 
             <div className="grid sm:grid-cols-2 gap-4">
-              <section className="border border-border rounded-lg bg-card p-4">
-                <h2 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                  <AlertTriangle size={13} strokeWidth={1.5} aria-hidden="true" /> Necesitan atención
-                </h2>
+              <SectionCard
+                padding="sm"
+                title={
+                  <span className="flex items-center gap-1.5">
+                    <AlertTriangle size={13} strokeWidth={1.5} aria-hidden="true" /> Necesitan atención
+                  </span>
+                }
+              >
                 {attention.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Ninguna empresa necesita atención ahora.</p>
                 ) : (
@@ -158,12 +176,16 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
                     ))}
                   </div>
                 )}
-              </section>
+              </SectionCard>
 
-              <section className="border border-border rounded-lg bg-card p-4">
-                <h2 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                  <ListTodo size={13} strokeWidth={1.5} aria-hidden="true" /> Tareas pendientes
-                </h2>
+              <SectionCard
+                padding="sm"
+                title={
+                  <span className="flex items-center gap-1.5">
+                    <ListTodo size={13} strokeWidth={1.5} aria-hidden="true" /> Tareas pendientes
+                  </span>
+                }
+              >
                 {pendingTasks.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Sin tareas pendientes.</p>
                 ) : (
@@ -183,12 +205,16 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
                     ))}
                   </div>
                 )}
-              </section>
+              </SectionCard>
 
-              <section className="border border-border rounded-lg bg-card p-4">
-                <h2 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                  <FileBarChart size={13} strokeWidth={1.5} aria-hidden="true" /> Updates recientes
-                </h2>
+              <SectionCard
+                padding="sm"
+                title={
+                  <span className="flex items-center gap-1.5">
+                    <FileBarChart size={13} strokeWidth={1.5} aria-hidden="true" /> Updates recientes
+                  </span>
+                }
+              >
                 {activityLoading ? (
                   <LoadingState variant="inline" />
                 ) : recentUpdates.length === 0 ? (
@@ -210,12 +236,16 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
                     ))}
                   </div>
                 )}
-              </section>
+              </SectionCard>
 
-              <section className="border border-border rounded-lg bg-card p-4">
-                <h2 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                  <ActivityIcon size={13} strokeWidth={1.5} aria-hidden="true" /> Actividad reciente
-                </h2>
+              <SectionCard
+                padding="sm"
+                title={
+                  <span className="flex items-center gap-1.5">
+                    <ActivityIcon size={13} strokeWidth={1.5} aria-hidden="true" /> Actividad reciente
+                  </span>
+                }
+              >
                 {activityLoading ? (
                   <LoadingState variant="inline" />
                 ) : events.length === 0 ? (
@@ -237,7 +267,7 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
                     ))}
                   </div>
                 )}
-              </section>
+              </SectionCard>
             </div>
           </>
         )}

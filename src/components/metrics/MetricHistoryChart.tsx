@@ -138,7 +138,7 @@ export function MetricHistoryChart({ metric, history, size = "lg" }: Props) {
                   borderRadius: 6,
                   fontSize: 12,
                 }}
-                formatter={(v: any) =>
+                formatter={(v: unknown) =>
                   v === null || v === undefined
                     ? ["—", metric.name]
                     : [formatValue(Number(v)), mode === "change" ? "% cambio" : metric.name]

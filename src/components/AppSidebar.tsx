@@ -12,6 +12,7 @@ import {
   FileBarChart,
   Compass,
   ListTodo,
+  SlidersHorizontal,
   ChevronDown,
   type LucideIcon,
 } from "lucide-react";
@@ -164,6 +165,132 @@ function MetricsNavGroup() {
   );
 }
 
+// Grupo colapsable Portfolio (investor) — Catálogo/Comparar, reemplaza al
+// toggle inline que tenía InvestorPortfolio.tsx (no escalaba: con muchas
+// empresas era un solo switch perdido arriba a la derecha). El sub-ítem
+// Comparar se oculta con menos de 2 empresas conectadas — comparar una
+// empresa contra sí misma no aporta nada.
+function PortfolioNavGroup() {
+  const { pathname, search } = useLocation();
+  const { portfolio_company_ids } = useAuth();
+  const inPortfolioArea = pathname === "/portfolio";
+  const isCompare = new URLSearchParams(search).get("mode") === "compare";
+  const [open, setOpen] = useState(inPortfolioArea);
+  useEffect(() => {
+    if (inPortfolioArea) setOpen(true);
+  }, [inPortfolioArea]);
+  const canCompare = (portfolio_company_ids?.length ?? 0) >= 2;
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <SidebarMenuItem>
+        {/* Label y flecha son dos targets de click distintos — el label
+            navega de verdad (a Catálogo) además de expandir, la flecha solo
+            pliega/despliega. Antes ambos estaban pegados al mismo botón:
+            clickear "Portfolio" solo abría la sub-lista en el propio
+            sidebar en vez de mostrar contenido al medio, mismo problema
+            encontrado y corregido en el mockup. */}
+        <div className="flex items-center gap-0.5">
+          <SidebarMenuButton
+            asChild
+            isActive={inPortfolioArea}
+            className="flex-1 flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 text-muted-foreground hover:text-foreground"
+          >
+            <NavLink to="/portfolio">
+              <Building2 size={16} strokeWidth={1.5} />
+              <span className="flex-1 text-left">Portfolio</span>
+            </NavLink>
+          </SidebarMenuButton>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent shrink-0"
+              aria-label={open ? "Colapsar Portfolio" : "Expandir Portfolio"}
+            >
+              <ChevronDown size={14} strokeWidth={1.5} className={cn("transition-transform", open && "rotate-180")} />
+            </button>
+          </CollapsibleTrigger>
+        </div>
+      </SidebarMenuItem>
+      <CollapsibleContent>
+        <SidebarMenuSub>
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton asChild isActive={inPortfolioArea && !isCompare}>
+              <NavLink to="/portfolio">Catálogo</NavLink>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+          {canCompare && (
+            <SidebarMenuSubItem>
+              <SidebarMenuSubButton asChild isActive={inPortfolioArea && isCompare}>
+                <NavLink to="/portfolio?mode=compare">Comparar</NavLink>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          )}
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// Grupo colapsable Gestión (investor) — Métricas/Segmentos. Antes era un
+// ítem plano hacia /requisitos con las dos secciones apiladas en una sola
+// pantalla sin buscador — con muchos requisitos o segmentos reales deja de
+// ser usable, ver plan de rediseño investor.
+function GestionNavGroup() {
+  const { pathname, search } = useLocation();
+  const inGestionArea = pathname === "/requisitos";
+  const isSegments = new URLSearchParams(search).get("tab") === "segments";
+  const [open, setOpen] = useState(inGestionArea);
+  useEffect(() => {
+    if (inGestionArea) setOpen(true);
+  }, [inGestionArea]);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <SidebarMenuItem>
+        {/* Mismo fix que PortfolioNavGroup: label navega (a Métricas) +
+            expande, la flecha es un target de click aparte que solo
+            pliega/despliega. */}
+        <div className="flex items-center gap-0.5">
+          <SidebarMenuButton
+            asChild
+            isActive={inGestionArea}
+            className="flex-1 flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 text-muted-foreground hover:text-foreground"
+          >
+            <NavLink to="/requisitos">
+              <SlidersHorizontal size={16} strokeWidth={1.5} />
+              <span className="flex-1 text-left">Gestión</span>
+            </NavLink>
+          </SidebarMenuButton>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent shrink-0"
+              aria-label={open ? "Colapsar Gestión" : "Expandir Gestión"}
+            >
+              <ChevronDown size={14} strokeWidth={1.5} className={cn("transition-transform", open && "rotate-180")} />
+            </button>
+          </CollapsibleTrigger>
+        </div>
+      </SidebarMenuItem>
+      <CollapsibleContent>
+        <SidebarMenuSub>
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton asChild isActive={inGestionArea && !isSegments}>
+              <NavLink to="/requisitos">Métricas</NavLink>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton asChild isActive={inGestionArea && isSegments}>
+              <NavLink to="/requisitos?tab=segments">Segmentos</NavLink>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function isNavActive(pathname: string, url: string, end: boolean) {
   return end ? pathname === url : pathname === url || pathname.startsWith(`${url}/`);
 }
@@ -250,16 +377,18 @@ export function AppSidebar() {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                {/* Rediseño Investor 2026-08-23: Portfolio+Dashboard se
-                    fusionan en una sola pantalla (modos Lista/Comparar) —
-                    ver documento de diseño "Portfolio Intelligence".
-                    Gestión (antes en el sidebar) se degrada a una acción
-                    secundaria dentro de Portfolio, no ocupa lugar acá. */}
+                {/* Rediseño Investor 2026-09: Portfolio y Gestión pasan a
+                    grupos colapsables con sub-ítems propios (Catálogo/
+                    Comparar, Métricas/Segmentos) en vez de ítems planos o
+                    toggles inline — no escalaban con muchas empresas o
+                    requisitos reales. Gestión vuelve a tener lugar fijo acá
+                    (antes solo se llegaba desde un link dentro de Portfolio). */}
                 <NavItem to="/overview" end icon={Compass} label="Overview" />
-                <NavItem to="/portfolio" end={false} icon={Building2} label="Portfolio" />
+                <PortfolioNavGroup />
                 <NavItem to="/reporting" end={false} icon={FileBarChart} label="Reporting" />
                 <NavItem to="/data-room" end icon={FolderOpen} label="Data Room" />
                 <NavItem to="/tasks" end icon={ListTodo} label="Tasks" />
+                <GestionNavGroup />
                 <NavItem to="/conexiones" end icon={Network} label="Conexiones" />
               </SidebarMenu>
             </SidebarGroupContent>

@@ -9,6 +9,7 @@ import { BackLink } from "@/components/BackLink";
 import { PageHeader } from "@/components/PageHeader";
 import { SectionCard } from "@/components/SectionCard";
 import { StageBadge } from "@/components/StageBadge";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { useConnectedCompanyMetrics } from "@/hooks/useConnectedCompanyMetrics";
 import { useSharedFinancialReports } from "@/hooks/useSharedFinancialReports";
 import { useReportViewTracking } from "@/hooks/useReportViewTracking";
@@ -20,6 +21,7 @@ import { ReportSectionView } from "@/components/metrics/ReportSectionView";
 import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -27,10 +29,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Accordion } from "@/components/ui/accordion";
-import { CategoryAccordion } from "@/components/dataRoom/CategoryAccordion";
 import { DocumentRow } from "@/components/dataRoom/DocumentRow";
-import { groupSharedDocuments } from "@/lib/dataRoom";
+import { FolderRow } from "@/components/dataRoom/FolderRow";
+import { DataRoomBreadcrumbTrail } from "@/components/dataRoom/DataRoomBreadcrumbTrail";
+import { Folder as FolderIcon } from "lucide-react";
+import { buildDataRoomTree, pathTo, findNode, ROOT_LEGACY_ID, type DataRoomTreeNode } from "@/lib/dataRoomTree";
+import type { DataRoomFolder } from "@/lib/dataRoom";
 import { type MetricDef } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { percentChange, formatMetricValue } from "@/lib/metrics";
@@ -40,6 +44,7 @@ import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
 import { useSharedDocuments } from "@/hooks/useSharedDocuments";
 import { useSharedRoadmap } from "@/hooks/useSharedRoadmap";
+import { useDeleteStartupTask } from "@/hooks/useDeleteStartupTask";
 import { LIST_ROADMAP_PILLARS_URL, type RoadmapPillar, type RoadmapTask } from "@/lib/roadmap";
 import { RoadmapTaskList } from "@/components/roadmap/RoadmapTaskList";
 import { RoadmapTaskDetailSheet } from "@/components/roadmap/RoadmapTaskDetailSheet";
@@ -75,6 +80,10 @@ type CompanyProfile = {
   target_raise_usd: number | null;
   cohort_number: number | null;
   cohort_year: number | null;
+  // Mismo endpoint que ya usa useStartup.ts del lado founder — logo_url ya
+  // viene en la respuesta real, este tipo simplemente no lo leía todavía
+  // (Fase 6 del rediseño investor).
+  logo_url: string | null;
 };
 
 type TabKey = "overview" | "performance" | "kpis" | "updates" | "data-room" | "tasks" | "activity";
@@ -147,7 +156,17 @@ export default function InvestorCompany() {
   const [openInfo, setOpenInfo] = useState<MetricDef | null>(null);
   const [openRoadmapTask, setOpenRoadmapTask] = useState<RoadmapTask | null>(null);
   const [editingTask, setEditingTask] = useState<RoadmapTask | null>(null);
+  const [cancelingTask, setCancelingTask] = useState<RoadmapTask | null>(null);
+  const { deleteTask, deleting: cancelingSubmit } = useDeleteStartupTask();
   const [addingRequirement, setAddingRequirement] = useState(false);
+  // Data Room: explorador con breadcrumbs (Fase 5 del rediseño investor) —
+  // null = raíz, ROOT_LEGACY_ID = adentro del bucket "Sin categorizar",
+  // cualquier otro string = una carpeta real. Se resetea al cambiar de
+  // empresa para no dejar un estado de navegación colgado.
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  useEffect(() => {
+    setCurrentFolderId(null);
+  }, [company_id]);
   // 24 meses de margen sobre el período elegido para que SUMLAST/AVGLAST/YTD
   // sigan calculando — se recalcula (y refetchea) al cambiar de período.
   const metricsRange = useMemo(() => periodRange(period, 24), [period]);
@@ -224,10 +243,31 @@ export default function InvestorCompany() {
   const performanceMetrics = useMemo(() => metrics.metrics.filter((m) => m.metric_class === "standard"), [metrics.metrics]);
   const kpiMetrics = useMemo(() => metrics.metrics.filter((m) => m.metric_class !== "standard"), [metrics.metrics]);
 
-  // Grupos con al menos un documento visible — o bien una carpeta real
-  // (folder_path) o el bucket legacy de una categoría vieja (folder_id
-  // null). Nunca se pide list-document-folders del lado investor.
-  const dataRoomGroups = useMemo(() => groupSharedDocuments(sharedDocs.documents, false), [sharedDocs.documents]);
+  // Árbol real armado 100% desde folder_path (nunca list-document-folders,
+  // ese endpoint sigue siendo founder/team-only a propósito) — reemplaza el
+  // aplanado de groupSharedDocuments por navegación real con breadcrumbs.
+  const { tree: dataRoomTree, docsByFolderId } = useMemo(() => buildDataRoomTree(sharedDocs.documents), [sharedDocs.documents]);
+  const currentFolderNode = currentFolderId && currentFolderId !== ROOT_LEGACY_ID ? findNode(dataRoomTree, currentFolderId) : null;
+  const dataRoomChildFolders: DataRoomTreeNode[] =
+    currentFolderId === null ? dataRoomTree : currentFolderId === ROOT_LEGACY_ID ? [] : currentFolderNode?.children ?? [];
+  const dataRoomDocs = currentFolderId ? docsByFolderId.get(currentFolderId) ?? [] : [];
+  const dataRoomBreadcrumbPath: DataRoomTreeNode[] =
+    currentFolderId === ROOT_LEGACY_ID
+      ? [{ id: ROOT_LEGACY_ID, name: "Sin categorizar", children: [] }]
+      : pathTo(dataRoomTree, currentFolderId);
+  const uncategorizedCount = docsByFolderId.get(ROOT_LEGACY_ID)?.length ?? 0;
+
+  // Deep-link desde Tasks/Overview (?doc=<document_id>) — navega directo a
+  // la carpeta que contiene ese documento en vez de expandir un grupo
+  // aplanado (ya no existe esa noción con el árbol real).
+  useEffect(() => {
+    if (!deepLinkDocId) return;
+    const doc = sharedDocs.documents.find((d) => d.id === deepLinkDocId);
+    if (!doc) return;
+    const leafId = doc.folder_path && doc.folder_path.length > 0 ? doc.folder_path[doc.folder_path.length - 1].id : ROOT_LEGACY_ID;
+    setCurrentFolderId(leafId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkDocId, sharedDocs.documents]);
 
   const { inputsForPeriod, currentInputs, prevInputs, prev, historyInputs, formulaHistory, baseRawFieldPeriods } =
     useMetricReportData({ metrics: metrics.metrics, entries: metrics.entries, period });
@@ -338,7 +378,17 @@ export default function InvestorCompany() {
           profile && (
             <>
               <PageHeader
-                title={profile.name}
+                title={
+                  <span className="inline-flex items-center gap-3">
+                    <Avatar className="h-9 w-9 shrink-0">
+                      <AvatarImage src={profile.logo_url ?? undefined} alt="" />
+                      <AvatarFallback className="text-xs font-semibold">
+                        {profile.name.trim().slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    {profile.name}
+                  </span>
+                }
                 subtitle={
                   <span className="inline-flex items-center gap-3 mt-1">
                     <StageBadge stage={profile.stage} />
@@ -499,7 +549,7 @@ export default function InvestorCompany() {
                     />
                   ) : sharedDocs.loading ? (
                     <LoadingState />
-                  ) : dataRoomGroups.length === 0 ? (
+                  ) : sharedDocs.documents.length === 0 ? (
                     <EmptyState
                       icon={FileText}
                       title="Todavía no hay documentos compartidos."
@@ -507,22 +557,62 @@ export default function InvestorCompany() {
                       className="p-8"
                     />
                   ) : (
-                    <Accordion
-                      type="multiple"
-                      defaultValue={
-                        deepLinkDocId
-                          ? dataRoomGroups.filter((g) => g.docs.some((d) => d.id === deepLinkDocId)).map((g) => g.key)
-                          : dataRoomGroups.map((g) => g.key)
-                      }
-                    >
-                      {dataRoomGroups.map((group) => (
-                        <CategoryAccordion
-                          key={group.key}
-                          value={group.key}
-                          title={group.label}
-                          countLabel={`${group.docs.length} documento${group.docs.length === 1 ? "" : "s"}`}
-                        >
-                          {group.docs.map((doc) => (
+                    <>
+                      <DataRoomBreadcrumbTrail
+                        rootLabel="Data Room"
+                        path={dataRoomBreadcrumbPath}
+                        onNavigate={setCurrentFolderId}
+                      />
+                      {dataRoomChildFolders.length === 0 && dataRoomDocs.length === 0 ? (
+                        <div className="px-4 py-10 text-center text-sm text-muted-foreground border border-border rounded-lg">
+                          Esta carpeta está vacía.
+                        </div>
+                      ) : (
+                        <div className="border border-border rounded-lg overflow-hidden">
+                          {dataRoomChildFolders.map((node) => {
+                            const folder: DataRoomFolder = {
+                              id: node.id,
+                              company_id: company_id ?? "",
+                              name: node.name,
+                              parent_folder_id: null,
+                              is_locked: false,
+                              roadmap_pillar_ids: [],
+                              order_index: 0,
+                              created_at: "",
+                            };
+                            return (
+                              <FolderRow
+                                key={node.id}
+                                folder={folder}
+                                docCount={docsByFolderId.get(node.id)?.length ?? 0}
+                                subfolderCount={node.children.length}
+                                documentIds={[]}
+                                canEdit={false}
+                                isOwner={false}
+                                companyId={null}
+                                onOpen={() => setCurrentFolderId(node.id)}
+                                onRename={() => {}}
+                                onMove={() => {}}
+                                onDelete={() => {}}
+                              />
+                            );
+                          })}
+                          {currentFolderId === null && uncategorizedCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setCurrentFolderId(ROOT_LEGACY_ID)}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0 text-left hover:bg-surface/60 transition-colors"
+                            >
+                              <FolderIcon size={16} strokeWidth={1.5} className="text-muted-foreground shrink-0" aria-hidden="true" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm truncate">Sin categorizar</div>
+                                <div className="text-[11px] text-muted-foreground mt-0.5">
+                                  Documentos subidos antes de las carpetas · {uncategorizedCount} documento{uncategorizedCount === 1 ? "" : "s"}
+                                </div>
+                              </div>
+                            </button>
+                          )}
+                          {dataRoomDocs.map((doc) => (
                             <DocumentRow
                               key={doc.id}
                               doc={doc}
@@ -530,6 +620,7 @@ export default function InvestorCompany() {
                               canEdit={false}
                               isOwner={false}
                               showRoadmapBadge={false}
+                              highlighted={doc.id === deepLinkDocId}
                               onOpen={() => doc.file_url && window.open(doc.file_url, "_blank")}
                               onUpload={() => {}}
                               onDelete={() => {}}
@@ -538,9 +629,9 @@ export default function InvestorCompany() {
                               onSetVerified={() => {}}
                             />
                           ))}
-                        </CategoryAccordion>
-                      ))}
-                    </Accordion>
+                        </div>
+                      )}
+                    </>
                   )}
                 </SectionCard>
               )}
@@ -587,6 +678,7 @@ export default function InvestorCompany() {
                       tasks={roadmap.tasks}
                       onOpenTask={setOpenRoadmapTask}
                       onEditTask={setEditingTask}
+                      onCancelTask={setCancelingTask}
                       currentUserId={user_id}
                       readOnly
                     />
@@ -651,7 +743,7 @@ export default function InvestorCompany() {
           pillars={roadmapPillars}
           defaultPillarId={roadmapPillars[0]?.id ?? ""}
           title={`Editar "${editingTask.title}"`}
-          description="Solo vos podés editar esta tarea — la pediste desde tu fondo."
+          description="Cualquier miembro de tu fondo puede editar esta tarea."
           onSaved={() => {
             setEditingTask(null);
             queryClient.invalidateQueries({ queryKey: ["shared-roadmap", company_id] });
@@ -670,6 +762,29 @@ export default function InvestorCompany() {
           }}
         />
       )}
+
+      <ConfirmationDialog
+        open={!!cancelingTask}
+        onOpenChange={(o) => !o && setCancelingTask(null)}
+        title="Cancelar pedido"
+        description={
+          <>
+            Se cancela <strong>{cancelingTask?.title}</strong> para {profile?.name ?? "esta empresa"}. Si esta
+            misma tarea se le pidió también a otras startups de tu portfolio, esta acción no las afecta a ellas.
+          </>
+        }
+        confirmLabel="Cancelar pedido"
+        variant="destructive"
+        busy={cancelingSubmit}
+        onConfirm={async () => {
+          if (!cancelingTask || !company_id) return;
+          const ok = await deleteTask(company_id, cancelingTask.startup_task_id);
+          if (ok) {
+            setCancelingTask(null);
+            queryClient.invalidateQueries({ queryKey: ["shared-roadmap", company_id] });
+          }
+        }}
+      />
     </AppLayout>
   );
 }

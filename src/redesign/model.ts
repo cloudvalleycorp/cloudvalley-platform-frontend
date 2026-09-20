@@ -1,0 +1,35 @@
+export type Area = "overview" | "metrics" | "sources" | "roadmap" | "reports" | "documents" | "connections" | "settings";
+export type RecordItem = { id: string; area: Area; name: string; category: string; value: string; status: string; detail: string; fields?: Record<string, string | boolean>; query?: import("@/lib/querySpec").QuerySpec | null; entries?: Record<string, string>; sections?: import("@/lib/financialReports").ReportSection[]; sourceRows?: import("./sourceSimulation").SourceRow[]; sourceRuns?: import("./sourceSimulation").SourceRun[] };
+export const initialRecords: RecordItem[] = [
+  { id: "fund4", area: "connections", name: "Horizonte Capital", category: "Solicitud recibida", value: "Sin acceso", status: "Pendiente", detail: "Nos gustaría conocer sus próximos hitos.", fields: { direction: "received", target_id: "horizonte" } },
+  { id: "mrr", area: "metrics", name: "Monthly recurring revenue", category: "Ingresos", value: "$101.000", status: "Al día", detail: "Ingresos recurrentes mensuales. Fuente: Stripe · Agosto 2026. Forecast: $110.000." },
+  { id: "arr", area: "metrics", name: "Annual recurring revenue", category: "Ingresos", value: "$1,21M", status: "Al día", detail: "MRR × 12. Fuente: Stripe · Agosto 2026. Forecast: $1,32M." },
+  { id: "runway", area: "metrics", name: "Runway", category: "Caja", value: "18 meses", status: "Al día", detail: "Caja disponible / burn mensual. Fuente: Cash forecast. Forecast: 20 meses." },
+  { id: "margin", area: "metrics", name: "Margen bruto", category: "Rentabilidad", value: "72%", status: "Revisar", detail: "El estado de resultados necesita una revisión. Última actualización: hace 16 días. Forecast: 74%." },
+  { id: "nrr", area: "metrics", name: "Net revenue retention", category: "Retención", value: "—", status: "Pendiente", detail: "Faltan ingresos por cohorte para calcular la retención. North Capital solicita esta métrica." },
+  { id: "stripe", area: "sources", name: "Stripe · ingresos", category: "Integración", value: "4 métricas", status: "Al día", detail: "Sincronización diaria · Última ejecución hoy a las 09:30. Campos: fecha, cliente e ingreso." },
+  { id: "eerr", area: "sources", fields: { source: "sheet", account_id: "demo-account", spreadsheet_id: "demo-finance", sheet_name: "Ingresos", period_column: "Fecha", structure: "tabular", sync_mode: "manual", sync_frequency: "manual", field_mappings: JSON.stringify([{ column: "Ingresos", column_index: 2, field_key: "ingresos", value_type: "number", description: "" }, { column: "Costos", column_index: 3, field_key: "costos", value_type: "number", description: "" }]) }, name: "Estado de resultados", category: "Google Sheets", value: "3 métricas", status: "Revisar", detail: "Hoja EERR 2026. Revisá la columna de costos antes de sincronizar. Mapeo: mes → período; ventas → ingresos; costos → gastos." },
+  { id: "cash", area: "sources", name: "Cash forecast", category: "Excel", value: "2 métricas", status: "Al día", detail: "Proyección de caja · Actualizada el 18 de septiembre. Escenario: forecast." },
+  { id: "task1", area: "roadmap", name: "Actualizar el modelo financiero", category: "Finanzas", value: "22 sep", status: "En progreso", detail: "Responsable: vos. Revisá ingresos, gastos y proyecciones para los próximos 12 meses." },
+  { id: "task2", area: "roadmap", name: "Preparar el investor update", category: "Fundraising", value: "25 sep", status: "Pendiente", detail: "Responsable: vos. Incluí resultados del mes, aprendizajes y próximos hitos." },
+  { id: "task3", area: "roadmap", name: "Completar documentación legal", category: "Legal", value: "28 sep", status: "Pendiente", detail: "Responsable: equipo fundador. Reuní estatuto, cap table y acuerdos vigentes en el Data Room." },
+  { id: "task4", area: "roadmap", name: "Definir la estrategia de ronda", category: "Fundraising", value: "18 sep", status: "Completado", detail: "Objetivo acordado: ronda Seed de USD 2M para acelerar producto y adquisición." },
+  { id: "report1", area: "reports", sections: [{ title: "Resultados", subtitle: null, blocks: [{ metric_id: "mrr" }, { metric_id: "runway" }] }], name: "Investor update · septiembre", category: "Septiembre 2026", value: "Privado", status: "Borrador", detail: "Un mes de crecimiento sostenido. MRR de USD 101.000, margen bruto del 72% y 18 meses de runway. Próximo foco: retención y eficiencia comercial." },
+  { id: "report2", area: "reports", sections: [{ title: "Resultados", subtitle: null, blocks: [{ metric_id: "mrr" }, { metric_id: "runway" }] }], name: "Investor update · agosto", category: "Agosto 2026", value: "2 fondos", status: "Compartido", fields: { share_fund1: true, share_fund2: true }, detail: "Resultados de agosto. Compartido con North Capital y Delta Ventures. Última lectura: hace 2 días." },
+  { id: "doc1", area: "documents", name: "Pitch deck 2026.pdf", category: "Fundraising", value: "4,2 MB", status: "Privado", detail: "Presentación de la startup · Versión septiembre 2026. Acceso restringido a tu equipo." },
+  { id: "doc2", area: "documents", name: "Modelo financiero.xlsx", category: "Finanzas", value: "1,8 MB", status: "Compartido", fields: { share_fund1: true }, detail: "Proyección financiera · Acceso de North Capital. Actualizado el 18 de septiembre." },
+  { id: "doc3", area: "documents", name: "Cap table.pdf", category: "Legal", value: "280 KB", status: "Privado", detail: "Estructura accionaria actual. Documento privado del equipo fundador." },
+  { id: "fund1", area: "connections", name: "North Capital", category: "Seed · Latinoamérica", value: "2 recursos", status: "Conectado", detail: "Contacto de ejemplo: investment team. Interés en SaaS B2B. Solicita NRR y modelo financiero actualizado." },
+  { id: "fund2", area: "connections", name: "Delta Ventures", category: "Seed · Global", value: "1 recurso", status: "Conectado", detail: "Fondo enfocado en software. Acceso al investor update de agosto." },
+  { id: "fund3", area: "connections", name: "Río Partners", category: "Pre-seed · Latam", value: "Sin acceso", status: "Pendiente", detail: "Solicitud de conexión enviada. Ningún recurso se comparte automáticamente." },
+];
+export const meta: Record<Area, { title: string; action: string }> = {
+  overview: { title: "Vista general", action: "Crear reporte" },
+  metrics: { title: "Métricas", action: "Nueva métrica" },
+  sources: { title: "Fuentes de datos", action: "Agregar fuente" },
+  roadmap: { title: "Roadmap", action: "Crear tarea" },
+  reports: { title: "Reportes", action: "Crear reporte" },
+  documents: { title: "Data Room", action: "Agregar documento" },
+  connections: { title: "Conexiones", action: "Nueva solicitud" },
+  settings: { title: "Configuración", action: "Guardar cambios" },
+};

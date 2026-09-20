@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Info, Upload, RefreshCw, FileBarChart, CheckCircle2, Circle, Pencil } from "lucide-react";
+import { Info, Upload, RefreshCw, FileBarChart, CheckCircle2, Circle, Pencil, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,11 +20,19 @@ type Props = {
   // Lado inversor, solo tareas que el propio fondo pidió (requested_by_user_id
   // presente — nunca las del catálogo admin/founder): lápiz de editar junto
   // al de info, sin tener que ir a /tasks. Ausente = sin acción de editar
-  // acá (ej. Roadmap.tsx del founder, que edita por otro lado).
+  // acá (ej. Roadmap.tsx del founder, que edita por otro lado). Cualquier
+  // miembro del fondo puede editar, no solo quien la pidió (mismo criterio
+  // que ya usa upsert-roadmap-task del lado backend).
   onEditTask?: (task: RoadmapTask) => void;
+  // Cancelar el pedido — mismo criterio que onEditTask: cualquier miembro
+  // del fondo puede cancelarla, no solo quien la pidió (backend lo alineó
+  // con la regla de editar el 2026-09-20; antes exigía coincidencia exacta
+  // de requested_by_user_id).
+  onCancelTask?: (task: RoadmapTask) => void;
   // Para no mostrar "Pedida por <vos mismo>" en una tarea propia — mismo
   // criterio que ActionCenterSection.tsx del Dashboard. Ausente (ej. lado
-  // inversor) = siempre mostrar requested_by_name si está poblado.
+  // inversor) = siempre mostrar requested_by_name si está poblado. También
+  // gatea onCancelTask (ver arriba).
   currentUserId?: string | null;
 };
 
@@ -42,6 +50,7 @@ export function RoadmapTaskList({
   onToggleStatus,
   onUpload,
   onEditTask,
+  onCancelTask,
   currentUserId = null,
 }: Props) {
   const grouped = useMemo(
@@ -136,6 +145,17 @@ export function RoadmapTaskList({
                       aria-label={`Editar ${t.title}`}
                     >
                       <Pencil size={13} strokeWidth={1.5} />
+                    </Button>
+                  )}
+                  {onCancelTask && t.requested_by_user_id && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 -m-1.5 shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => onCancelTask(t)}
+                      aria-label={`Cancelar pedido de ${t.title}`}
+                    >
+                      <Trash2 size={13} strokeWidth={1.5} />
                     </Button>
                   )}
                   <button

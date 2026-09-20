@@ -9,7 +9,13 @@ import {
   REQUEST_LOGO_UPLOAD_URL,
 } from "@/lib/profile";
 
-type ImageUploadTarget = { kind: "avatar"; userId?: string } | { kind: "logo"; companyId: string };
+// Contrato confirmado por backend 2026-09-19: request-logo-upload-url/
+// confirm-logo-upload ahora piden fund_id O company_id (exactamente uno) —
+// antes era company_id-only. El flujo de company sigue exactamente igual.
+type ImageUploadTarget =
+  | { kind: "avatar"; userId?: string }
+  | { kind: "logo"; companyId: string }
+  | { kind: "logo"; fundId: string };
 
 // Mismo patrón de 2 pasos que useDocuments.ts ya usa para el Data Room
 // (pedir URL firmada, PUT directo, confirmar) — el object name queda fijo
@@ -29,7 +35,9 @@ export function useImageUpload(target: ImageUploadTarget) {
       const requestBody =
         target.kind === "avatar"
           ? { user_id: target.userId, content_type: file.type }
-          : { company_id: target.companyId, content_type: file.type };
+          : "companyId" in target
+            ? { company_id: target.companyId, content_type: file.type }
+            : { fund_id: target.fundId, content_type: file.type };
       const urlRes = await fetch(requestUrl, {
         method: "POST",
         credentials: "include",
@@ -54,7 +62,12 @@ export function useImageUpload(target: ImageUploadTarget) {
       }
 
       const confirmUrl = target.kind === "avatar" ? CONFIRM_AVATAR_UPLOAD_URL : CONFIRM_LOGO_UPLOAD_URL;
-      const confirmBody = target.kind === "avatar" ? { user_id: target.userId } : { company_id: target.companyId };
+      const confirmBody =
+        target.kind === "avatar"
+          ? { user_id: target.userId }
+          : "companyId" in target
+            ? { company_id: target.companyId }
+            : { fund_id: target.fundId };
       const confirmRes = await fetch(confirmUrl, {
         method: "POST",
         credentials: "include",

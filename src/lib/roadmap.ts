@@ -21,7 +21,15 @@ export const LIST_ROADMAP_PILLARS_URL = `${API_BASE_URL}/list-roadmap-pillars`;
 export const UPSERT_ROADMAP_PILLAR_URL = `${API_BASE_URL}/upsert-roadmap-pillar`;
 export const DELETE_ROADMAP_PILLAR_URL = `${API_BASE_URL}/delete-roadmap-pillar`;
 export const UPSERT_ROADMAP_TASK_URL = `${API_BASE_URL}/upsert-roadmap-task`;
+// Admin-only, catálogo global — no confundir con DELETE_STARTUP_TASK_URL
+// (una tarea ya asignada a una startup puntual, ver abajo).
 export const DELETE_ROADMAP_TASK_URL = `${API_BASE_URL}/delete-roadmap-task`;
+// Contrato confirmado por backend 2026-09-19: permitido solo si quien llama
+// es requested_by_user_id de esa tarea puntual, o la propia startup dueña —
+// más estricto que editar (upsert-roadmap-task, que cualquier miembro del
+// fondo puede hacer). Si la misma tarea se le pidió a varias startups a la
+// vez, esto solo la cancela para company_id, las demás no se enteran.
+export const DELETE_STARTUP_TASK_URL = `${API_BASE_URL}/delete-startup-task`;
 
 export type RoadmapPillar = { id: string; name: string; weight: number; order_index: number; scope?: RoadmapScope };
 

@@ -105,7 +105,7 @@ export function DocumentRow({
             vencimiento si tiene. */}
         {!canEdit && !doc.is_public && (
           <div className="text-[10px] text-teal-dark mt-0.5">
-            Compartido con vos
+            Compartido con el fondo
             {doc.expires_at && ` · vence el ${new Date(doc.expires_at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}`}
           </div>
         )}

@@ -9,10 +9,14 @@ import { EmptyState } from "@/components/EmptyState";
 import { LoadingState } from "@/components/LoadingState";
 import { Button } from "@/components/ui/button";
 import { AddRoadmapTaskDialog, type EditableTask } from "@/components/roadmap/AddRoadmapTaskDialog";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
+import { SegmentFilterSelect } from "@/components/investor/SegmentFilterSelect";
 import { usePortfolioTasks } from "@/hooks/usePortfolioTasks";
+import { useSegmentFilter } from "@/hooks/useSegmentFilter";
+import { useDeleteStartupTask } from "@/hooks/useDeleteStartupTask";
 import { CRITICALITY_LABELS, LIST_ROADMAP_PILLARS_URL, type RoadmapPillar } from "@/lib/roadmap";
 import type { PortfolioTask } from "@/lib/portfolioIntelligence";
-import { ListTodo, Pencil } from "lucide-react";
+import { ListTodo, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type TabKey = "mine" | "overdue" | "upcoming" | "done";
@@ -28,7 +32,7 @@ function taskHref(task: PortfolioTask): string {
 // esa pantalla muestra la misma lista filtrada a esa empresa (usePortfolioTasks
 // con company_ids=[id]), no una implementación separada.
 export default function InvestorTasks() {
-  const { user, loading, fund_id, portfolio_company_ids, email } = useAuth();
+  const { user, loading, fund_id, portfolio_company_ids, portfolio_company_names, email } = useAuth();
   const [dismissed, setDismissed] = useState(false);
   const [reopen, setReopen] = useState(false);
 
@@ -53,7 +57,8 @@ export default function InvestorTasks() {
     );
   }
 
-  return <InvestorTasksContent hasCompanies={portfolio_company_ids.length > 0} />;
+  const companies = portfolio_company_ids.map((id, i) => ({ id, name: portfolio_company_names[i] ?? "—" }));
+  return <InvestorTasksContent companies={companies} />;
 }
 
 const TABS: { key: TabKey; label: string }[] = [
@@ -63,12 +68,15 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "done", label: "Completadas" },
 ];
 
-function InvestorTasksContent({ hasCompanies }: { hasCompanies: boolean }) {
+function InvestorTasksContent({ companies }: { companies: { id: string; name: string }[] }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>("mine");
   const [editing, setEditing] = useState<PortfolioTask | null>(null);
+  const [canceling, setCanceling] = useState<PortfolioTask | null>(null);
+  const { segments, selectedSegmentId, setSelectedSegmentId } = useSegmentFilter(companies);
+  const { deleteTask, deleting: cancelingSubmit } = useDeleteStartupTask();
 
-  const { tasks, loading } = usePortfolioTasks({ page_size: 200 });
+  const { tasks, loading } = usePortfolioTasks({ page_size: 200, segment_id: selectedSegmentId });
   const queryClient = useQueryClient();
 
   const { data: pillars = [] } = useQuery({
@@ -119,9 +127,13 @@ function InvestorTasksContent({ hasCompanies }: { hasCompanies: boolean }) {
   return (
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12 space-y-6">
-        <PageHeader title="Tasks" subtitle={`${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} · ${overdueCount} vencida${overdueCount === 1 ? "" : "s"}`} />
+        <PageHeader
+          title="Tasks"
+          subtitle={`${pendingCount} pendiente${pendingCount === 1 ? "" : "s"} · ${overdueCount} vencida${overdueCount === 1 ? "" : "s"}`}
+          action={<SegmentFilterSelect segments={segments} value={selectedSegmentId} onChange={setSelectedSegmentId} />}
+        />
 
-        {!hasCompanies ? (
+        {companies.length === 0 ? (
           <EmptyState icon={ListTodo} title="Tu fondo todavía no tiene empresas conectadas." description="Las conexiones con startups se gestionan desde Conexiones." />
         ) : (
           <>
@@ -184,6 +196,17 @@ function InvestorTasksContent({ hasCompanies }: { hasCompanies: boolean }) {
                         <Pencil size={13} strokeWidth={1.5} />
                       </Button>
                     )}
+                    {task.requested_by_user_id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                        aria-label="Cancelar pedido"
+                        onClick={() => setCanceling(task)}
+                      >
+                        <Trash2 size={13} strokeWidth={1.5} />
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -199,7 +222,7 @@ function InvestorTasksContent({ hasCompanies }: { hasCompanies: boolean }) {
           pillars={pillars}
           defaultPillarId={pillars[0]?.id ?? ""}
           title={`Editar "${editing?.title ?? ""}"`}
-          description="Solo vos podés editar esta tarea — la pediste desde tu fondo."
+          description="Cualquier miembro de tu fondo puede editar esta tarea."
           onSaved={() => {
             setEditing(null);
             queryClient.invalidateQueries({ queryKey: ["portfolio-tasks"] });
@@ -207,6 +230,29 @@ function InvestorTasksContent({ hasCompanies }: { hasCompanies: boolean }) {
           task={editableTask}
         />
       )}
+
+      <ConfirmationDialog
+        open={!!canceling}
+        onOpenChange={(o) => !o && setCanceling(null)}
+        title="Cancelar pedido"
+        description={
+          <>
+            Se cancela <strong>{canceling?.title}</strong> para {canceling?.company_name ?? "esa empresa"}. Si esta
+            misma tarea se le pidió también a otras startups de tu portfolio, esta acción no las afecta a ellas.
+          </>
+        }
+        confirmLabel="Cancelar pedido"
+        variant="destructive"
+        busy={cancelingSubmit}
+        onConfirm={async () => {
+          if (!canceling) return;
+          const ok = await deleteTask(canceling.company_id, canceling.startup_task_id);
+          if (ok) {
+            setCanceling(null);
+            queryClient.invalidateQueries({ queryKey: ["portfolio-tasks"] });
+          }
+        }}
+      />
     </AppLayout>
   );
 }

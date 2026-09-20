@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershipScreen";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
+import { DataTableToolbar } from "@/components/DataTableToolbar";
 import { FormDialog } from "@/components/FormDialog";
 import { FormField } from "@/components/FormField";
 import { ConfirmationDialog } from "@/components/ConfirmationDialog";
@@ -122,6 +123,15 @@ export default function FundMetricRequirements() {
 }
 
 function FundMetricRequirementsContent({ companies }: { companies: { id: string; name: string }[] }) {
+  // Sub-tabs reales del sidebar (grupo colapsable "Gestión" en
+  // AppSidebar.tsx) en vez de las dos secciones apiladas en una sola
+  // página — con muchos requisitos o segmentos, la página larga sin
+  // buscador dejaba de ser usable.
+  const [searchParams] = useSearchParams();
+  const tab: "metrics" | "segments" = searchParams.get("tab") === "segments" ? "segments" : "metrics";
+  const [metricSearch, setMetricSearch] = useState("");
+  const [segmentSearch, setSegmentSearch] = useState("");
+
   const { requirements, loading } = useMetricRequirements();
   const { coverage } = useMetricRequirementCoverage();
   const { upsertRequirement, setMandatory, deleteRequirement, saving } = useMetricRequirementMutations();
@@ -133,6 +143,14 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
     for (const c of coverage) map.set(c.requirement_id, c);
     return map;
   }, [coverage]);
+  const filteredRequirements = useMemo(
+    () => requirements.filter((r) => r.name.toLowerCase().includes(metricSearch.trim().toLowerCase())),
+    [requirements, metricSearch]
+  );
+  const filteredSegments = useMemo(
+    () => segments.filter((s) => s.name.toLowerCase().includes(segmentSearch.trim().toLowerCase())),
+    [segments, segmentSearch]
+  );
 
   const [editing, setEditing] = useState<Draft | null>(null);
   const [mandatoryTarget, setMandatoryTarget] = useState<MetricRequirement | null>(null);
@@ -221,16 +239,22 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
     <AppLayout>
       <div className="max-w-5xl mx-auto px-8 py-12 space-y-8">
         <PageHeader
-          title="Gestión"
-          subtitle="Lo que le pedís a las startups de tu portfolio"
+          title={<>Gestión <span className="text-muted-foreground font-normal">{tab === "segments" ? "· Segmentos" : "· Métricas"}</span></>}
+          subtitle={tab === "segments" ? "Grupos de startups para filtrar en el resto de la app" : "Lo que le pedís a las startups de tu portfolio"}
         />
 
+        {tab === "metrics" && (
+        <>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h2 className="text-sm font-medium text-foreground">Métricas</h2>
           <Button onClick={openCreate} size="sm">
             <Plus size={14} strokeWidth={1.5} className="mr-2" /> Nuevo requisito
           </Button>
         </div>
+
+        {requirements.length > 0 && (
+          <DataTableToolbar search={metricSearch} onSearchChange={setMetricSearch} searchPlaceholder="Buscar requisito…" />
+        )}
 
         {loading ? (
           <div className="border border-border rounded-lg divide-y divide-border animate-pulse">
@@ -245,9 +269,11 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
             description="Un requisito define qué querés medir (nombre, unidad, periodicidad) — cada startup decide después cómo lo calcula con sus propios datos."
             action={{ label: "Crear el primero", onClick: openCreate }}
           />
+        ) : filteredRequirements.length === 0 ? (
+          <EmptyState icon={SlidersHorizontal} title="Ningún requisito coincide con la búsqueda." />
         ) : (
           <div className="border border-border rounded-lg bg-card divide-y divide-border overflow-hidden">
-            {requirements.map((r) => {
+            {filteredRequirements.map((r) => {
               const cov = coverageById.get(r.requirement_id);
               const target = cov?.target_count ?? companies.length;
               return (
@@ -307,16 +333,24 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
             })}
           </div>
         )}
+        </>
+        )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-4">
+        {tab === "segments" && (
+        <>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h2 className="text-sm font-medium text-foreground">Segmentos</h2>
           <Button onClick={openCreateSegment} size="sm" variant="outline">
             <Plus size={14} strokeWidth={1.5} className="mr-2" /> Nuevo segmento
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground -mt-4">
+        <p className="text-xs text-muted-foreground">
           Agrupá startups para comparar y filtrar por grupo en Portfolio, Reporting, Data Room y Tasks — ej. "SaaS", "Cohort 2025".
         </p>
+
+        {segments.length > 0 && (
+          <DataTableToolbar search={segmentSearch} onSearchChange={setSegmentSearch} searchPlaceholder="Buscar segmento…" />
+        )}
 
         {segmentsLoading ? null : segments.length === 0 ? (
           <EmptyState
@@ -325,9 +359,11 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
             description="Un segmento es un grupo de startups (ej. por vertical o cohort) que después podés usar como filtro en Portfolio y Reporting."
             action={{ label: "Crear el primero", onClick: openCreateSegment }}
           />
+        ) : filteredSegments.length === 0 ? (
+          <EmptyState icon={Building2} title="Ningún segmento coincide con la búsqueda." />
         ) : (
           <div className="border border-border rounded-lg bg-card divide-y divide-border overflow-hidden">
-            {segments.map((s) => (
+            {filteredSegments.map((s) => (
               <div key={s.segment_id} className="flex items-center gap-4 px-5 py-4">
                 <div className="min-w-0 flex-1">
                   <span className="text-sm font-medium text-foreground truncate">{s.name}</span>
@@ -357,6 +393,8 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
               </div>
             ))}
           </div>
+        )}
+        </>
         )}
       </div>
 

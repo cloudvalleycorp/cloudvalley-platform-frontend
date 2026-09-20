@@ -1,0 +1,31 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+page.setDefaultTimeout(12000);
+const button = name => page.getByRole('button', { name, exact: true });
+const field = name => page.getByLabel(name, { exact: true });
+const go = area => page.goto(`http://127.0.0.1:8080/redesign/${area}`);
+const share = async () => { await button('Acciones de Legal').click(); await page.getByRole('menuitem', { name: 'Compartir carpeta' }).click(); };
+try {
+  await go('documents'); await share(); await field('North Capital').check();
+  await field('Vencimiento del acceso de North Capital').fill('2020-01-01'); await button('Guardar accesos de carpeta').click();
+  await page.getByRole('alert').getByText('Elegí un vencimiento vigente o dejalo vacío.').waitFor();
+  await field('Vencimiento del acceso de North Capital').fill(''); await button('Guardar accesos de carpeta').click();
+  await page.getByRole('dialog').waitFor({ state: 'detached' }); await button('Legal 1 documentos').click();
+  await button('Ver detalle: Cap table.pdf').click();
+  await page.getByText('North Capital tiene acceso por la carpeta Legal.', { exact: false }).waitFor();
+  assert.equal(await page.getByRole('dialog').locator('.rd-badge').innerText(), 'Compartido');
+  await button('Consultar sobre este registro').click(); await field('Mensaje al asistente').fill('¿Quién puede ver este documento?'); await button('Enviar mensaje al asistente').click();
+  await page.getByRole('log').getByText('Acceso heredado desde: Legal.', { exact: false }).waitFor();
+  await go('connections'); await button('Ver detalle: North Capital').click(); await button('Abrir documento: Cap table.pdf').waitFor();
+  await go('documents'); await page.reload(); await share(); assert.equal(await field('North Capital').isChecked(), true);
+  await field('North Capital').uncheck(); await button('Guardar accesos de carpeta').click(); await page.getByRole('dialog').waitFor({ state: 'detached' });
+  await button('Legal 1 documentos').click(); await button('Ver detalle: Cap table.pdf').click();
+  assert.equal(await page.getByRole('dialog').locator('.rd-badge').innerText(), 'Privado');
+  await page.keyboard.press('Escape');
+  await button('Acciones de Cap table.pdf').click(); await page.getByRole('menuitem', { name: 'Mover', exact: true }).click(); await field('Destino').selectOption(''); await button('Mover').click();
+  await page.getByRole('navigation', { name: 'Carpetas' }).getByRole('button', { name: 'Data Room', exact: true }).click();
+  await button('Ver detalle: Cap table.pdf').waitFor();
+  console.log('PASS: folder permissions, expiry validation, inherited document/fund access, assistant explanation, persistence, revocation and root move.');
+} finally { await browser.close(); }

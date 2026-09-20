@@ -8,7 +8,9 @@ import { EmptyState } from "@/components/EmptyState";
 import { LoadingState } from "@/components/LoadingState";
 import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { ReportingStatusPill } from "@/components/investor/ReportingStatusPill";
+import { SegmentFilterSelect } from "@/components/investor/SegmentFilterSelect";
 import { useReportingStatus } from "@/hooks/useReportingStatus";
+import { useSegmentFilter } from "@/hooks/useSegmentFilter";
 import { toPeriodString } from "@/lib/metricPeriod";
 import { FileBarChart } from "lucide-react";
 
@@ -52,14 +54,24 @@ function InvestorReportingContent({ companies }: { companies: { id: string; name
   const now = new Date();
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const periodString = toPeriodString(period.month, period.year);
+  const { segments, selectedSegmentId, setSelectedSegmentId, filteredCompanies } = useSegmentFilter(companies);
 
-  const { rows, loading } = useReportingStatus(periodString, companies.map((c) => c.id));
+  const { rows, loading } = useReportingStatus(periodString, filteredCompanies.map((c) => c.id), selectedSegmentId);
   const rowByCompany = new Map(rows.map((r) => [r.company_id, r]));
 
   return (
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12 space-y-6">
-        <PageHeader title="Reporting" subtitle="Quién reportó, quién no, y qué falta" action={<PeriodSelect period={period} onChange={setPeriod} />} />
+        <PageHeader
+          title="Reporting"
+          subtitle="Quién reportó, quién no, y qué falta"
+          action={
+            <>
+              <SegmentFilterSelect segments={segments} value={selectedSegmentId} onChange={setSelectedSegmentId} />
+              <PeriodSelect period={period} onChange={setPeriod} />
+            </>
+          }
+        />
 
         {companies.length === 0 ? (
           <EmptyState
@@ -67,11 +79,17 @@ function InvestorReportingContent({ companies }: { companies: { id: string; name
             title="Tu fondo todavía no tiene empresas conectadas."
             description="Las conexiones con startups se gestionan desde Conexiones."
           />
+        ) : filteredCompanies.length === 0 ? (
+          <EmptyState
+            icon={FileBarChart}
+            title="Ninguna empresa de este segmento."
+            description="Elegí otro segmento o volvé a Todos los segmentos."
+          />
         ) : loading ? (
           <LoadingState variant="centered" className="py-16" />
         ) : (
           <div className="border border-border rounded-lg divide-y divide-border">
-            {companies.map((c) => {
+            {filteredCompanies.map((c) => {
               const row = rowByCompany.get(c.id);
               return (
                 <div key={c.id} className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-3">

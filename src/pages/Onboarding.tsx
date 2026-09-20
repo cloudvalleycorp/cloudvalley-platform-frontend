@@ -45,6 +45,21 @@ export default function Onboarding() {
   const inviteTokenParam = params.get("invite");
   const inviteRoleParam = params.get("role");
   const isPublicInvite = inviteRoleParam === "user" || inviteRoleParam === "investor";
+  const [step, setStep] = useState(1);
+  const [name, setName] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [stage, setStage] = useState<string>("");
+  const [model, setModel] = useState<string>("");
+  const [target, setTarget] = useState("");
+  const [founderName, setFounderName] = useState("");
+  const [cohortNumber, setCohortNumber] = useState("");
+  const [cohortYear, setCohortYear] = useState(String(new Date().getFullYear()));
+  const [submitting, setSubmitting] = useState(false);
+  useEffect( () => {
+    if (!authLoading && !user) navigate("/login", { replace: true });
+    if (!authLoading && user && isOrgViewer) navigate("/portfolio", { replace: true });
+    if (!authLoading && user && company_id) navigate("/dashboard", { replace: true });
+  }, [authLoading, user, isOrgViewer, company_id, navigate]);
 
   // Code-based invite flow — role is derived from the code server-side.
   if (inviteCodeParam) {
@@ -79,18 +94,7 @@ export default function Onboarding() {
     );
   }
 
-  const [step, setStep] = useState(1);
-  const [name, setName] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [stage, setStage] = useState<string>("");
-  const [model, setModel] = useState<string>("");
-  const [target, setTarget] = useState("");
-  const [founderName, setFounderName] = useState("");
-  const [cohortNumber, setCohortNumber] = useState("");
-  const [cohortYear, setCohortYear] = useState(String(new Date().getFullYear()));
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
+  void (() => {
     if (!authLoading && !user) navigate("/login", { replace: true });
     if (!authLoading && user && isOrgViewer) navigate("/portfolio", { replace: true });
     // Ya onboardeado según la sesión del backend.
@@ -159,8 +163,8 @@ export default function Onboarding() {
       await refreshSession();
       toast.success("¡Startup creada!");
       navigate("/dashboard", { replace: true });
-    } catch (e: any) {
-      toast.error(e.message ?? "Error al crear startup");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Error al crear startup");
     } finally {
       setSubmitting(false);
     }

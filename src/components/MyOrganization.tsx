@@ -32,6 +32,14 @@ type OrgInfo = {
   target_raise_usd: number | null;
   cohort_number: number | null;
   cohort_year: number | null;
+  // Solo poblados de verdad para type:"fund" — get-my-organization los
+  // devuelve para fondos desde el contrato confirmado por backend
+  // 2026-09-19. Para type:"company" siguen viniendo de get-company-profile
+  // (useStartup), estos campos quedan sin usar en ese caso.
+  logo_url: string | null;
+  vertical: string | null;
+  linkedin_url: string | null;
+  website_url: string | null;
 };
 
 type OrganizationResponse = Partial<{
@@ -58,6 +66,10 @@ type OrganizationResponse = Partial<{
   target_raise_usd: number | null;
   cohort_number: number | null;
   cohort_year: number | null;
+  logo_url: string | null;
+  vertical: string | null;
+  linkedin_url: string | null;
+  website_url: string | null;
 }>;
 
 const firstText = (...values: Array<string | null | undefined>) =>
@@ -78,15 +90,16 @@ const getJoinCode = (raw: OrganizationResponse | null | undefined) =>
 
 export function MyOrganization() {
   const { refreshSession, role, company_id } = useAuth();
-  // logo_url/vertical/linkedin_url/website_url viven en get-company-profile,
-  // no en get-my-organization (endpoint que arma el resto de este
-  // componente) — se leen del hook que ya usa el resto de la app para lo
-  // mismo, en vez de duplicar el fetch acá. Solo aplica a startups: el
-  // backend de logo/vertical es company_id-only, no hay equivalente de
-  // fondo todavía.
+  // Para company: logo_url/vertical/linkedin_url/website_url siguen
+  // viniendo de get-company-profile (useStartup), no de get-my-organization
+  // — sin cambios ahí. Para fund: esos mismos 4 campos ya vienen en
+  // get-my-organization (contrato confirmado por backend 2026-09-19, ver
+  // OrgInfo) — antes no existía ningún equivalente para fondos.
   const { startup, refetch: refetchStartup } = useStartup();
-  const { upload: uploadLogo, uploading: uploadingLogo } = useImageUpload({ kind: "logo", companyId: company_id ?? "" });
   const [org, setOrg] = useState<OrgInfo | null>(null);
+  const { upload: uploadLogo, uploading: uploadingLogo } = useImageUpload(
+    org?.type === "fund" ? { kind: "logo", fundId: org.id } : { kind: "logo", companyId: company_id ?? "" }
+  );
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -116,14 +129,22 @@ export function MyOrganization() {
   const [savingDetails, setSavingDetails] = useState(false);
 
   useEffect(() => {
-    setVerticalDraft(startup?.vertical ?? "");
-    setLinkedinDraft(startup?.linkedin_url ?? "");
-    setWebsiteUrlDraft(startup?.website_url ?? "");
-  }, [startup]);
+    if (org?.type === "fund") {
+      setVerticalDraft(org.vertical ?? "");
+      setLinkedinDraft(org.linkedin_url ?? "");
+      setWebsiteUrlDraft(org.website_url ?? "");
+    } else {
+      setVerticalDraft(startup?.vertical ?? "");
+      setLinkedinDraft(startup?.linkedin_url ?? "");
+      setWebsiteUrlDraft(startup?.website_url ?? "");
+    }
+  }, [startup, org]);
 
   const handleLogoSelect = async (file: File) => {
     const ok = await uploadLogo(file);
-    if (ok) refetchStartup();
+    if (!ok) return;
+    if (org?.type === "fund") await load();
+    else refetchStartup();
   };
 
   const load = async () => {
@@ -150,6 +171,10 @@ export function MyOrganization() {
         target_raise_usd: raw.target_raise_usd ?? null,
         cohort_number: raw.cohort_number ?? null,
         cohort_year: raw.cohort_year ?? null,
+        logo_url: raw.logo_url ?? null,
+        vertical: raw.vertical ?? null,
+        linkedin_url: raw.linkedin_url ?? null,
+        website_url: raw.website_url ?? null,
       };
       setOrg(normalized);
       setNameDraft(normalized.name);
@@ -313,13 +338,12 @@ export function MyOrganization() {
           target_raise_usd: targetDraft ? Number(targetDraft) : null,
           cohort_number: cohortNumberDraft ? Number(cohortNumberDraft) : null,
           cohort_year: cohortYearDraft ? Number(cohortYearDraft) : null,
-          ...(org.type === "company"
-            ? {
-                vertical: verticalDraft.trim() || null,
-                linkedin_url: linkedinDraft.trim() || null,
-                website_url: websiteUrlDraft.trim() || null,
-              }
-            : {}),
+          // Contrato confirmado por backend 2026-09-19: manage-funds ahora
+          // acepta estos 3 campos igual que manage-companies ya hacía — se
+          // mandan siempre, no solo para company.
+          vertical: verticalDraft.trim() || null,
+          linkedin_url: linkedinDraft.trim() || null,
+          website_url: websiteUrlDraft.trim() || null,
         }),
       });
       if (await handleMembershipError(res)) return;
@@ -469,13 +493,17 @@ export function MyOrganization() {
         )}
       </div>
 
-      {/* Detalles de la startup (solo startups) */}
-      {org.type === "company" && (
+      {/* Detalles (startup o fondo) — paridad agregada 2026-09-19: antes
+          esta sección completa (logo incluido) era exclusiva de startups,
+          un fondo solo podía editar nombre y código de invitación. */}
+      {(org.type === "company" || org.type === "fund") && (
         <div className="border-t border-border pt-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Rocket size={14} strokeWidth={1.5} className="text-muted-foreground" />
-              <h2 className="text-sm font-medium text-foreground">Detalles de la startup</h2>
+              <h2 className="text-sm font-medium text-foreground">
+                {org.type === "company" ? "Detalles de la startup" : "Detalles del fondo"}
+              </h2>
             </div>
             {!editingDetails && org.is_owner && (
               <button
@@ -491,7 +519,7 @@ export function MyOrganization() {
 
           <div className="mb-4">
             <ImageUploadField
-              imageUrl={startup?.logo_url ?? null}
+              imageUrl={(org.type === "company" ? startup?.logo_url : org.logo_url) ?? null}
               fallback={org.name.trim().slice(0, 2).toUpperCase()}
               shape="square"
               size={56}
@@ -506,9 +534,9 @@ export function MyOrganization() {
               <FormField label="Industria">
                 <Input value={industryDraft} onChange={(e) => setIndustryDraft(e.target.value)} className="h-9" />
               </FormField>
-              <FormField label="Vertical">
+              <FormField label={org.type === "fund" ? "Tesis de inversión" : "Vertical"}>
                 <Input
-                  placeholder="Ej: Fintech B2B"
+                  placeholder={org.type === "fund" ? "Ej: Seed · B2B SaaS Latam" : "Ej: Fintech B2B"}
                   value={verticalDraft}
                   onChange={(e) => setVerticalDraft(e.target.value)}
                   className="h-9"
@@ -540,6 +568,7 @@ export function MyOrganization() {
                   className="h-9"
                 />
               </FormField>
+              {org.type === "company" && (
               <FormField label="Objetivo de ronda (USD)">
                 <Input
                   type="number"
@@ -548,6 +577,8 @@ export function MyOrganization() {
                   className="h-9"
                 />
               </FormField>
+              )}
+              {org.type === "company" && (
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Nº de cohort">
                   <Input
@@ -569,6 +600,7 @@ export function MyOrganization() {
                   />
                 </FormField>
               </div>
+              )}
               <FormActions
                 onCancel={() => {
                   setEditingDetails(false);
@@ -577,9 +609,15 @@ export function MyOrganization() {
                   setTargetDraft(org.target_raise_usd?.toString() ?? "");
                   setCohortNumberDraft(org.cohort_number?.toString() ?? "");
                   setCohortYearDraft(org.cohort_year?.toString() ?? "");
-                  setVerticalDraft(startup?.vertical ?? "");
-                  setLinkedinDraft(startup?.linkedin_url ?? "");
-                  setWebsiteUrlDraft(startup?.website_url ?? "");
+                  if (org.type === "fund") {
+                    setVerticalDraft(org.vertical ?? "");
+                    setLinkedinDraft(org.linkedin_url ?? "");
+                    setWebsiteUrlDraft(org.website_url ?? "");
+                  } else {
+                    setVerticalDraft(startup?.vertical ?? "");
+                    setLinkedinDraft(startup?.linkedin_url ?? "");
+                    setWebsiteUrlDraft(startup?.website_url ?? "");
+                  }
                 }}
                 onSubmit={saveDetails}
                 submitLabel="Guardar cambios"
@@ -593,8 +631,8 @@ export function MyOrganization() {
                 <dd className="text-foreground">{org.industry || "—"}</dd>
               </div>
               <div>
-                <dt className="text-xs text-muted-foreground">Vertical</dt>
-                <dd className="text-foreground">{startup?.vertical || "—"}</dd>
+                <dt className="text-xs text-muted-foreground">{org.type === "fund" ? "Tesis de inversión" : "Vertical"}</dt>
+                <dd className="text-foreground">{(org.type === "fund" ? org.vertical : startup?.vertical) || "—"}</dd>
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">Website</dt>
@@ -602,24 +640,28 @@ export function MyOrganization() {
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">Sitio web</dt>
-                <dd className="text-foreground truncate">{startup?.website_url || "—"}</dd>
+                <dd className="text-foreground truncate">{(org.type === "fund" ? org.website_url : startup?.website_url) || "—"}</dd>
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">LinkedIn</dt>
-                <dd className="text-foreground truncate">{startup?.linkedin_url || "—"}</dd>
+                <dd className="text-foreground truncate">{(org.type === "fund" ? org.linkedin_url : startup?.linkedin_url) || "—"}</dd>
               </div>
+              {org.type === "company" && (
               <div>
                 <dt className="text-xs text-muted-foreground">Objetivo de ronda</dt>
                 <dd className="text-foreground">
                   {org.target_raise_usd != null ? `USD ${org.target_raise_usd.toLocaleString()}` : "—"}
                 </dd>
               </div>
+              )}
+              {org.type === "company" && (
               <div>
                 <dt className="text-xs text-muted-foreground">Cohort</dt>
                 <dd className="text-foreground">
                   {org.cohort_number != null ? `#${org.cohort_number}${org.cohort_year ? ` · ${org.cohort_year}` : ""}` : "—"}
                 </dd>
               </div>
+              )}
             </dl>
           )}
         </div>

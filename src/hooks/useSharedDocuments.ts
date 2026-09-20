@@ -8,8 +8,9 @@ type Result = { documents: DataRoomDocument[]; forbidden: boolean };
 // — se normaliza acá, una sola vez, para que DataRoomDocument sea el único
 // tipo que el resto del código (DocumentRow.tsx, InvestorDataRoom.tsx)
 // necesita conocer.
-function normalizeSharedDocument(raw: any): DataRoomDocument {
-  return { ...raw, created_at: raw.uploaded_at ?? raw.created_at };
+function normalizeSharedDocument(raw: unknown): DataRoomDocument {
+  const document = raw as DataRoomDocument & { uploaded_at?: string };
+  return { ...document, created_at: document.uploaded_at ?? document.created_at };
 }
 
 async function fetchSharedDocuments(companyId: string): Promise<Result> {

@@ -13,6 +13,20 @@ export type Role = "admin" | "user" | "investor";
 // `id` is set to `company_id` when available (else email) so TS keeps compiling; data queries
 // that still rely on Supabase auth.uid() are marked with TODOs to migrate later.
 export type AuthUser = { id: string; email: string };
+// Contrato confirmado por backend 2026-09-19: additivo, portfolio_company_ids/
+// portfolio_company_names siguen igual — solo agrega logo_url por empresa.
+// null cuando role !== "investor". logo_url es signed URL de ~60min, nunca
+// cachearla más allá de esta sesión en memoria. Portfolios de más de 60
+// empresas: las primeras 60 traen logo_url real, el resto viene con
+// company_id/name completos pero logo_url: null (la lista nunca se trunca).
+export type PortfolioCompanyWithLogo = { company_id: string; name: string; logo_url: string | null };
+type SessionData = {
+  email?: string; role?: Role; user_id?: string; full_name?: string; user_full_name?: string; name?: string;
+  company_id?: string; company_name?: string; fund_id?: string; fund_name?: string; is_owner?: boolean;
+  portfolio_company_ids?: string[]; portfolio_company_names?: string[]; portfolio_companies?: PortfolioCompanyWithLogo[] | null;
+  avatar_url?: string; role_title?: string; linkedin_url?: string;
+};
+type OrganizationSessionData = { full_name?: string; user_full_name?: string; member_full_name?: string; user_name?: string };
 
 type AuthContextType = {
   user: AuthUser | null;
@@ -29,6 +43,9 @@ type AuthContextType = {
   is_owner: boolean;
   portfolio_company_ids: string[];
   portfolio_company_names: string[];
+  // Solo investor — logo_url por empresa, para catálogos/cards. Ver
+  // PortfolioCompanyWithLogo. Vacío para founder/admin.
+  portfolio_companies: PortfolioCompanyWithLogo[];
   isAdmin: boolean;
   isOrgViewer: boolean;
   // avatar_url es una signed URL con vencimiento (~60min) — nunca cachearla
@@ -56,11 +73,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isOwner, setIsOwner] = useState(false);
   const [portfolioIds, setPortfolioIds] = useState<string[]>([]);
   const [portfolioNames, setPortfolioNames] = useState<string[]>([]);
+  const [portfolioCompanies, setPortfolioCompanies] = useState<PortfolioCompanyWithLogo[]>([]);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [roleTitle, setRoleTitle] = useState<string | null>(null);
   const [linkedinUrl, setLinkedinUrl] = useState<string | null>(null);
 
-  const applySessionData = (data: any) => {
+  const applySessionData = (data: SessionData) => {
     setEmail(data.email ?? null);
     setRole((data.role as Role) ?? null);
     setUserId(data.user_id ?? null);
@@ -74,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsOwner(!!data.is_owner);
     setPortfolioIds(Array.isArray(data.portfolio_company_ids) ? data.portfolio_company_ids : []);
     setPortfolioNames(Array.isArray(data.portfolio_company_names) ? data.portfolio_company_names : []);
+    setPortfolioCompanies(Array.isArray(data.portfolio_companies) ? data.portfolio_companies : []);
     setAvatarUrl(data.avatar_url ?? null);
     setRoleTitle(data.role_title ?? null);
     setLinkedinUrl(data.linkedin_url ?? null);
@@ -89,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!nameFromSession && hasOrg) {
       fetch(GET_MY_ORGANIZATION_URL, { credentials: "include" })
         .then((r) => (r.ok ? r.json() : null))
-        .then((d: any) => {
+        .then((d: OrganizationSessionData | null) => {
           if (!d) return;
           const name =
             d.full_name ??
@@ -198,6 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         is_owner: isOwner,
         portfolio_company_ids: portfolioIds,
         portfolio_company_names: portfolioNames,
+        portfolio_companies: portfolioCompanies,
         avatar_url: avatarUrl,
         role_title: roleTitle,
         linkedin_url: linkedinUrl,
