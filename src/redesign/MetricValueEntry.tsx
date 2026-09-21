@@ -3,9 +3,10 @@ import { FormField } from "@/components/FormField";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { sourceLabel } from "@/lib/metrics";
+import { evaluateMetric, metricDisplay } from "./metricEvaluation";
 import type { RecordItem } from "./model";
 
-export function MetricValueEntry({ item, onSave, onOpenSource, onAsk }: { item: RecordItem; onSave: (item: RecordItem) => void; onOpenSource?: (id: string) => void; onAsk?: (context: { period: string; scenario: string; pendingValue?: string }) => void }) {
+export function MetricValueEntry({ item, records, onSave, onOpenSource, onAsk }: { item: RecordItem; records: RecordItem[]; onSave: (item: RecordItem) => void; onOpenSource?: (id: string) => void; onAsk?: (context: { period: string; scenario: string; pendingValue?: string }) => void }) {
   const [period, setPeriod] = useState("2026-08");
   const [scenario, setScenario] = useState("actual");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -27,7 +28,16 @@ export function MetricValueEntry({ item, onSave, onOpenSource, onAsk }: { item: 
     onSave({ ...item, value: period === "2026-08" && scenario === "actual" ? value : item.value, entries: { ...item.entries, [context]: value } });
     resetDraft();
   };
-  if (calculated) return <p className="rd-info-note">El valor se obtiene de la consulta de cálculo. Editá la configuración para cambiarla; esta demo no ejecuta cálculos del backend.</p>;
+  const result = evaluateMetric(item, records, period, scenario);
+  if (calculated || item.query) return <div className="rd-mapped-form">
+    <FormField label="Período" htmlFor="calculated-period"><Input id="calculated-period" type="month" value={period} onChange={e => changeContext(e.target.value, scenario)} /></FormField>
+    <FormField label="Escenario" htmlFor="calculated-scenario"><select id="calculated-scenario" value={scenario} onChange={e => changeContext(period, e.target.value)}><option value="actual">Real</option><option value="forecast">Forecast</option><option value="budget">Presupuesto</option></select></FormField>
+    <p>Resultado: <strong>{metricDisplay(item, records, period, scenario)}</strong></p>
+    {result.reason && <p role="status" className="rd-info-note">{result.reason}</p>}
+    <p className="rd-muted">{item.query ? "Calculado localmente con los datos guardados en esta demo." : "Valor de ejemplo. Configurá una consulta para calcularlo con tus fuentes de la demo."}</p>
+    {result.sources.map(id => <Button key={id} variant="outline" onClick={() => onOpenSource?.(id)}>Ver fuente: {records.find(record => record.id === id)?.name || id}</Button>)}
+    {onAsk && <Button variant="ghost" onClick={() => onAsk({ period, scenario })}>Explicar este resultado con el asistente</Button>}
+  </div>;
   return <div className="rd-mapped-form">
     <h3>Valores por período</h3>{onAsk && <Button variant="ghost" onClick={() => onAsk({ period, scenario, pendingValue: dirty ? value : undefined })}>Consultar este valor al asistente</Button>}
     <FormField label="Período" htmlFor="entry-period"><Input id="entry-period" type="month" value={period} onChange={e => changeContext(e.target.value, scenario)} /></FormField>

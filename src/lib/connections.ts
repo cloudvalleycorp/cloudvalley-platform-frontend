@@ -23,6 +23,13 @@ export type Connection = {
   responded_at: string | null;
   batch: string | null;
   year: number | null;
+  // Bonus entregado por backend junto al paquete de logos/perfil de fondo
+  // (2026-09-19, sin pedirlo puntualmente) — logo con el mismo criterio de
+  // signed URL ~60min y tope de 60 por listado que portfolio_companies.
+  counterpart_logo_url: string | null;
+  counterpart_vertical: string | null;
+  counterpart_website_url: string | null;
+  counterpart_linkedin_url: string | null;
 };
 
 export type ConnectionTarget = { id: string; name: string };

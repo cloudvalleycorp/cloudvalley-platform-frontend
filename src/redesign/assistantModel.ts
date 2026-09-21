@@ -1,3 +1,5 @@
+import { readReportActivity, reportAnalytics } from "./reportActivity";
+import { evaluateMetric, metricDisplay } from "./metricEvaluation";
 import { documentAccess } from "./documentAccess";
 import { validateQuery } from "@/lib/querySpec";
 import type { Draft } from "./ProductionForms";
@@ -61,11 +63,17 @@ export function answerDemoQuestion(question: string, context: AssistantContext, 
     return answer(issues.length ? `Revisé el borrador ${draft.name || "sin nombre"}:\n${issues.map(i => `• ${i}`).join("\n")}\nVolvé al formulario para completarlo. Todavía no se guardó.` : `El borrador ${draft.name} tiene los datos básicos completos. Revisá los campos y el paso de confirmación del formulario antes de guardarlo.`, []);
   }
   if (/integracion|reconect|cuenta|permiso vencido/.test(q) && (area === "sources" || area === "settings")) return answer("Las cuentas se administran en Configuración > Integraciones. Si venció un permiso, reconectá la misma cuenta para conservar los mapeos; después volvé a la fuente.", [route("settings", "Abrir Integraciones", "integrations")]);
-  if (matched.length && !selected) return answer(matched.map(r => `${r.name}: ${r.value} · ${r.status}. ${r.detail}`).join("\n\n"), matched.map(open), matched);
+  if (matched.length && !selected) return answer(matched.map(r => `${r.name}: ${r.area === "metrics" ? metricDisplay(r, records, context.period, context.scenario) : r.value} · ${r.status}. ${r.detail}`).join("\n\n"), matched.map(open), matched);
   if (area === "metrics" && selected) {
     const period = context.period || "2026-08"; const scenario = context.scenario || "actual";
-    const value = selected.entries?.[`${period}:${scenario}`] ?? (period === "2026-08" && scenario === "actual" ? selected.value : "Sin datos");
-    return answer(`${selected.name}\nPeríodo: ${period} · Escenario: ${scenario === "actual" ? "Real" : scenario === "budget" ? "Presupuesto" : "Forecast"}\nValor guardado: ${value}.\n${context.pendingValue !== undefined ? `Edición sin guardar: ${context.pendingValue || "vacío"}.\n` : ""}${selected.detail}\n${selected.fields?.metric_type === "calculated" || ["arr", "runway", "margin"].includes(selected.id) ? "El resultado proviene de una consulta de cálculo; revisá su definición y las fuentes." : "Real, forecast y presupuesto se guardan por separado."}`, [open(selected)], [selected]);
+    const evaluated = evaluateMetric(selected, records, period, scenario);
+    const value = metricDisplay(selected, records, period, scenario);
+    const origins = evaluated.sources.map(id => records.find(record => record.id === id)).filter((record): record is RecordItem => !!record);
+    return answer(`${selected.name}\nPeríodo: ${period} · Escenario: ${scenario === "actual" ? "Real" : scenario === "budget" ? "Presupuesto" : "Forecast"}\nValor guardado: ${value}.${evaluated.reason ? `\n${evaluated.reason}` : ""}${origins.length ? `\nFuentes utilizadas: ${origins.map(origin => origin.name).join(", ")}.` : ""}\n${context.pendingValue !== undefined ? `Edición sin guardar: ${context.pendingValue || "vacío"}.\n` : ""}${selected.detail}\n${selected.fields?.metric_type === "calculated" || ["arr", "runway", "margin"].includes(selected.id) ? "El resultado proviene de una consulta de cálculo; revisá su definición y las fuentes." : "Real, forecast y presupuesto se guardan por separado."}`, [open(selected), ...origins.map(open)], [selected, ...origins]);
+  }
+  if (area === "reports" && selected && /actividad|lectura|abrio|visto|leyo/.test(q)) {
+    const rows = readReportActivity(selected.id); const data = reportAnalytics(selected.id, rows);
+    return answer(rows.length ? `Actividad simulada de ${selected.name}: ${data.total_opens} aperturas y ${data.total_active_seconds} segundos activos.\n${data.by_fund.map(fund => `${rows.find(row => row.fundId === fund.fund_id)?.fundName}: ${fund.opens} aperturas, ${fund.active_seconds} segundos, ${fund.max_scroll_pct}% visto.`).join("\n")}\nSon eventos locales de demostración, no lecturas reales.` : `El reporte ${selected.name} todavía no tiene lecturas simuladas. Abrí Actividad de lectura en su detalle para probar una lectura de un fondo con acceso guardado.`, [open(selected)], [selected]);
   }
   if (area === "reports" && selected) return answer(`El reporte ${selected.name} tiene ${selected.sections?.length || 0} secciones y ${selected.sections?.reduce((sum, s) => sum + s.blocks.length, 0) || 0} bloques de métricas. Revisá el período en Vista previa y los destinatarios antes de compartir. Podés pedirme «Agregá MRR» para revisar una propuesta sobre este mismo reporte.`, [], [selected]);
   if (area === "documents") {

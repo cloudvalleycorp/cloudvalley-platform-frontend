@@ -1,3 +1,4 @@
+import { metricDisplay } from "./metricEvaluation";
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Printer, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ export function DemoReportEditor({ item, records, onSave, onOpenMetric, onAsk }:
   const update = (next: typeof state) => { setState(next); setDirty(true); try { localStorage.setItem(key, JSON.stringify(next)); } catch { setError("No se pudo conservar el borrador en el navegador."); } };
   const section = (index: number, next: ReportSection) => update({ ...state, sections: state.sections.map((s, i) => i === index ? next : s) });
   const move = <T,>(rows: T[], index: number, by: number) => { const next = [...rows]; [next[index], next[index + by]] = [next[index + by], next[index]]; return next; };
-  const valueFor = (metric?: RecordItem) => metric?.entries?.[`${period}:actual`] ?? (period === "2026-08" ? metric?.value : undefined) ?? "Sin datos";
+  const valueFor = (metric?: RecordItem) => metricDisplay(metric, records, period);
   const save = () => {
     if (!state.name.trim()) { setError("Escribí el nombre del reporte."); return; }
     if (state.sections.some(s => !s.title.trim())) { setError("Cada sección necesita un título."); return; }

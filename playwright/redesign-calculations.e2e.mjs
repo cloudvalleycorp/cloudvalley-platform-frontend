@@ -1,0 +1,64 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage();
+const button = name => page.getByRole('button', { name, exact: true });
+const errors = [];
+page.on('pageerror', error => errors.push(error.message));
+try {
+  await page.goto('http://127.0.0.1:8080/redesign/sources');
+  await button('Ver detalle: Estado de resultados').click();
+  await button('Sincronizar muestra').click();
+  await page.evaluate(() => {
+    const records = JSON.parse(localStorage.getItem('cloudvalley-redesign-v1'));
+    records.push({ id: 'calculation-test', area: 'metrics', name: 'Ingresos calculados', category: 'Ingresos', status: 'Al día', value: 'outdated', detail: '', fields: { metric_type: 'calculated', value_type: 'money', currency: 'USD' }, query: { type: 'aggregation', aggregation: 'sum', field_key: 'ingresos', distinct_field_key: null, filters: [] } });
+    records.find(record => record.id === 'report1').sections = [{ title: 'Resultados', subtitle: null, blocks: [{ metric_id: 'calculation-test' }] }];
+    localStorage.setItem('cloudvalley-redesign-v1', JSON.stringify(records));
+  });
+  await page.goto('http://127.0.0.1:8080/redesign/metrics');
+  assert.match(await button('Ver detalle: Ingresos calculados').innerText(), /101.000/);
+  assert.equal(await page.locator('.rd-metric-card').count(), 6);
+  assert.equal(await page.locator('.rd-metric-card').filter({ hasText: 'Ingresos calculados' }).locator('.rd-metric-chart').count(), 1);
+  await button('Grilla').click();
+  await page.reload();
+  assert.equal(await button('Grilla').getAttribute('aria-pressed'), 'true');
+  const grid = page.getByRole('region', { name: 'Valores mensuales de m\u00e9tricas' });
+  assert.equal(await grid.getByRole('columnheader').count(), 13);
+  assert.match(await grid.getByRole('row').filter({ hasText: 'Ingresos calculados' }).innerText(), /101.000/);
+  await page.getByLabel('Escenario', { exact: true }).selectOption('budget');
+  assert.doesNotMatch(await grid.getByRole('row').filter({ hasText: 'Ingresos calculados' }).innerText(), /101.000/);
+  await page.getByLabel('Escenario', { exact: true }).selectOption('actual');
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await button('Tabla').click();
+  await page.reload();
+  assert.equal(await button('Tabla').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('.rd-metric-card').count(), 0);
+  await button('Cards con gráficos').click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.screenshot({ path: 'playwright/artifacts/redesign-metric-cards-mobile.png' });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: 'playwright/artifacts/redesign-metric-cards.png' });
+  await button('Ver detalle: Ingresos calculados').click();
+  await page.getByLabel('Período', { exact: true }).fill('2026-07');
+  await page.getByText('USD 90.000', { exact: true }).waitFor();
+  await button('Explicar este resultado con el asistente').click();
+  // Context-specific suggestions are separate from sending a user message.
+  const composer = page.getByRole('textbox').last();
+  await composer.fill('Explicá el valor de esta métrica');
+  await composer.press('Enter');
+  await page.getByText(/Valor guardado: USD 90.000/).waitFor();
+  await page.goto('http://127.0.0.1:8080/redesign/reports');
+  await button('Ver detalle: Investor update · septiembre').click();
+  await button('Vista previa').click();
+  assert.match(await button('Ver detalle: Ingresos calculados').innerText(), /101.000/);
+  await page.getByLabel('Período del reporte', { exact: true }).fill('2026-07');
+  assert.match(await button('Ver detalle: Ingresos calculados').innerText(), /90.000/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.getByRole('dialog').evaluate(el => el.scrollWidth > el.clientWidth), false);
+  assert.deepEqual(errors, []);
+  console.log('PASS: imported source → calculated metric → contextual assistant → report, period changes and mobile.');
+} finally { await browser.close(); }
+

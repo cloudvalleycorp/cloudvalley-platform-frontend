@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershipScreen";
 import { PageHeader } from "@/components/PageHeader";
+import { SectionCard } from "@/components/SectionCard";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingState } from "@/components/LoadingState";
 import { Button } from "@/components/ui/button";
@@ -485,16 +486,18 @@ function PortfolioCompareView({
             const period = latestPeriod;
             const average = period ? portfolioAggregates[metric.requirement_id]?.[period]?.avg : undefined;
             return (
-              <div key={metric.requirement_id} className="border border-border rounded-lg bg-card p-5">
-                <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-4">
-                  <h2 className="text-sm font-medium text-foreground">{metric.name}</h2>
+              <SectionCard
+                key={metric.requirement_id}
+                title={metric.name}
+                action={
                   <p className="text-xs text-muted-foreground tabular-nums">
                     {cov ? `${cov.ok_count}/${cov.target_count} al día` : "—"}
                     {" · "}
                     {PERIODICITY_LABELS[metric.periodicity]}
                     {compareMode === "benchmark" && average !== undefined && ` · promedio ${formatRequirementValue(average, metric)}`}
                   </p>
-                </div>
+                }
+              >
                 <PortfolioMetricBarChart
                   requirement={metric}
                   rows={pagedCompanies.map((c) => {
@@ -506,7 +509,7 @@ function PortfolioCompareView({
                     };
                   })}
                 />
-              </div>
+              </SectionCard>
             );
           })}
         </div>
@@ -542,8 +545,7 @@ function PortfolioTrendView({
   return (
     <div className="space-y-6">
       {metrics.map((metric) => (
-        <div key={metric.requirement_id} className="border border-border rounded-lg bg-card p-5">
-          <h2 className="text-sm font-medium text-foreground mb-4">{metric.name}</h2>
+        <SectionCard key={metric.requirement_id} title={metric.name}>
           <div className="overflow-x-auto">
             <table className="w-full text-xs tabular-nums">
               <thead>
@@ -574,7 +576,7 @@ function PortfolioTrendView({
               </tbody>
             </table>
           </div>
-        </div>
+        </SectionCard>
       ))}
     </div>
   );

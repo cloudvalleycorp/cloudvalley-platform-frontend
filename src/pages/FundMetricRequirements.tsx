@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import { NoMembershipScreen, NoMembershipBanner } from "@/components/NoMembershipScreen";
 import { PageHeader } from "@/components/PageHeader";
+import { SectionCard } from "@/components/SectionCard";
 import { EmptyState } from "@/components/EmptyState";
 import { DataTableToolbar } from "@/components/DataTableToolbar";
 import { FormDialog } from "@/components/FormDialog";
@@ -244,14 +245,14 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
         />
 
         {tab === "metrics" && (
-        <>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <h2 className="text-sm font-medium text-foreground">Métricas</h2>
-          <Button onClick={openCreate} size="sm">
-            <Plus size={14} strokeWidth={1.5} className="mr-2" /> Nuevo requisito
-          </Button>
-        </div>
-
+        <SectionCard
+          title="Métricas"
+          action={
+            <Button onClick={openCreate} size="sm">
+              <Plus size={14} strokeWidth={1.5} className="mr-2" /> Nuevo requisito
+            </Button>
+          }
+        >
         {requirements.length > 0 && (
           <DataTableToolbar search={metricSearch} onSearchChange={setMetricSearch} searchPlaceholder="Buscar requisito…" />
         )}
@@ -333,21 +334,19 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
             })}
           </div>
         )}
-        </>
+        </SectionCard>
         )}
 
         {tab === "segments" && (
-        <>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <h2 className="text-sm font-medium text-foreground">Segmentos</h2>
-          <Button onClick={openCreateSegment} size="sm" variant="outline">
-            <Plus size={14} strokeWidth={1.5} className="mr-2" /> Nuevo segmento
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Agrupá startups para comparar y filtrar por grupo en Portfolio, Reporting, Data Room y Tasks — ej. "SaaS", "Cohort 2025".
-        </p>
-
+        <SectionCard
+          title="Segmentos"
+          description='Agrupá startups para comparar y filtrar por grupo en Portfolio, Reporting, Data Room y Tasks — ej. "SaaS", "Cohort 2025".'
+          action={
+            <Button onClick={openCreateSegment} size="sm" variant="outline">
+              <Plus size={14} strokeWidth={1.5} className="mr-2" /> Nuevo segmento
+            </Button>
+          }
+        >
         {segments.length > 0 && (
           <DataTableToolbar search={segmentSearch} onSearchChange={setSegmentSearch} searchPlaceholder="Buscar segmento…" />
         )}
@@ -394,7 +393,7 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
             ))}
           </div>
         )}
-        </>
+        </SectionCard>
         )}
       </div>
 

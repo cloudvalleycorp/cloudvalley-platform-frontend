@@ -337,3 +337,38 @@ ol.rd-help { list-style: decimal; padding-left: 25px; }
 .rd-assistant-demo-controls { padding: 0 20px 12px; font-size: 11px; color: hsl(var(--muted-foreground)); }
 .rd-assistant-error { margin: 8px 20px 0; font-size: 12px; color: hsl(var(--destructive)); }
 @media (max-width: 760px) { .rd-assistant-trigger { padding: 0; width: 40px; height: 40px; } .rd-assistant-trigger span { display: none; } .rd-top-actions { gap: 6px; } .rd-assistant-header { padding: 16px; } }
+.rd-view-switch { display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 12px; }
+.rd-view-switch button { padding: 8px 12px; border: 1px solid hsl(var(--border)); border-radius: 8px; font-size: 13px; }
+.rd-view-switch button[aria-pressed="true"] { background: #eaf3f1; border-color: #2b6a60; color: #245c53; }
+.rd-metrics-cards.rd-collection { border: 0; background: transparent; }
+.rd-metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 16px; }
+.rd-metric-card { display: flex; flex-direction: column; min-width: 0; text-align: left; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; padding: 20px; transition: border-color .15s, box-shadow .15s; }
+.rd-metric-card:hover { border-color: #2b6a60; box-shadow: 0 4px 16px #234d4310; }
+.rd-metric-card:focus-visible, .rd-view-switch button:focus-visible { outline: 2px solid #2b6a60; outline-offset: 3px; }
+.rd-metric-card-top, .rd-metric-card-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 11px; color: hsl(var(--muted-foreground)); }
+.rd-metric-card-name { font-size: 15px; margin: 14px 0 12px; overflow-wrap: anywhere; }
+.rd-metric-card-value { font-size: 28px; letter-spacing: -.8px; overflow-wrap: anywhere; }
+.rd-metric-card-comparison { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px; }
+.rd-metric-chart, .rd-metric-no-history { width: 100%; height: 64px; margin: 16px 0; }
+.rd-metric-chart line { stroke: #2b6a60; stroke-width: 2; }
+.rd-metric-chart circle { fill: #2b6a60; }
+.rd-metric-no-history { display: flex; align-items: center; justify-content: center; font-size: 12px; color: hsl(var(--muted-foreground)); background: hsl(var(--muted) / .35); border-radius: 8px; }
+.rd-metric-card-footer { margin-top: auto; }
+.rd-metrics-table .rd-record { padding-block: 14px; min-height: 70px; }
+.rd-grid-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; flex-wrap: wrap; }
+.rd-grid-controls > div { display: flex; align-items: center; gap: 16px; }
+.rd-grid-controls button { width: 32px; height: 32px; border: 1px solid hsl(var(--border)); border-radius: 6px; }
+.rd-grid-controls label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.rd-grid-controls select { padding: 8px; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--card)); }
+.rd-period-grid { max-width: 100%; overflow-x: auto; }
+.rd-period-grid table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+.rd-period-grid th, .rd-period-grid td { padding: 14px 16px; border-top: 1px solid hsl(var(--border)); white-space: nowrap; text-align: right; min-width: 110px; }
+.rd-period-grid thead th { background: hsl(var(--muted)); font-weight: 500; }
+.rd-period-grid tr > th:first-child { position: sticky; left: 0; z-index: 1; text-align: left; background: hsl(var(--card)); min-width: 190px; max-width: 230px; border-right: 1px solid hsl(var(--border)); }
+.rd-period-grid th button { text-align: left; white-space: normal; font-weight: 500; }
+.rd-period-grid th button:hover { text-decoration: underline; }
+.rd-period-grid small { display: block; font-weight: 400; color: hsl(var(--muted-foreground)); margin-top: 4px; }
+.rd-grid-missing, .rd-grid-hint { color: hsl(var(--muted-foreground)); }
+.rd-grid-hint { padding: 12px 16px; font-size: 12px; }
+.rd-view-switch { flex-wrap: wrap; }
+@media (max-width: 600px) { .rd-period-grid tr > th:first-child { min-width: 140px; max-width: 140px; } }

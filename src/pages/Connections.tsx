@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormDialog } from "@/components/FormDialog";
 import { Label } from "@/components/ui/label";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { entityWords, handleMembershipError } from "@/lib/membership";
 import {
   REQUEST_CONNECTION_URL,
@@ -24,7 +25,56 @@ import {
 } from "@/lib/connections";
 import { LIST_FINANCIAL_REPORT_SHARES_URL, type ReportShare } from "@/lib/financialReports";
 import { toast } from "sonner";
-import { Building2, Landmark, Search, Plus, Check, Clock, Unlink, Pencil, Share2 } from "lucide-react";
+import { Building2, Landmark, Search, Plus, Check, Clock, Unlink, Pencil, Share2, Globe, Linkedin, type LucideIcon } from "lucide-react";
+
+// Logo + vertical/website/LinkedIn de la contraparte — bonus que backend
+// entregó junto al paquete de logos de fondo/portfolio (2026-09-19), sin
+// pedirlo puntualmente. Especialmente valioso en solicitudes pendientes:
+// antes no había ninguna forma de ver el perfil de quien pide conectarse
+// antes de decidir aceptar/rechazar.
+function CounterpartAvatar({ logoUrl, icon: Icon }: { logoUrl: string | null; icon: LucideIcon }) {
+  return (
+    <Avatar className="h-10 w-10 rounded-md shrink-0">
+      <AvatarImage src={logoUrl ?? undefined} alt="" />
+      <AvatarFallback className="rounded-md bg-surface">
+        <Icon size={16} strokeWidth={1.5} />
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+function CounterpartLinks({ connection }: { connection: Connection }) {
+  if (!connection.counterpart_vertical && !connection.counterpart_website_url && !connection.counterpart_linkedin_url) {
+    return null;
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+      {connection.counterpart_vertical && <span className="truncate">{connection.counterpart_vertical}</span>}
+      {connection.counterpart_website_url && (
+        <a
+          href={connection.counterpart_website_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-foreground transition-colors shrink-0"
+          aria-label={`Sitio web de ${connection.counterpart_name}`}
+        >
+          <Globe size={12} strokeWidth={1.5} />
+        </a>
+      )}
+      {connection.counterpart_linkedin_url && (
+        <a
+          href={connection.counterpart_linkedin_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-foreground transition-colors shrink-0"
+          aria-label={`LinkedIn de ${connection.counterpart_name}`}
+        >
+          <Linkedin size={12} strokeWidth={1.5} />
+        </a>
+      )}
+    </div>
+  );
+}
 
 export default function Connections() {
   const { user, loading, role, isAdmin, company_id, fund_id, email, is_owner } = useAuth();
@@ -289,11 +339,10 @@ export default function Connections() {
                   {received.map((c) => (
                     <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
-                          <CounterpartIcon size={16} strokeWidth={1.5} />
-                        </div>
+                        <CounterpartAvatar logoUrl={c.counterpart_logo_url} icon={CounterpartIcon} />
                         <div className="min-w-0">
                           <div className="font-medium truncate">{c.counterpart_name}</div>
+                          <CounterpartLinks connection={c} />
                           {c.message && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{c.message}</p>}
                           <div className="text-xs text-tertiary mt-1">
                             {c.requested_by_name} · {new Date(c.created_at).toLocaleDateString("es-AR")}
@@ -334,11 +383,10 @@ export default function Connections() {
                   {sent.map((c) => (
                     <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
-                          <CounterpartIcon size={16} strokeWidth={1.5} />
-                        </div>
+                        <CounterpartAvatar logoUrl={c.counterpart_logo_url} icon={CounterpartIcon} />
                         <div className="min-w-0">
                           <div className="font-medium truncate">{c.counterpart_name}</div>
+                          <CounterpartLinks connection={c} />
                           <div className="text-xs text-tertiary mt-1 flex items-center gap-1">
                             <Clock size={11} strokeWidth={1.5} /> Pendiente · {new Date(c.created_at).toLocaleDateString("es-AR")}
                           </div>
@@ -382,11 +430,10 @@ export default function Connections() {
                   {active.map((c) => (
                     <div key={c.connection_id} className="border border-border rounded-lg p-4 bg-card flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-10 w-10 rounded-md bg-surface flex items-center justify-center shrink-0">
-                          <CounterpartIcon size={16} strokeWidth={1.5} />
-                        </div>
+                        <CounterpartAvatar logoUrl={c.counterpart_logo_url} icon={CounterpartIcon} />
                         <div className="min-w-0">
                           <div className="font-medium truncate">{c.counterpart_name}</div>
+                          <CounterpartLinks connection={c} />
                           <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 flex-wrap">
                             <Check size={11} strokeWidth={1.5} /> Conectado
                             {c.responded_at && ` · ${new Date(c.responded_at).toLocaleDateString("es-AR")}`}

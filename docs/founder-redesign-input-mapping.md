@@ -61,7 +61,7 @@ Lint del código nuevo y build verificados. TypeScript conserva el error preexis
 - `node playwright/redesign-workflows.e2e.mjs`: ciclo de conexiones, revocación, bloques y borrador de reporte, vista previa, fuente exacta, creación de carpeta, descarga comprobando bytes, movimiento y eliminación de archivos.
 - `reconcileTaskEvidence.test.ts`: evidencia alternativa, retiro de documentos, fondos desconectados, reportes privados y conservación del estado manual.
 
-La paridad integral sigue en curso: ejecución de fuentes simuladas, operaciones avanzadas de métricas y algunas acciones de reportes aún requieren desarrollo y validación. Esta lista no certifica que todos los flujos de producción estén reproducidos.
+La paridad integral sigue en curso. La ejecución de fuentes simuladas y las acciones de reportes incorporadas después de esta auditoría se detallan abajo. Esta lista no certifica que todos los flujos de producción estén reproducidos.
 
 ## Configuración y cuentas
 
@@ -93,3 +93,23 @@ Las carpetas guardan permisos por fondo y vencimiento, sin `is_public` (igual qu
 El Data Room, el detalle del documento, los recursos de cada fondo y el asistente usan la misma resolución de acceso. El documento identifica de qué carpeta proviene un permiso y dónde revocarlo. Renombrar/mover una carpeta conserva sus permisos.
 
 `documentAccess.test.ts` verifica herencia, movimiento, permisos individuales, raíz explícita, vencimientos, conexiones inactivas y ciclos. `redesign-folders.e2e.mjs` pasó permisos de carpetas, validación de vencimiento, acceso desde el fondo, explicación del asistente, persistencia, revocación y movimiento a raíz.
+
+## Fuentes y resultados compartidos con el asistente
+
+La importación local ofrece revisión de muestra sin escritura, sincronización idempotente, historial y errores parciales/de esquema. Preserva datos anteriores ante fallos y valida el estado de la cuenta conectada. Usa muestras explícitas; no lee servicios externos ni interpreta el contenido de archivos subidos.
+
+Las métricas con QuerySpec calculan localmente sumas, promedios, conteos, filtros, ventanas de meses, referencias desplazadas y operaciones aritméticas. Los resultados identifican las fuentes importadas utilizadas. Se detectan falta de datos, referencias circulares, valores no numéricos y división por cero. Las muestras importadas corresponden únicamente al escenario real; los valores manuales mantienen sus escenarios separados. Los valores de ejemplo sin consulta no se convierten implícitamente en operandos numéricos.
+
+La colección, el detalle, la vista previa/impresión del reporte y el asistente comparten el mismo resultado. El asistente respeta el mes y escenario del detalle y ofrece enlaces a las fuentes utilizadas. Todo permanece en la demo.
+
+Validación del 20 de septiembre: 107 pruebas unitarias aprobadas en 14 archivos, build y lint de archivos modificados aprobados. `redesign-calculations.e2e.mjs` verificó fuente → métrica → asistente → reporte, cambios de período y mobile. `redesign.e2e.mjs` aprobó las ocho rutas y los formularios. Persiste el error TypeScript previo TS2695 en `src/pages/Onboarding.tsx:97`. Chromium se abrió con el asistente visible. Esta entrega no declara completada toda la paridad funcional del Founder.
+
+## Vistas de métricas y gestión de reportes/fuentes
+
+- Selector persistente entre tabla compacta, cards con historial disponible y grilla de doce meses. La grilla permite cambiar año/escenario y conserva la primera columna al desplazar. No se inventan series para las métricas sin historial numérico.
+- Eliminar fuente: confirmación con métricas potencialmente afectadas, incluidas referencias indirectas. Se retiran configuración, filas importadas, historial y archivo local; se conserva la cuenta del proveedor. Las consultas vuelven a evaluarse sobre los datos restantes.
+- Eliminar reporte: retira registro, borrador, accesos y actividad local. Conserva las métricas y recalcula evidencia de tareas. Cancelar no modifica los registros.
+- Actividad de reportes: aperturas, segundos activos y porcentaje visto por fondo; eventos explícitamente simulados y persistentes. Solo fondos conectados con permisos guardados pueden generar lecturas. La vista previa del Founder no incrementa estadísticas. El asistente lee los mismos eventos.
+- `redesign-deletion.e2e.mjs` aprobó cancelación, impactos, persistencia, limpieza de borrador/actividad y explicación del asistente. La prueba de cálculos ahora también verifica selector persistente, grilla y escenarios en móvil.
+
+Pendientes de la paridad integral: administración avanzada de métricas (incluida eliminación conservando valores), salud de datos, resolución de entidades/duplicados, operaciones masivas de fuentes, eliminación de tareas propias y analítica documental. Requieren contrastar sus contratos antes de reproducirlos; no están declarados completos.
