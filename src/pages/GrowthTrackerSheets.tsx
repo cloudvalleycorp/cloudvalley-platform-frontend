@@ -337,7 +337,7 @@ function timeAgo(iso: string | null) {
 }
 
 export default function GrowthTrackerSheets() {
-  const { user, loading, company_id } = useAuth();
+  const { user, loading, role, company_id } = useAuth();
   // Esta pantalla solo usa financial.logs/reloadLogs (import log de Sheets),
   // nunca entries — un rango chico alcanza, no hace falta el histórico.
   const financialRange = useMemo(() => {
@@ -1924,6 +1924,11 @@ export default function GrowthTrackerSheets() {
 
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
+  // Bug real (auditado 2026-09-21): sin guard de rol, investor/admin caían
+  // acá con company_id null y todo el wizard renderizaba vacío/roto sin
+  // ningún mensaje. Mismo criterio que Reporting.tsx/DataRoom.tsx.
+  if (role === "investor") return <Navigate to="/overview" replace />;
+  if (role !== "user") return <Navigate to="/admin" replace />;
 
   const showWizard = wizardAccountId !== null || excelMode;
   const anyConnections = connections.length > 0;

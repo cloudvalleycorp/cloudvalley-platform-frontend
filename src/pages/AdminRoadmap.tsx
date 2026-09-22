@@ -249,7 +249,7 @@ export default function AdminRoadmap() {
         ) : (
           <>
             <div>
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
                 <h2 className="text-sm font-medium">Pilares</h2>
                 <Button size="sm" onClick={openNewPillar}>
                   <Plus size={14} className="mr-1" /> Nuevo pilar
@@ -275,6 +275,7 @@ export default function AdminRoadmap() {
                           variant="ghost"
                           className="text-muted-foreground hover:text-destructive"
                           onClick={() => setDeletingPillar(p)}
+                          aria-label={`Eliminar ${p.name}`}
                         >
                           <Trash2 size={12} />
                         </Button>
@@ -343,6 +344,7 @@ export default function AdminRoadmap() {
                           variant="ghost"
                           className="text-muted-foreground hover:text-destructive"
                           onClick={() => setDeletingTask(t)}
+                          aria-label={`Eliminar ${t.title}`}
                         >
                           <Trash2 size={12} />
                         </Button>
@@ -370,6 +372,7 @@ export default function AdminRoadmap() {
         open={!!pillarDialog}
         onOpenChange={(o) => !o && setPillarDialog(null)}
         title={pillarDialog?.editing ? "Editar pilar" : "Nuevo pilar"}
+        description="Define un pilar del catálogo global de Roadmap y a qué startups aplica."
         onSubmit={savePillar}
         submitLabel="Guardar"
         busy={busy}
@@ -427,6 +430,7 @@ export default function AdminRoadmap() {
         open={!!taskDialog}
         onOpenChange={(o) => !o && setTaskDialog(null)}
         title={taskDialog?.editing ? "Editar tarea" : "Nueva tarea"}
+        description="Define una tarea del catálogo global de Roadmap, dentro de un pilar."
         onSubmit={saveTask}
         submitLabel="Guardar"
         busy={busy}

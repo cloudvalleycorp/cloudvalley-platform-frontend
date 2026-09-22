@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,7 +27,7 @@ const TAB_HEADER: Record<MetricsTab, { title: string; subtitle: string }> = {
 const now = new Date();
 
 export default function Metrics() {
-  const { company_id, is_owner } = useAuth();
+  const { role, company_id, is_owner } = useAuth();
   const { metricId } = useParams<{ metricId?: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -50,6 +50,12 @@ export default function Metrics() {
   // Fuentes de datos, Salud de datos, y el lineage de Overview/Explorador
   // (y desde esta pasada, también por Data Readiness en el Dashboard).
   const { rawFields, connections, accounts, loading: loadingSources, reload: reloadSources } = useSheetsSources(company_id);
+
+  // Bug real (auditado 2026-09-21): sin guard de rol, investor/admin caían
+  // acá con company_id null y los 4 tabs renderizaban vacíos/rotos sin
+  // ningún mensaje. Mismo criterio que Reporting.tsx/DataRoom.tsx.
+  if (role === "investor") return <Navigate to="/overview" replace />;
+  if (role !== "user") return <Navigate to="/admin" replace />;
 
   return (
     <AppLayout>

@@ -23,6 +23,8 @@ const CROSS_COMPANY_SURFACES: PlatformAgentSurface[] = [
   "investor_reporting",
   "investor_data_room",
   "investor_tasks",
+  // Admin — sobre toda la plataforma, nunca una company puntual.
+  "admin_dashboard",
 ];
 
 export type AskOptions = {
@@ -77,6 +79,10 @@ export function usePlatformAgent(companyId: string | null, surface: PlatformAgen
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // Confirmado y desplegado 2026-09-21 (Bloque 6): admin_dashboard
+          // es el único surface que necesita domain explícito — el resto lo
+          // infiere backend del propio valor de surface.
+          ...(surface === "admin_dashboard" ? { domain: "admin" } : {}),
           ...(companyId ? { company_id: companyId } : {}),
           surface,
           uiContext: opts.uiContext,

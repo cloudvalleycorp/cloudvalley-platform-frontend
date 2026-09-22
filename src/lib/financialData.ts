@@ -12,6 +12,12 @@ export const LIST_FINANCIAL_REPORT_STATUS_URL = `${API_BASE_URL}/list-report-sta
 export const LIST_FINANCIAL_IMPORT_LOG_URL = `${API_BASE_URL}/list-import-log`;
 export const LIST_FINANCIAL_RECORDS_URL = `${API_BASE_URL}/list-records`;
 export const LIST_FINANCIAL_METRICS_URL = `${API_BASE_URL}/list-metrics`;
+// Admin-only, confirmado y desplegado 2026-09-21 (Bloque 2 del plan de
+// Admin) — corregir un valor puntual con error o borrar una fila de un
+// import fallido, sin depender de que el founder lo resuelva desde su
+// propio Growth Tracker.
+export const UPDATE_FINANCIAL_RECORD_URL = `${API_BASE_URL}/update-financial-record`;
+export const DELETE_FINANCIAL_RECORD_URL = `${API_BASE_URL}/delete-financial-record`;
 export const LIST_FINANCIAL_METRIC_PRIVACY_URL = `${API_BASE_URL}/list-metric-privacy`;
 export const UPDATE_FINANCIAL_METRIC_PRIVACY_URL = `${API_BASE_URL}/update-metric-privacy`;
 // Lectura de valores ya calculados para métricas `query`-based (contrato
@@ -91,6 +97,11 @@ export type ReportStatusEntry = {
   company_name: string;
   period: string;
   status: ReportStatus;
+  // Confirmado y desplegado 2026-09-21 (Bloque 2) — linkea directo al
+  // ImportLogEntry con row_errors que explica un "con_errores". Backend
+  // confirmó que SIEMPRE hay uno detrás de ese estado (nunca hace falta un
+  // error_summary de texto aparte).
+  last_import_log_id: string | null;
 };
 
 export type FinancialSourceEntry = {

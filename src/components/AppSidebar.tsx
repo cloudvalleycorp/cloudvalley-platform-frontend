@@ -7,7 +7,6 @@ import {
   Network,
   Building2,
   Users,
-  Landmark,
   DollarSign,
   FileBarChart,
   Compass,
@@ -291,6 +290,108 @@ function GestionNavGroup() {
   );
 }
 
+// Grupo colapsable Gestión (admin) — Empresas/Usuarios/Fondos. Reemplaza los
+// 3 ítems planos que tenía la rama admin del sidebar hasta el rediseño
+// 2026-09-21 (Fase 2 del plan de Admin) — sin destino propio (a diferencia
+// de PortfolioNavGroup/GestionNavGroup de investor), así que el botón entero
+// es el CollapsibleTrigger, mismo patrón que MetricsNavGroup.
+function AdminGestionNavGroup() {
+  const { pathname } = useLocation();
+  const inGestionArea =
+    pathname.startsWith("/admin/companies") ||
+    pathname.startsWith("/admin/startup") ||
+    pathname.startsWith("/admin/users") ||
+    pathname.startsWith("/admin/funds") ||
+    pathname.startsWith("/admin/connections");
+  const [open, setOpen] = useState(inGestionArea);
+  useEffect(() => {
+    if (inGestionArea) setOpen(true);
+  }, [inGestionArea]);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton
+            isActive={inGestionArea}
+            className="flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 text-muted-foreground hover:text-foreground cursor-pointer"
+          >
+            <Users size={16} strokeWidth={1.5} />
+            <span className="flex-1 text-left">Gestión</span>
+            <ChevronDown size={14} strokeWidth={1.5} className={cn("transition-transform", open && "rotate-180")} />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+      </SidebarMenuItem>
+      <CollapsibleContent>
+        <SidebarMenuSub>
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton asChild isActive={pathname.startsWith("/admin/companies") || pathname.startsWith("/admin/startup")}>
+              <NavLink to="/admin/companies">Empresas</NavLink>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton asChild isActive={pathname.startsWith("/admin/users")}>
+              <NavLink to="/admin/users">Usuarios</NavLink>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton asChild isActive={pathname.startsWith("/admin/funds")}>
+              <NavLink to="/admin/funds">Fondos</NavLink>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton asChild isActive={pathname.startsWith("/admin/connections")}>
+              <NavLink to="/admin/connections">Conexiones</NavLink>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// Grupo colapsable Datos (admin) — Datos financieros/Catálogo Roadmap. Mismo
+// criterio que AdminGestionNavGroup.
+function AdminDatosNavGroup() {
+  const { pathname } = useLocation();
+  const inDatosArea = pathname.startsWith("/admin/financial-data") || pathname.startsWith("/admin/roadmap");
+  const [open, setOpen] = useState(inDatosArea);
+  useEffect(() => {
+    if (inDatosArea) setOpen(true);
+  }, [inDatosArea]);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton
+            isActive={inDatosArea}
+            className="flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-all duration-150 text-muted-foreground hover:text-foreground cursor-pointer"
+          >
+            <DollarSign size={16} strokeWidth={1.5} />
+            <span className="flex-1 text-left">Datos</span>
+            <ChevronDown size={14} strokeWidth={1.5} className={cn("transition-transform", open && "rotate-180")} />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+      </SidebarMenuItem>
+      <CollapsibleContent>
+        <SidebarMenuSub>
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton asChild isActive={pathname.startsWith("/admin/financial-data")}>
+              <NavLink to="/admin/financial-data">Datos financieros</NavLink>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton asChild isActive={pathname.startsWith("/admin/roadmap")}>
+              <NavLink to="/admin/roadmap">Catálogo Roadmap</NavLink>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function isNavActive(pathname: string, url: string, end: boolean) {
   return end ? pathname === url : pathname === url || pathname.startsWith(`${url}/`);
 }
@@ -399,6 +500,44 @@ export function AppSidebar() {
     );
   }
 
+  // Bug real (auditado 2026-09-21): antes admin no tenía rama propia acá y
+  // caía en el fallback de founder de abajo, viendo Dashboard/Roadmap/
+  // Métricas/Reporting/Data Room además de los 6 ítems de admin — todas esas
+  // pantallas de founder renderizan vacías/rotas para admin (sin company_id,
+  // sin ningún guard propio en Dashboard.tsx/Roadmap.tsx/Metrics.tsx). Ahora
+  // admin tiene su propia rama, sin nada de founder.
+  if (isAdmin) {
+    return (
+      <Sidebar>
+        <SidebarHeader className="border-b border-sidebar-border px-5 py-5">
+          <Link to="/" className="inline-flex items-center gap-2 text-base font-medium tracking-tight text-foreground hover:text-foreground/70 transition-colors">
+            <img src="/logo.svg" alt="" className="h-6 w-6 shrink-0" />
+            CloudValley
+          </Link>
+        </SidebarHeader>
+        <SidebarContent className="px-3 py-4">
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {/* Rediseño Admin 2026-09-21 (Fase 2): antes 6 ítems planos,
+                    ahora agrupados por concepto igual que Investor
+                    (Portfolio/Gestión) — "Ecosistema" (dashboard) suelto
+                    arriba, "Gestión" (empresas/usuarios/fondos) y "Datos"
+                    (financieros/roadmap) como grupos colapsables. Conexiones
+                    se suma al grupo Gestión recién cuando esa página exista
+                    (Fase 4, bloqueada por backend). */}
+                <NavItem to="/admin" end icon={Shield} label="Ecosistema" />
+                <AdminGestionNavGroup />
+                <AdminDatosNavGroup />
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarUserFooter />
+      </Sidebar>
+    );
+  }
+
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-5 py-5">
@@ -442,17 +581,6 @@ export function AppSidebar() {
               {items.slice(2).map((item) => (
                 <NavItem key={item.url} to={item.url} end={item.end} icon={item.icon} label={item.title} />
               ))}
-
-              {isAdmin && (
-                <>
-                  <NavItem to="/admin" end icon={Shield} label="Admin" className="mt-4" />
-                  <NavItem to="/admin/companies" end icon={Building2} label="Empresas" />
-                  <NavItem to="/admin/users" end icon={Users} label="Usuarios" />
-                  <NavItem to="/admin/funds" end icon={Landmark} label="Fondos" />
-                  <NavItem to="/admin/financial-data" end icon={DollarSign} label="Datos financieros" />
-                  <NavItem to="/admin/roadmap" end icon={Map} label="Catálogo Roadmap" />
-                </>
-              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

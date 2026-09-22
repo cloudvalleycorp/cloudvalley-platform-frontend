@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -26,10 +26,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Link2, Unlink, Landmark } from "lucide-react";
+import { Plus, Pencil, Trash2, Link2, Unlink, Landmark, Building2 } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
 import { REQUEST_CONNECTION_URL, DECIDE_CONNECTION_URL } from "@/lib/connections";
 import { API_BASE_URL } from "@/lib/apiConfig";
+import { useResendAccess } from "@/hooks/useResendAccess";
 
 const LIST_FUNDS_URL = `${API_BASE_URL}/list-funds`;
 const MANAGE_FUNDS_URL = `${API_BASE_URL}/manage-funds`;
@@ -44,6 +45,9 @@ type Fund = {
   portfolio: PortfolioEntry[];
   // Puede venir null en entidades viejas creadas antes de que este campo existiera.
   created_at: string | null;
+  // Confirmado y desplegado 2026-09-21 (Bloque 5) — reemplaza a la
+  // impersonación descartada, ver AdminCompanies.tsx.
+  is_demo: boolean;
 };
 type Company = { company_id: string; name: string; is_active?: boolean };
 type FundUser = {
@@ -113,9 +117,20 @@ export default function AdminFunds() {
   const [editing, setEditing] = useState<Fund | null>(null);
   const [editName, setEditName] = useState("");
   const [editActive, setEditActive] = useState(true);
+  const [editDemo, setEditDemo] = useState(false);
   const [connectCompanyId, setConnectCompanyId] = useState("");
   const [disconnectTarget, setDisconnectTarget] = useState<PortfolioEntry | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Reenviar acceso (Fase 6, backend confirmado 2026-09-21) — a TODOS los
+  // miembros activos del fondo.
+  const { resendAccess, sending: resendingAccess } = useResendAccess();
+  const [resendTarget, setResendTarget] = useState<Fund | null>(null);
+  const confirmResendAccess = async () => {
+    if (!resendTarget) return;
+    const ok = await resendAccess({ fund_id: resendTarget.fund_id });
+    if (ok) setResendTarget(null);
+  };
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -139,6 +154,7 @@ export default function AdminFunds() {
     setEditing(f);
     setEditName(f.name);
     setEditActive(f.is_active);
+    setEditDemo(f.is_demo);
     setConnectCompanyId("");
   };
 
@@ -153,6 +169,7 @@ export default function AdminFunds() {
           fund_id: editing.fund_id,
           name: editName.trim(),
           is_active: editActive,
+          is_demo: editDemo,
         }),
       });
       if (await handleGatewayError(res)) throw new Error("update failed");
@@ -274,7 +291,19 @@ export default function AdminFunds() {
           <>
             <DataTable
               columns={[
-                { header: "Nombre", cell: (f) => <span className="font-medium">{f.name}</span> },
+                {
+                  header: "Nombre",
+                  cell: (f) => (
+                    <Link to={`/admin/funds/${f.fund_id}`} className="font-medium inline-flex items-center gap-1.5 hover:underline">
+                      {f.name}
+                      {f.is_demo && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-teal-subtle text-teal-dark">
+                          Demo
+                        </span>
+                      )}
+                    </Link>
+                  ),
+                },
                 { header: "Estado", cell: (f) => <StatusBadge isActive={f.is_active} /> },
                 {
                   header: "Miembros",
@@ -290,7 +319,7 @@ export default function AdminFunds() {
                         {f.portfolio.map((p) => (
                           <span
                             key={p.company_id}
-                            className="inline-flex items-center px-2 py-0.5 rounded-md text-xs bg-surface border border-border"
+                            className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-surface border border-border"
                           >
                             {p.company_name}
                           </span>
@@ -309,10 +338,22 @@ export default function AdminFunds() {
                 {
                   header: "Acciones",
                   align: "right",
+                  cellClassName: "whitespace-nowrap",
                   cell: (f) => (
-                    <Button size="sm" variant="ghost" onClick={() => openEdit(f)}>
-                      <Pencil size={12} className="mr-1" /> Editar
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setResendTarget(f)}
+                        aria-label={`Reenviar acceso a ${f.name}`}
+                        title="Reenviar acceso"
+                      >
+                        <Link2 size={12} />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => openEdit(f)}>
+                        <Pencil size={12} className="mr-1" /> Editar
+                      </Button>
+                    </>
                   ),
                 },
               ]}
@@ -337,6 +378,7 @@ export default function AdminFunds() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         title="Nuevo fondo"
+        description="Se crea activo y sin usuarios ni portfolio todavía."
         onSubmit={create}
         submitLabel="Crear"
         busy={busy}
@@ -349,6 +391,7 @@ export default function AdminFunds() {
         open={!!editing}
         onOpenChange={(o) => !o && setEditing(null)}
         title="Editar fondo"
+        description="Cambiá su nombre y estado, gestioná el portfolio conectado o marcalo como cuenta demo."
         contentClassName="sm:max-w-lg"
         footerClassName="sm:justify-between"
         footer={
@@ -371,11 +414,18 @@ export default function AdminFunds() {
           <Label className="text-sm">{editing?.is_active ? "Activo" : "Reactivar"}</Label>
           <Switch checked={editActive} onCheckedChange={setEditActive} />
         </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <Label className="text-sm">Cuenta demo</Label>
+            <p className="text-xs text-muted-foreground">Para pruebas/demos — excluida de KPIs y actividad real.</p>
+          </div>
+          <Switch checked={editDemo} onCheckedChange={setEditDemo} />
+        </div>
         <div>
           <Label className="text-xs">Empresas en el portfolio</Label>
           <div className="mt-2 max-h-48 overflow-y-auto border border-border rounded-md divide-y divide-border">
             {!currentFund || currentFund.portfolio.length === 0 ? (
-              <div className="p-3 text-xs text-muted-foreground">Sin empresas conectadas.</div>
+              <EmptyState bordered={false} icon={Building2} title="Sin empresas conectadas." className="p-4" />
             ) : (
               currentFund.portfolio.map((p) => (
                 <div key={p.company_id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
@@ -441,18 +491,26 @@ export default function AdminFunds() {
         onConfirm={() => disconnectMutation.mutate()}
       />
 
-      <FormDialog
+      <ConfirmationDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title={`¿Eliminar ${editing?.name}?`}
-        onSubmit={remove}
-        submitLabel="Eliminar"
-        submitVariant="destructive"
+        description="Esta acción no se puede deshacer. Los inversores asociados quedarán sin fondo asignado, pero no se eliminan."
+        confirmLabel="Eliminar"
+        variant="destructive"
+        onConfirm={remove}
         busy={busy}
-      >
-        <p className="text-sm text-muted-foreground">Esta acción no se puede deshacer.</p>
-        <p className="text-sm text-muted-foreground">Los inversores asociados quedarán sin fondo asignado, pero no se eliminan.</p>
-      </FormDialog>
+      />
+
+      <ConfirmationDialog
+        open={!!resendTarget}
+        onOpenChange={(o) => !o && setResendTarget(null)}
+        title={`¿Reenviar acceso a todos los miembros de ${resendTarget?.name}?`}
+        description="Cada miembro activo de este fondo recibe un magic link real por email."
+        confirmLabel="Reenviar"
+        onConfirm={confirmResendAccess}
+        busy={resendingAccess}
+      />
     </AppLayout>
   );
 }

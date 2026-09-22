@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { FormDialog } from "@/components/FormDialog";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { RoleBadge } from "@/components/RoleBadge";
 import {
@@ -26,6 +27,7 @@ import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Link2, Copy, Check, Users as UsersIcon } from "lucide-react";
 import { handleGatewayError } from "@/lib/adminGateway";
 import { API_BASE_URL } from "@/lib/apiConfig";
+import { useResendAccess } from "@/hooks/useResendAccess";
 
 const LIST_USERS_URL = `${API_BASE_URL}/list-users`;
 const MANAGE_USERS_URL = `${API_BASE_URL}/manage-users`;
@@ -45,10 +47,15 @@ type User = {
   fund_id: string | null;
   fund_name: string | null;
   is_active: boolean;
+  // Confirmado y desplegado 2026-09-21 (Bloque 3) — last_login_at en null
+  // es normal para cuentas viejas que no volvieron a loguearse desde que se
+  // agregó el campo, no es un bug.
+  created_at: string | null;
+  last_login_at: string | null;
 };
 
-type Company = { company_id: string; name: string };
-type Fund = { fund_id: string; name: string };
+type Company = { company_id: string; name: string; is_demo?: boolean };
+type Fund = { fund_id: string; name: string; is_demo?: boolean };
 
 export default function AdminUsers() {
   const { isAdmin, loading, email: currentEmail } = useAuth();
@@ -100,6 +107,13 @@ export default function AdminUsers() {
     enabled: isAdmin,
   });
 
+  // is_demo vive en company/fund (Bloque 5), no en el usuario — se resuelve
+  // acá para poder mostrar el badge "Demo" en la fila de usuario.
+  const demoCompanyIds = useMemo(() => new Set(companies.filter((c) => c.is_demo).map((c) => c.company_id)), [companies]);
+  const demoFundIds = useMemo(() => new Set(funds.filter((f) => f.is_demo).map((f) => f.fund_id)), [funds]);
+  const isDemoUser = (u: User) =>
+    (u.company_id && demoCompanyIds.has(u.company_id)) || (u.fund_id && demoFundIds.has(u.fund_id));
+
   const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: ["admin-users"] });
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -120,6 +134,78 @@ export default function AdminUsers() {
   });
   const [editReactivate, setEditReactivate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Acciones en bloque (Fase 8 del plan de Admin). Desactivar usa el batch
+  // real confirmado 2026-09-21 (Bloque 8: PATCH manage-users con user_ids +
+  // is_active, devuelve {results:[{id,success,error?}]} — nunca se asume
+  // éxito total solo por el 200, se revisa results fila por fila). Eliminar
+  // sigue con Promise.all porque el batch NO cubre delete, solo is_active.
+  // Nunca incluye la propia cuenta del admin logueado, mismo criterio que ya
+  // aplica "Eliminar" fila por fila (editing.email !== currentEmail).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const bulkTargetIds = useMemo(
+    () => Array.from(selected).filter((id) => users.find((u) => u.user_id === id)?.email !== currentEmail),
+    [selected, users, currentEmail]
+  );
+  const bulkDeactivate = async () => {
+    setBulkBusy(true);
+    try {
+      const res = await fetch(MANAGE_USERS_URL, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_ids: bulkTargetIds, is_active: false }),
+      });
+      if (await handleGatewayError(res)) return;
+      const data = (await res.json()) as { results: { id: string; success: boolean; error?: string }[] };
+      const failed = data.results.filter((r) => !r.success);
+      const okCount = data.results.length - failed.length;
+      if (okCount > 0) toast.success(`${okCount} usuario${okCount === 1 ? "" : "s"} desactivado${okCount === 1 ? "" : "s"}`);
+      if (failed.length > 0) toast.error(`${failed.length} no se pudo${failed.length === 1 ? "" : "n"} desactivar`);
+      setSelected(new Set());
+      invalidateUsers();
+    } catch {
+      toast.error("No se pudo desactivar el bloque completo");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+  const bulkDelete = async () => {
+    setBulkBusy(true);
+    try {
+      await Promise.all(
+        bulkTargetIds.map((user_id) =>
+          fetch(MANAGE_USERS_URL, {
+            method: "DELETE",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id }),
+          })
+        )
+      );
+      toast.success(`${bulkTargetIds.length} usuario${bulkTargetIds.length === 1 ? "" : "s"} eliminado${bulkTargetIds.length === 1 ? "" : "s"}`);
+      setSelected(new Set());
+      setConfirmBulkDelete(false);
+      invalidateUsers();
+    } catch {
+      toast.error("No se pudo eliminar el bloque completo");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  // Reenviar acceso (Fase 6, backend confirmado 2026-09-21) — un solo
+  // ConfirmationDialog reusado para el caso "un usuario puntual" de esta
+  // pantalla.
+  const { resendAccess, sending: resendingAccess } = useResendAccess();
+  const [resendTarget, setResendTarget] = useState<User | null>(null);
+  const confirmResendAccess = async () => {
+    if (!resendTarget) return;
+    const ok = await resendAccess({ user_id: resendTarget.user_id });
+    if (ok) setResendTarget(null);
+  };
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteRole, setInviteRole] = useState<"user" | "investor">("user");
@@ -332,12 +418,44 @@ export default function AdminUsers() {
           }
         />
 
+        {selected.size > 0 && (
+          <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary-subtle px-4 py-2.5 mb-3">
+            <span className="text-sm font-medium text-primary-dark flex-1">
+              {selected.size} usuario{selected.size === 1 ? "" : "s"} seleccionado{selected.size === 1 ? "" : "s"}
+            </span>
+            <Button size="sm" variant="outline" onClick={bulkDeactivate} disabled={bulkBusy || bulkTargetIds.length === 0}>
+              Desactivar
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => setConfirmBulkDelete(true)} disabled={bulkBusy || bulkTargetIds.length === 0}>
+              Eliminar
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} disabled={bulkBusy}>
+              Cancelar
+            </Button>
+          </div>
+        )}
+
         {usersLoading ? (
-          <SkeletonSection rows={6} columns={5} />
+          <SkeletonSection rows={6} columns={8} />
         ) : (
           <DataTable
+            selectable
+            selectedKeys={selected}
+            onSelectionChange={setSelected}
             columns={[
-              { header: "Nombre", cell: (u) => <span className="font-medium">{u.full_name ?? "—"}</span> },
+              {
+                header: "Nombre",
+                cell: (u) => (
+                  <span className="font-medium inline-flex items-center gap-1.5">
+                    {u.full_name ?? "—"}
+                    {isDemoUser(u) && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-teal-subtle text-teal-dark">
+                        Demo
+                      </span>
+                    )}
+                  </span>
+                ),
+              },
               { header: "Email", cell: (u) => <span className="text-muted-foreground">{u.email}</span> },
               { header: "Rol", cell: (u) => <RoleBadge role={u.role} /> },
               {
@@ -350,13 +468,40 @@ export default function AdminUsers() {
               },
               { header: "Estado", cell: (u) => <StatusBadge isActive={u.is_active} /> },
               {
+                header: "Se unió",
+                cell: (u) => (
+                  <span className="text-xs text-muted-foreground">
+                    {u.created_at ? new Date(u.created_at).toLocaleDateString("es-AR") : "—"}
+                  </span>
+                ),
+              },
+              {
+                header: "Último acceso",
+                cell: (u) => (
+                  <span className="text-xs text-muted-foreground">
+                    {u.last_login_at ? new Date(u.last_login_at).toLocaleDateString("es-AR") : "Nunca"}
+                  </span>
+                ),
+              },
+              {
                 header: "Acciones",
                 align: "right",
                 cellClassName: "whitespace-nowrap",
                 cell: (u) => (
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>
-                    <Pencil size={12} className="mr-1" /> Editar
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setResendTarget(u)}
+                      aria-label={`Reenviar acceso a ${u.full_name ?? u.email}`}
+                      title="Reenviar acceso"
+                    >
+                      <Link2 size={12} />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>
+                      <Pencil size={12} className="mr-1" /> Editar
+                    </Button>
+                  </>
                 ),
               },
             ]}
@@ -383,6 +528,7 @@ export default function AdminUsers() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         title="Nuevo usuario"
+        description="Elegí el rol y, si corresponde, la empresa o el fondo al que pertenece."
         onSubmit={create}
         submitLabel="Crear"
         busy={busy}
@@ -438,6 +584,7 @@ export default function AdminUsers() {
         open={!!editing}
         onOpenChange={(o) => !o && setEditing(null)}
         title="Editar usuario"
+        description="Cambiá sus datos, reasigná su rol o moveló de empresa/fondo."
         footerClassName="sm:justify-between gap-2"
         footer={
           <>
@@ -522,17 +669,37 @@ export default function AdminUsers() {
         )}
       </FormDialog>
 
-      <FormDialog
+      <ConfirmationDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title={`¿Eliminar ${editing?.full_name ?? editing?.email}?`}
-        onSubmit={remove}
-        submitLabel="Eliminar"
-        submitVariant="destructive"
+        description="Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        variant="destructive"
+        onConfirm={remove}
         busy={busy}
-      >
-        <div className="text-sm text-muted-foreground">Esta acción no se puede deshacer.</div>
-      </FormDialog>
+      />
+
+      <ConfirmationDialog
+        open={confirmBulkDelete}
+        onOpenChange={setConfirmBulkDelete}
+        title={`¿Eliminar ${bulkTargetIds.length} usuario${bulkTargetIds.length === 1 ? "" : "s"}?`}
+        description="Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        variant="destructive"
+        onConfirm={bulkDelete}
+        busy={bulkBusy}
+      />
+
+      <ConfirmationDialog
+        open={!!resendTarget}
+        onOpenChange={(o) => !o && setResendTarget(null)}
+        title={`¿Reenviar acceso a ${resendTarget?.full_name ?? resendTarget?.email}?`}
+        description="Se le manda un magic link real por email para que pueda volver a entrar."
+        confirmLabel="Reenviar"
+        onConfirm={confirmResendAccess}
+        busy={resendingAccess}
+      />
 
       <FormDialog
         open={inviteOpen}

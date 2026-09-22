@@ -92,7 +92,14 @@ export type PlatformAgentSurface =
   // el tipo (se sigue mandando el singular de siempre, una sola startup).
   | "founder_dashboard"
   | "founder_roadmap"
-  | "founder_data_room";
+  | "founder_data_room"
+  // Admin (confirmado y desplegado 2026-09-21, Bloque 6 del plan de Admin)
+  // — una sola superficie para todas las pantallas de admin, sin
+  // company_id (es sobre TODA la plataforma). A diferencia de las demás,
+  // esta manda además domain:"admin" en el request (ver usePlatformAgent.ts)
+  // — las otras infieren el domain del propio valor de surface del lado
+  // backend, admin lo necesita explícito.
+  | "admin_dashboard";
 
 // Campos plurales agregados en el rediseño Investor (2026-08-23) — el
 // agente ahora puede responder sobre una selección activa de varias

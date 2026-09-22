@@ -11,6 +11,12 @@ export const LIST_USERS_URL = `${API_BASE_URL}/list-users`;
 export const REMOVE_MEMBER_URL = `${API_BASE_URL}/remove-member`;
 export const DECIDE_INVITATION_URL = `${API_BASE_URL}/decide-invitation`;
 export const LIST_MY_INVITATIONS_URL = `${API_BASE_URL}/list-my-invitations`;
+// Admin-only, confirmado y desplegado 2026-09-21 (Bloque 3 del plan de
+// Admin) — distinto de create-invite-link: éste es para alguien que YA
+// tiene cuenta pero perdió acceso (dispara un magic link real por email,
+// no devuelve una URL para copiar). create-invite-link sigue siendo el
+// camino para gente nueva sin cuenta todavía.
+export const RESEND_USER_ACCESS_URL = `${API_BASE_URL}/resend-user-access`;
 
 export type PendingInvitation = {
   invitation_id: string;

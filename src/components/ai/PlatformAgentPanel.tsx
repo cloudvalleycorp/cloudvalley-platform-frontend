@@ -206,6 +206,8 @@ function surfaceDescription(surface: PlatformAgentSurface): string {
       return "Preguntame sobre los documentos de tu Data Room.";
     case "report_editor":
       return "Preguntame sobre este reporte o pedime que agregue una métrica.";
+    case "admin_dashboard":
+      return "Preguntame sobre el estado agregado de la plataforma.";
     default:
       return "Contame qué necesitás: puedo responder dudas, proponer una métrica o armarte un reporte.";
   }
@@ -241,6 +243,8 @@ function surfaceExample(surface: PlatformAgentSurface, companyIds?: string[]) {
       return <>Ej: "¿qué documentos me faltan subir?" o "¿cuál es el estado de mi cap table?".</>;
     case "report_editor":
       return <>Ej: "agregá el ARR a este reporte" o "¿qué métricas me faltan para un board update completo?".</>;
+    case "admin_dashboard":
+      return <>Ej: "¿cuántas startups activas hay?" o "¿qué pasó esta semana en la plataforma?".</>;
     default:
       return (
         <>

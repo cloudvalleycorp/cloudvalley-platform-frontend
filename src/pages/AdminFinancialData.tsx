@@ -5,6 +5,8 @@ import { AppLayout } from "@/components/AppLayout";
 import { BackLink } from "@/components/BackLink";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
+import { DataTableToolbar } from "@/components/DataTableToolbar";
+import { SkeletonSection } from "@/components/SkeletonSection";
 import { LoadingState } from "@/components/LoadingState";
 import { EmptyState } from "@/components/EmptyState";
 import { ImportLogTable } from "@/components/financial/ImportLogTable";
@@ -13,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -21,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FormDialog } from "@/components/FormDialog";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { handleGatewayError } from "@/lib/adminGateway";
 import {
   ASSIGN_FINANCIAL_SOURCE_URL,
@@ -29,14 +33,18 @@ import {
   LIST_FINANCIAL_IMPORT_LOG_URL,
   LIST_FINANCIAL_RECORDS_URL,
   LIST_FINANCIAL_METRICS_URL,
+  UPDATE_FINANCIAL_RECORD_URL,
+  DELETE_FINANCIAL_RECORD_URL,
   currentPeriod,
   type ReportStatus,
+  type ReportStatusEntry,
   type ImportLogEntry,
   type FinancialMetricDef,
   type FinancialRecordRow,
+  type RowError,
 } from "@/lib/financialData";
 import { toast } from "sonner";
-import { CheckCircle2, Clock, AlertCircle, History, Building2 } from "lucide-react";
+import { History, Building2, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { API_BASE_URL } from "@/lib/apiConfig";
 
 const LIST_COMPANIES_URL = `${API_BASE_URL}/list-companies`;
@@ -53,10 +61,13 @@ const AVAILABLE_SOURCES: { id: string; label: string }[] = [
   { id: "sheet", label: "Google Sheets" },
 ];
 
-const STATUS_CONFIG: Record<ReportStatus, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
-  reportado: { label: "Reportado", cls: "text-foreground", Icon: CheckCircle2 },
-  pendiente: { label: "Pendiente", cls: "text-muted-foreground", Icon: Clock },
-  con_errores: { label: "Con errores", cls: "text-destructive", Icon: AlertCircle },
+// Revisado 2026-09-21 (Fase 5): antes texto de color plano — el estado
+// "reportado" usaba text-foreground, indistinguible de una etiqueta neutra.
+// Ahora siempre Badge, mismo criterio que StatusBadge en el resto de admin.
+const STATUS_CONFIG: Record<ReportStatus, { label: string; variant: "success" | "secondary" | "destructive" }> = {
+  reportado: { label: "Reportado", variant: "success" },
+  pendiente: { label: "Pendiente", variant: "secondary" },
+  con_errores: { label: "Con errores", variant: "destructive" },
 };
 
 export default function AdminFinancialData() {
@@ -64,7 +75,7 @@ export default function AdminFinancialData() {
 
   const [period, setPeriod] = useState(currentPeriod());
   const [companyFilter, setCompanyFilter] = useState<string>("all");
-  const [statuses, setStatuses] = useState<Record<string, ReportStatus>>({});
+  const [statuses, setStatuses] = useState<Record<string, ReportStatusEntry>>({});
   const [loadingStatuses, setLoadingStatuses] = useState(true);
   const [sources, setSources] = useState<Record<string, string[]>>({});
   const [loadingSources, setLoadingSources] = useState(true);
@@ -92,8 +103,8 @@ export default function AdminFinancialData() {
         return;
       }
       const data = await res.json();
-      const list: { company_id: string; status: ReportStatus }[] = Array.isArray(data?.statuses) ? data.statuses : [];
-      setStatuses(Object.fromEntries(list.map((s) => [s.company_id, s.status])));
+      const list: ReportStatusEntry[] = Array.isArray(data?.statuses) ? data.statuses : [];
+      setStatuses(Object.fromEntries(list.map((s) => [s.company_id, s])));
     } catch {
       setStatuses({});
     } finally {
@@ -161,10 +172,15 @@ export default function AdminFinancialData() {
   const [historyRecords, setHistoryRecords] = useState<FinancialRecordRow[]>([]);
   const [historyMetricDefs, setHistoryMetricDefs] = useState<FinancialMetricDef[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  // Distingue "la request falló" de "no hay datos todavía" — antes un 500
+  // real (visto en vivo contra list-import-log) caía silencioso al mismo
+  // estado vacío que "nunca reportó nada", violando el requisito explícito
+  // de que todo error se pueda ver sin mirar código/GCP.
+  const [historyErrors, setHistoryErrors] = useState<{ logs: boolean; records: boolean }>({ logs: false, records: false });
 
-  const openHistory = async (c: Company) => {
-    setHistoryCompany(c);
+  const loadHistory = async (c: Company) => {
     setLoadingHistory(true);
+    setHistoryErrors({ logs: false, records: false });
     try {
       const qs = `?company_id=${encodeURIComponent(c.company_id)}`;
       const [logsRes, recordsRes, metricsRes] = await Promise.all([
@@ -172,19 +188,35 @@ export default function AdminFinancialData() {
         fetch(`${LIST_FINANCIAL_RECORDS_URL}${qs}`, { credentials: "include" }),
         fetch(`${LIST_FINANCIAL_METRICS_URL}${qs}`, { credentials: "include" }),
       ]);
-      const logsData = logsRes.ok ? await logsRes.json() : null;
-      setHistoryLogs(Array.isArray(logsData?.logs) ? logsData.logs : []);
-      const recordsData = recordsRes.ok ? await recordsRes.json() : null;
-      setHistoryRecords(Array.isArray(recordsData?.records) ? recordsData.records : []);
+      if (logsRes.ok) {
+        const logsData = await logsRes.json();
+        setHistoryLogs(Array.isArray(logsData?.logs) ? logsData.logs : []);
+      } else {
+        setHistoryLogs([]);
+        setHistoryErrors((e) => ({ ...e, logs: true }));
+      }
+      if (recordsRes.ok) {
+        const recordsData = await recordsRes.json();
+        setHistoryRecords(Array.isArray(recordsData?.records) ? recordsData.records : []);
+      } else {
+        setHistoryRecords([]);
+        setHistoryErrors((e) => ({ ...e, records: true }));
+      }
       const metricsData = metricsRes.ok ? await metricsRes.json() : null;
       setHistoryMetricDefs(Array.isArray(metricsData?.metrics) ? metricsData.metrics : []);
     } catch {
       setHistoryLogs([]);
       setHistoryRecords([]);
       setHistoryMetricDefs([]);
+      setHistoryErrors({ logs: true, records: true });
     } finally {
       setLoadingHistory(false);
     }
+  };
+
+  const openHistory = (c: Company) => {
+    setHistoryCompany(c);
+    loadHistory(c);
   };
 
   // Columnas 100% dinámicas: cualquier input_key que tenga al menos un valor
@@ -207,8 +239,90 @@ export default function AdminFinancialData() {
     return Array.from(keysWithData).map((key) => ({ key, label: labelByKey.get(key) ?? key }));
   }, [historyMetricDefs, historyRecords]);
 
+  // CRUD de registros puntuales (Fase 5, backend confirmado 2026-09-21,
+  // Bloque 2) — edición/eliminación de un (período, métrica) puntual.
+  const [editingRecord, setEditingRecord] = useState<{ period: string; metric: string; label: string; value: number } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [savingRecord, setSavingRecord] = useState(false);
+  const [recordErrors, setRecordErrors] = useState<RowError[]>([]);
+
+  const openEditRecord = (period: string, metric: string, label: string, value: number) => {
+    setEditingRecord({ period, metric, label, value });
+    setEditValue(String(value));
+    setRecordErrors([]);
+  };
+
+  const saveRecord = async () => {
+    if (!historyCompany || !editingRecord) return;
+    const value = Number(editValue);
+    if (Number.isNaN(value)) {
+      toast.error("Valor inválido");
+      return;
+    }
+    setSavingRecord(true);
+    try {
+      const res = await fetch(UPDATE_FINANCIAL_RECORD_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_id: historyCompany.company_id,
+          period: editingRecord.period,
+          metric: editingRecord.metric,
+          value,
+        }),
+      });
+      if (await handleGatewayError(res)) return;
+      const data = (await res.json()) as { row_errors: RowError[] };
+      if (data.row_errors.length > 0) {
+        setRecordErrors(data.row_errors);
+        toast.error("El valor no se guardó — ver el motivo abajo");
+        return;
+      }
+      toast.success("Valor actualizado");
+      setEditingRecord(null);
+      loadHistory(historyCompany);
+      loadStatuses();
+    } catch {
+      toast.error("No se pudo guardar");
+    } finally {
+      setSavingRecord(false);
+    }
+  };
+
+  const [deletingRecord, setDeletingRecord] = useState<{ period: string; metric: string; label: string } | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
+
+  const confirmDeleteRecord = async () => {
+    if (!historyCompany || !deletingRecord) return;
+    setDeletingBusy(true);
+    try {
+      const res = await fetch(DELETE_FINANCIAL_RECORD_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_id: historyCompany.company_id,
+          period: deletingRecord.period,
+          metric: deletingRecord.metric,
+        }),
+      });
+      if (await handleGatewayError(res)) return;
+      toast.success("Registro eliminado");
+      setDeletingRecord(null);
+      loadHistory(historyCompany);
+      loadStatuses();
+    } catch {
+      toast.error("No se pudo eliminar");
+    } finally {
+      setDeletingBusy(false);
+    }
+  };
+
   if (loading) return null;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
+
+  const visibleCompanies = companyFilter === "all" ? companies : companies.filter((c) => c.company_id === companyFilter);
 
   return (
     <AppLayout>
@@ -216,27 +330,31 @@ export default function AdminFinancialData() {
         <BackLink to="/admin" label="Volver a Ecosistema CloudValley" className="mb-6" />
         <PageHeader title="Datos financieros" subtitle="Seguimiento de reportes mensuales del portfolio." />
 
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <div>
-            <Label className="text-xs">Período</Label>
-            <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="mt-1 h-9 w-40" />
-          </div>
-          <div>
-            <Label className="text-xs">Empresa</Label>
-            <Select value={companyFilter} onValueChange={setCompanyFilter}>
-              <SelectTrigger className="mt-1 w-56 h-9"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                {companies.map((c) => (
-                  <SelectItem key={c.company_id} value={c.company_id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <DataTableToolbar
+          filters={
+            <>
+              <div>
+                <Label className="text-xs">Período</Label>
+                <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="mt-1 h-9 w-40" />
+              </div>
+              <div>
+                <Label className="text-xs">Empresa</Label>
+                <Select value={companyFilter} onValueChange={setCompanyFilter}>
+                  <SelectTrigger className="mt-1 w-56 h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {companies.map((c) => (
+                      <SelectItem key={c.company_id} value={c.company_id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          }
+        />
 
         {loadingStatuses ? (
-          <LoadingState />
+          <SkeletonSection rows={5} columns={4} />
         ) : (
           <DataTable
             columns={[
@@ -244,34 +362,40 @@ export default function AdminFinancialData() {
               {
                 header: `Estado (${period})`,
                 cell: (c: Company) => {
-                  const status = statuses[c.company_id];
-                  if (!status) return <span className="text-xs text-muted-foreground">Sin datos</span>;
-                  const cfg = STATUS_CONFIG[status];
-                  const Icon = cfg.Icon;
+                  const entry = statuses[c.company_id];
+                  if (!entry) return <span className="text-xs text-muted-foreground">Sin datos</span>;
+                  const cfg = STATUS_CONFIG[entry.status];
                   return (
-                    <span className={`inline-flex items-center gap-1 text-xs ${cfg.cls}`}>
-                      <Icon size={12} strokeWidth={1.5} /> {cfg.label}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openHistory(c)}
+                      className="inline-flex"
+                      title={entry.status === "con_errores" ? "Ver el motivo en el historial" : undefined}
+                    >
+                      <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                    </button>
                   );
                 },
               },
               {
                 header: "Fuentes habilitadas",
-                cell: (c: Company) => (
-                  <div className="flex flex-col gap-1.5">
-                    {AVAILABLE_SOURCES.map((src) => (
-                      <label key={src.id} className="flex items-center gap-2 text-xs cursor-pointer">
-                        <Switch
-                          checked={(sources[c.company_id] ?? []).includes(src.id)}
-                          disabled={loadingSources || assigningId === c.company_id}
-                          onCheckedChange={(checked) => assignSource(c.company_id, src.id, checked)}
-                        />
-                        {src.label}
-                      </label>
-                    ))}
-                    {loadingSources && <LoadingState variant="inline" className="text-xs" />}
-                  </div>
-                ),
+                cell: (c: Company) =>
+                  loadingSources ? (
+                    <LoadingState variant="inline" className="text-xs" />
+                  ) : (
+                    <div className="flex flex-col gap-1.5">
+                      {AVAILABLE_SOURCES.map((src) => (
+                        <label key={src.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                          <Switch
+                            checked={(sources[c.company_id] ?? []).includes(src.id)}
+                            disabled={assigningId === c.company_id}
+                            onCheckedChange={(checked) => assignSource(c.company_id, src.id, checked)}
+                          />
+                          {src.label}
+                        </label>
+                      ))}
+                    </div>
+                  ),
               },
               {
                 header: "Acciones",
@@ -283,7 +407,7 @@ export default function AdminFinancialData() {
                 ),
               },
             ]}
-            rows={companyFilter === "all" ? companies : companies.filter((c) => c.company_id === companyFilter)}
+            rows={visibleCompanies}
             rowKey={(c) => c.company_id}
             emptyLabel={
               <EmptyState bordered={false} icon={Building2} title="No hay empresas todavía." />
@@ -296,6 +420,7 @@ export default function AdminFinancialData() {
         open={!!historyCompany}
         onOpenChange={(o) => !o && setHistoryCompany(null)}
         title={`Historial de ${historyCompany?.name}`}
+        description="Valores reportados por período e intentos de carga, incluidos los que fallaron."
         contentClassName="sm:max-w-3xl"
         footer={
           <Button variant="ghost" onClick={() => setHistoryCompany(null)}>
@@ -308,50 +433,106 @@ export default function AdminFinancialData() {
         ) : (
           <div className="space-y-6">
             <div>
-              <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Valores reportados</h3>
-              {historyRecords.length === 0 ? (
-                <div className="border border-border rounded-lg p-6 text-center text-sm text-muted-foreground bg-card">
-                  Todavía no hay ningún valor cargado.
-                </div>
+              <h3 className="text-sm font-medium text-foreground mb-3">Valores reportados</h3>
+              {historyErrors.records ? (
+                <EmptyState
+                  bordered={false}
+                  icon={AlertTriangle}
+                  title="No se pudieron cargar los valores reportados."
+                  description="Hubo un error consultando el servidor — no significa que no haya datos. Reintentá cerrando y abriendo el historial de nuevo."
+                  className="p-6"
+                />
+              ) : historyRecords.length === 0 ? (
+                <EmptyState bordered={false} icon={Building2} title="Todavía no hay ningún valor cargado." className="p-6" />
               ) : (
-                <div className="border border-border rounded-lg bg-card overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-xs text-muted-foreground border-b border-border">
-                        <th className="text-left font-normal px-4 py-2.5">Período</th>
-                        {historyColumns.map((col) => (
-                          <th key={col.key} className="text-right font-normal px-3 py-2.5 whitespace-nowrap">
-                            {col.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {historyRecords
-                        .slice()
-                        .sort((a, b) => (a.period < b.period ? 1 : -1))
-                        .map((r) => (
-                          <tr key={r.period} className="border-b border-border/50 last:border-0">
-                            <td className="px-4 py-2 font-medium whitespace-nowrap">{r.period}</td>
-                            {historyColumns.map((col) => (
-                              <td key={col.key} className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                                {r[col.key] != null ? r[col.key]!.toLocaleString() : "—"}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  columns={[
+                    { header: "Período", cell: (r: FinancialRecordRow) => <span className="font-medium whitespace-nowrap">{r.period}</span> },
+                    ...historyColumns.map((col) => ({
+                      header: col.label,
+                      align: "right" as const,
+                      cell: (r: FinancialRecordRow) => {
+                        const value = r[col.key];
+                        if (value == null) return <span className="text-tertiary">—</span>;
+                        return (
+                          <div className="flex items-center justify-end gap-0.5">
+                            <span className="tabular-nums">{value.toLocaleString()}</span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0"
+                              aria-label={`Editar ${col.label} de ${r.period}`}
+                              onClick={() => openEditRecord(r.period, col.key, col.label, value)}
+                            >
+                              <Pencil size={11} />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                              aria-label={`Eliminar ${col.label} de ${r.period}`}
+                              onClick={() => setDeletingRecord({ period: r.period, metric: col.key, label: col.label })}
+                            >
+                              <Trash2 size={11} />
+                            </Button>
+                          </div>
+                        );
+                      },
+                    })),
+                  ]}
+                  rows={historyRecords.slice().sort((a, b) => (a.period < b.period ? 1 : -1))}
+                  rowKey={(r) => r.period}
+                  emptyLabel="Sin datos"
+                />
               )}
             </div>
             <div>
-              <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Intentos de carga</h3>
-              <ImportLogTable logs={historyLogs} emptyLabel="Todavía no reportó ningún dato." />
+              <h3 className="text-sm font-medium text-foreground mb-3">Intentos de carga</h3>
+              <ImportLogTable
+                logs={historyLogs}
+                emptyLabel={
+                  historyErrors.logs
+                    ? "No se pudo cargar el historial de importaciones — hubo un error del servidor, reintentá en unos minutos."
+                    : "Todavía no reportó ningún dato."
+                }
+              />
             </div>
           </div>
         )}
       </FormDialog>
+
+      <FormDialog
+        open={!!editingRecord}
+        onOpenChange={(o) => !o && setEditingRecord(null)}
+        title={`Editar ${editingRecord?.label} — ${editingRecord?.period}`}
+        description="Corrige el valor de esta métrica para este período puntual."
+        onSubmit={saveRecord}
+        submitLabel="Guardar"
+        busy={savingRecord}
+      >
+        <Label className="text-xs">Valor</Label>
+        <Input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="mt-1" autoFocus />
+        {recordErrors.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {recordErrors.map((e, i) => (
+              <li key={i} className="text-xs text-destructive-dark">
+                <span className="font-medium">{e.field}</span>: {e.reason}
+              </li>
+            ))}
+          </ul>
+        )}
+      </FormDialog>
+
+      <ConfirmationDialog
+        open={!!deletingRecord}
+        onOpenChange={(o) => !o && setDeletingRecord(null)}
+        title={`¿Eliminar ${deletingRecord?.label} de ${deletingRecord?.period}?`}
+        description="Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        variant="destructive"
+        onConfirm={confirmDeleteRecord}
+        busy={deletingBusy}
+      />
     </AppLayout>
   );
 }

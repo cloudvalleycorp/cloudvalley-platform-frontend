@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { Navigate, useSearchParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -158,6 +158,14 @@ export default function Dashboard() {
 
   const greeting = full_name?.trim() ? `Hola, ${full_name.trim().split(" ")[0]}` : "Buen día";
   const today = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+
+  // Bug real (auditado 2026-09-21): esta pantalla no tenía ningún guard de
+  // rol — investor/admin caían acá con company_id null y todos los hooks de
+  // arriba se quedaban en enabled:false para siempre (render vacío/roto, sin
+  // mensaje). Va después de todos los hooks (rules-of-hooks), mismo criterio
+  // que ya usa Reporting.tsx/DataRoom.tsx para separar por rol.
+  if (role === "investor") return <Navigate to="/overview" replace />;
+  if (role !== "user") return <Navigate to="/admin" replace />;
 
   // role="user" sin company asignada: mostrar el flujo "sin empresa" (o un
   // banner persistente si el usuario eligió "decidir más tarde").

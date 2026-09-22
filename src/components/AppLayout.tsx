@@ -137,23 +137,31 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const assistantCompanyId =
     role === "user" ? company_id ?? null : companyDetailMatch?.params.companyId ?? null;
   const assistantSurface: PlatformAgentSurface =
-    role === "user"
-      ? founderSurfaceForPath(location.pathname)
-      : assistantCompanyId
-        ? "investor_company"
-        : portfolioWideSurfaceForPath(location.pathname);
+    role === "admin"
+      ? "admin_dashboard"
+      : role === "user"
+        ? founderSurfaceForPath(location.pathname)
+        : assistantCompanyId
+          ? "investor_company"
+          : portfolioWideSurfaceForPath(location.pathname);
   // El del header es EL único Asistente del investor en toda la app, y desde
   // 2026-09-06 también el único del founder salvo ReportEditor (que sigue
   // con el suyo, ver comentario de FOUNDER_SURFACE_BY_PATH) — cubre
-  // Dashboard/Roadmap/Data Room/Métricas/Reporting(lista).
-  const showHeaderAssistant = role === "investor" || (role === "user" && founderHeaderAssistantAvailable(location.pathname));
+  // Dashboard/Roadmap/Data Room/Métricas/Reporting(lista). Admin se suma
+  // 2026-09-21 (Fase 11 del plan de Admin, backend confirmado Bloque 6) —
+  // una sola superficie ("admin_dashboard") en todas sus pantallas, sin
+  // company_id (domain:"admin" lo maneja usePlatformAgent.ts).
+  const showHeaderAssistant =
+    role === "investor" || role === "admin" || (role === "user" && founderHeaderAssistantAvailable(location.pathname));
 
-  // Global Search (⌘K) — investor y founder, mismo criterio de alcance que
-  // el Asistente (antes investor-only). MVP client-side, ver GlobalSearch.tsx
-  // — con 0 companies de portfolio (caso founder) degrada bien: solo indexa
-  // los atajos de navegación fijos, sin sección de empresas.
+  // Global Search (⌘K) — investor, founder y (desde 2026-09-21, Fase 7 del
+  // plan de Admin) admin. MVP client-side, ver GlobalSearch.tsx — con 0
+  // companies de portfolio (caso founder) degrada bien: solo indexa los
+  // atajos de navegación fijos, sin sección de empresas. Admin pide sus
+  // propias listas perezosamente adentro de GlobalSearch (no hay fetch de
+  // companies/users/funds acá arriba para ese rol).
   const [searchOpen, setSearchOpen] = useState(false);
-  useGlobalSearchShortcut(role === "investor" || role === "user" ? setSearchOpen : () => {});
+  useGlobalSearchShortcut(role === "investor" || role === "user" || role === "admin" ? setSearchOpen : () => {});
   const searchCompanies = (portfolio_company_ids ?? []).map((id, i) => ({
     id,
     name: portfolio_company_names?.[i] ?? "—",
@@ -251,7 +259,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {(role === "investor" || role === "user") && (
+              {(role === "investor" || role === "user" || role === "admin") && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -333,7 +341,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </div>
 
-      {(role === "investor" || role === "user") && (
+      {(role === "investor" || role === "user" || role === "admin") && (
         <GlobalSearch
           open={searchOpen}
           onOpenChange={setSearchOpen}

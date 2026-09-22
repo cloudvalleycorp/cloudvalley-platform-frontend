@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { Map, Plus, Compass } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -23,7 +23,7 @@ import { FolderPickerDialog } from "@/components/dataRoom/FolderPickerDialog";
 export default function Roadmap() {
   // user.id NO es el id real del usuario (alias legacy a company_id, ver
   // AuthContext.tsx) — para "es mi propia tarea" hace falta user_id.
-  const { user_id, company_id } = useAuth();
+  const { role, user_id, company_id } = useAuth();
   const { startup } = useStartup();
   const { pillars, tasks, readinessScore, loading: loadingRoadmap, toggleStatus, reload } = useRoadmap(company_id);
   const { createAndUpload, uploadFile } = useDocuments(company_id);
@@ -90,6 +90,13 @@ export default function Roadmap() {
       reload();
     }
   };
+
+  // Bug real (auditado 2026-09-21): esta pantalla no tenía ningún guard de
+  // rol — investor/admin caían acá con company_id null y useRoadmap se
+  // quedaba en enabled:false para siempre (0% readiness, cero pilares, sin
+  // mensaje). Mismo criterio que Reporting.tsx/DataRoom.tsx.
+  if (role === "investor") return <Navigate to="/overview" replace />;
+  if (role !== "user") return <Navigate to="/admin" replace />;
 
   return (
     <AppLayout>

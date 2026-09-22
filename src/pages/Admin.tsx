@@ -1,179 +1,241 @@
-import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
-import { StatCard } from "@/components/StatCard";
-import { DataTable } from "@/components/DataTable";
-import { DataTableToolbar } from "@/components/DataTableToolbar";
-import { SkeletonSection } from "@/components/SkeletonSection";
+import { SectionCard } from "@/components/SectionCard";
 import { EmptyState } from "@/components/EmptyState";
+import { LoadingState } from "@/components/LoadingState";
 import { useAuth } from "@/contexts/AuthContext";
 import { API_BASE_URL } from "@/lib/apiConfig";
+import { LIST_ALL_CONNECTIONS_URL, type AdminConnection } from "@/lib/connections";
+import { LIST_FINANCIAL_REPORT_STATUS_URL, currentPeriod, type ReportStatusEntry } from "@/lib/financialData";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Rocket } from "lucide-react";
-import { toast } from "sonner";
+import { AlertTriangle, Compass, Download, FileBarChart } from "lucide-react";
 
-const LIST_COMPANIES_URL = `${API_BASE_URL}/list-companies`;
+// Reemplaza la tabla duplicada de empresas que tenía esta pantalla antes de
+// 2026-09-21 (Fase 9 del plan de Admin) — ese listado ya vive, completo y
+// con acciones reales, en AdminCompanies.tsx. InviteSection (el link crudo
+// sin vencimiento) también se retira acá: AdminUsers.tsx ya tiene el flujo
+// correcto ("Generar link de invitación", con expires_at real).
+const LIST_PLATFORM_KPIS_URL = `${API_BASE_URL}/list-platform-kpis`;
+const LIST_GLOBAL_ACTIVITY_URL = `${API_BASE_URL}/list-global-activity`;
 
-// Mismo endpoint real que ya usa AdminCompanies.tsx — antes esta pantalla
-// leía la tabla "startups" de Supabase directo (etapa/modelo/readiness_score
-// incluidos). Esos datos quedaron abandonados (no se migran, decisión
-// explícita 2026-09-08): esta pantalla ahora solo muestra lo que
-// list-companies devuelve de verdad. Si en algún momento hace falta
-// etapa/modelo/readiness por company acá, es un endpoint nuevo a pedir — no
-// hay forma de traerlo hoy sin una llamada aparte por company (N+1 real por
-// cada carga de esta pantalla, no vale la pena hasta que exista un bulk
-// endpoint para esto).
-type Company = { company_id: string; name: string; is_active: boolean; created_at: string | null };
+type PlatformKpis = {
+  counts: { active_companies: number; active_funds: number; active_users: number };
+  deltas: { active_companies: number | null; active_funds: number | null; active_users: number | null };
+  compared_to_date: string | null;
+};
+
+type GlobalActivityEvent = {
+  event_id: string;
+  type: string;
+  occurred_at: string;
+  org_id: string;
+  org_name: string;
+  org_type: "company" | "fund" | null;
+  summary: string;
+};
+
+function daysAgo(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
+function Delta({ value }: { value: number | null }) {
+  if (value === null) return <span className="text-xs text-muted-foreground">Sin comparación todavía</span>;
+  if (value === 0) return <span className="text-xs text-muted-foreground">Sin cambios</span>;
+  return (
+    <span className={`text-xs ${value > 0 ? "text-success-dark" : "text-destructive-dark"}`}>
+      {value > 0 ? "+" : ""}
+      {value} este mes
+    </span>
+  );
+}
 
 export default function Admin() {
   const { isAdmin, loading } = useAuth();
-  const [search, setSearch] = useState("");
 
-  const { data: companies = [], isLoading: loadingRows } = useQuery({
-    queryKey: ["admin-ecosystem-companies"],
+  const { data: kpis, isLoading: kpisLoading } = useQuery({
+    queryKey: ["admin-platform-kpis"],
     queryFn: async () => {
-      const res = await fetch(LIST_COMPANIES_URL, { credentials: "include" });
-      if (!res.ok) return [] as Company[];
-      const data = await res.json();
-      return (data.companies ?? []) as Company[];
+      const res = await fetch(LIST_PLATFORM_KPIS_URL, { credentials: "include" });
+      if (!res.ok) return null;
+      return (await res.json()) as PlatformKpis;
     },
     enabled: isAdmin,
   });
 
+  const { data: activity = [], isLoading: activityLoading } = useQuery({
+    queryKey: ["admin-global-activity"],
+    queryFn: async () => {
+      const res = await fetch(`${LIST_GLOBAL_ACTIVITY_URL}?page_size=8`, { credentials: "include" });
+      if (!res.ok) return [] as GlobalActivityEvent[];
+      const data = await res.json();
+      return Array.isArray(data?.events) ? (data.events as GlobalActivityEvent[]) : [];
+    },
+    enabled: isAdmin,
+  });
+
+  // "Necesita atención" — 2 señales reales, sin inventar una tercera que no
+  // se pueda respaldar con datos (ver plan: "sin actividad reciente" se
+  // dejó afuera a propósito, no hay endpoint de "última actividad por org"
+  // todavía).
+  const { data: erroredCompanies = [] } = useQuery({
+    queryKey: ["admin-financial-errors", currentPeriod()],
+    queryFn: async () => {
+      const res = await fetch(`${LIST_FINANCIAL_REPORT_STATUS_URL}?period=${currentPeriod()}`, { credentials: "include" });
+      if (!res.ok) return [] as ReportStatusEntry[];
+      const data = await res.json();
+      const list: ReportStatusEntry[] = Array.isArray(data?.statuses) ? data.statuses : [];
+      return list.filter((s) => s.status === "con_errores");
+    },
+    enabled: isAdmin,
+  });
+
+  const { data: connections = [] } = useQuery({
+    queryKey: ["admin-all-connections-pending"],
+    queryFn: async () => {
+      const res = await fetch(`${LIST_ALL_CONNECTIONS_URL}?status=pending`, { credentials: "include" });
+      if (!res.ok) return [] as AdminConnection[];
+      const data = await res.json();
+      return Array.isArray(data?.connections) ? (data.connections as AdminConnection[]) : [];
+    },
+    enabled: isAdmin,
+  });
+  const stalePending = connections.filter((c) => daysAgo(c.created_at) >= 7);
+
+  const exportCsv = () => {
+    if (!kpis) return;
+    const lines = [
+      "métrica,valor",
+      `Startups activas,${kpis.counts.active_companies}`,
+      `Fondos activos,${kpis.counts.active_funds}`,
+      `Usuarios activos,${kpis.counts.active_users}`,
+      `Conexiones pendientes,${connections.length}`,
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ecosistema-cloudvalley-${currentPeriod()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) return null;
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
-  const filtered = companies.filter((c) => c.name.toLowerCase().includes(search.trim().toLowerCase()));
-  const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
-  const activeCount = companies.filter((c) => c.is_active).length;
-
   return (
     <AppLayout>
-      <div className="max-w-6xl mx-auto px-8 py-12">
-        <InviteSection />
+      <div className="max-w-6xl mx-auto px-8 py-12 space-y-6">
         <PageHeader
           title="Ecosistema CloudValley"
-          subtitle="Vista global del portfolio"
+          subtitle="Salud agregada de la plataforma."
           action={
-            <Button variant="outline" asChild>
-              <Link to="/admin/funds">Fondos →</Link>
+            <Button variant="outline" onClick={exportCsv} disabled={!kpis}>
+              <Download size={13} strokeWidth={1.5} className="mr-1.5" /> Exportar CSV
             </Button>
           }
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
-          <StatCard label="Total startups" value={companies.length} />
-          <StatCard label="Activas" value={activeCount} />
-        </div>
-
-        <DataTableToolbar
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Buscar startup por nombre…"
-        />
-
-        {loadingRows ? (
-          <SkeletonSection rows={6} columns={3} />
+        {kpisLoading ? (
+          <LoadingState variant="centered" className="py-8" />
+        ) : !kpis ? (
+          <EmptyState icon={Compass} title="No se pudieron cargar los KPIs." description="Reintentá en unos minutos." />
         ) : (
-          <DataTable
-            columns={[
-              {
-                header: "Startup",
-                cell: (c) => (
-                  <Link to={`/admin/startup/${c.company_id}`} className="font-medium hover:underline">{c.name}</Link>
-                ),
-              },
-              {
-                header: "Estado",
-                cell: (c) => (
-                  <span className={c.is_active ? "text-success-dark" : "text-muted-foreground"}>
-                    {c.is_active ? "Activa" : "Inactiva"}
-                  </span>
-                ),
-              },
-              {
-                header: "Creada",
-                cell: (c) => (
-                  <span className="text-muted-foreground">
-                    {c.created_at ? new Date(c.created_at).toLocaleDateString("es-AR") : "—"}
-                  </span>
-                ),
-              },
-            ]}
-            rows={sorted}
-            rowKey={(c) => c.company_id}
-            emptyLabel={
-              <EmptyState
-                bordered={false}
-                icon={Rocket}
-                title={search ? "Ninguna startup coincide con la búsqueda." : "No hay startups todavía."}
-                description={
-                  search
-                    ? "Probá con otro nombre."
-                    : "Cuando una startup se sume al ecosistema, va a aparecer acá."
-                }
-              />
-            }
-          />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="border border-border rounded-lg bg-card p-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Startups activas</p>
+              <p className="text-2xl font-medium mt-1">{kpis.counts.active_companies}</p>
+              <div className="mt-1"><Delta value={kpis.deltas.active_companies} /></div>
+            </div>
+            <div className="border border-border rounded-lg bg-card p-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Fondos activos</p>
+              <p className="text-2xl font-medium mt-1">{kpis.counts.active_funds}</p>
+              <div className="mt-1"><Delta value={kpis.deltas.active_funds} /></div>
+            </div>
+            <div className="border border-border rounded-lg bg-card p-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Usuarios activos</p>
+              <p className="text-2xl font-medium mt-1">{kpis.counts.active_users}</p>
+              <div className="mt-1"><Delta value={kpis.deltas.active_users} /></div>
+            </div>
+            <Link to="/admin/connections" className="border border-border rounded-lg bg-card p-4 hover:border-foreground/30 transition-colors">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Conexiones pendientes</p>
+              <p className="text-2xl font-medium mt-1 text-warning-dark">{connections.length}</p>
+              {stalePending.length > 0 && (
+                <p className="text-xs text-warning-dark mt-1">{stalePending.length} hace &gt;7 días</p>
+              )}
+            </Link>
+          </div>
         )}
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <SectionCard
+            padding="sm"
+            title={
+              <span className="flex items-center gap-1.5">
+                <AlertTriangle size={13} strokeWidth={1.5} aria-hidden="true" /> Necesita atención
+              </span>
+            }
+          >
+            {erroredCompanies.length === 0 && stalePending.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nada necesita atención ahora.</p>
+            ) : (
+              <div className="space-y-1">
+                {erroredCompanies.slice(0, 5).map((s) => (
+                  <Link
+                    key={s.company_id}
+                    to={`/admin/startup/${s.company_id}`}
+                    className="w-full flex items-center justify-between gap-2 py-1.5 text-sm hover:underline"
+                  >
+                    <span className="truncate">{s.company_name} — import financiero falló</span>
+                    <span className="text-xs text-destructive-dark shrink-0">Con errores</span>
+                  </Link>
+                ))}
+                {stalePending.slice(0, 5).map((c) => (
+                  <Link
+                    key={c.connection_id}
+                    to="/admin/connections"
+                    className="w-full flex items-center justify-between gap-2 py-1.5 text-sm hover:underline"
+                  >
+                    <span className="truncate">{c.company_name} pidió conectar con {c.fund_name}</span>
+                    <span className="text-xs text-warning-dark shrink-0">Hace {daysAgo(c.created_at)} días</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            padding="sm"
+            title={
+              <span className="flex items-center gap-1.5">
+                <FileBarChart size={13} strokeWidth={1.5} aria-hidden="true" /> Actividad reciente
+              </span>
+            }
+          >
+            {activityLoading ? (
+              <LoadingState variant="inline" />
+            ) : activity.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Sin actividad reciente.</p>
+            ) : (
+              <div className="space-y-1">
+                {activity.map((e) => (
+                  <Link
+                    key={e.event_id}
+                    to={e.org_type === "fund" ? `/admin/funds/${e.org_id}` : `/admin/startup/${e.org_id}`}
+                    className="w-full flex items-center justify-between gap-2 py-1.5 text-sm hover:underline"
+                  >
+                    <span className="truncate">{e.summary}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {new Date(e.occurred_at).toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+        </div>
       </div>
     </AppLayout>
-  );
-}
-
-function InviteRow({
-  role,
-  label,
-  copied,
-  onCopy,
-}: {
-  role: "user" | "investor";
-  label: string;
-  copied: "user" | "investor" | null;
-  onCopy: (role: "user" | "investor") => void;
-}) {
-  const url = `${window.location.origin}/onboarding?role=${role}`;
-  return (
-    <div className="flex items-center gap-3 py-2">
-      <Button variant="outline" size="sm" onClick={() => onCopy(role)}>
-        {copied === role ? (
-          <><Check size={14} strokeWidth={1.5} className="mr-1.5" /> Copiado</>
-        ) : (
-          <><Copy size={14} strokeWidth={1.5} className="mr-1.5" /> {label}</>
-        )}
-      </Button>
-      <code className="text-xs text-muted-foreground truncate">{url}</code>
-    </div>
-  );
-}
-
-function InviteSection() {
-  const [copied, setCopied] = useState<"user" | "investor" | null>(null);
-
-  const copy = async (role: "user" | "investor") => {
-    const url = `${window.location.origin}/onboarding?role=${role}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(role);
-      toast.success("Link copiado");
-      setTimeout(() => setCopied((c) => (c === role ? null : c)), 2000);
-    } catch {
-      toast.error("No se pudo copiar el link");
-    }
-  };
-
-  return (
-    <div className="mb-8 border border-border rounded-lg p-5 bg-card">
-      <h2 className="text-sm font-medium text-foreground">Invitar</h2>
-      <p className="text-xs text-muted-foreground mt-1">
-        Copiá el link y compartilo por fuera (email, WhatsApp, etc).
-      </p>
-      <div className="mt-3 divide-y divide-border/50">
-        <InviteRow role="user" label="Invitar usuario" copied={copied} onCopy={copy} />
-        <InviteRow role="investor" label="Invitar inversor" copied={copied} onCopy={copy} />
-      </div>
-    </div>
   );
 }
