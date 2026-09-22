@@ -552,7 +552,11 @@ export function PlatformAgentPanel({
         if (e.key === "Escape") handleOpenChange(false);
       }}
       className={cn(
-        "fixed inset-y-0 right-0 z-[70] flex w-full flex-col gap-0 border-l border-border bg-background shadow-2xl transition-transform duration-200 motion-reduce:transition-none sm:w-[380px] sm:max-w-[92vw]",
+        // top-14 (no inset-y-0) para no taparle al header sus propios
+        // botones (Buscar/tema/avatar) — el header es sticky z-40, este
+        // panel es z-[70] y antes arrancaba en y=0, tapándolo por completo
+        // en cualquier ancho de pantalla, no solo mobile.
+        "fixed top-14 bottom-0 right-0 z-[70] flex w-full flex-col gap-0 border-l border-border bg-background shadow-2xl transition-transform duration-200 motion-reduce:transition-none sm:w-[380px] sm:max-w-[92vw]",
         open ? "translate-x-0" : "translate-x-full pointer-events-none"
       )}
     >

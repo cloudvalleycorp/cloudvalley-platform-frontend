@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LIST_CONNECTIONS_URL, type Connection } from "@/lib/connections";
 import {
   Sidebar,
   SidebarContent,
@@ -436,34 +435,8 @@ function NavItem({
 }
 
 export function AppSidebar() {
-  const { isAdmin, isOrgViewer, company_id } = useAuth();
+  const { isAdmin, isOrgViewer } = useAuth();
   const { startup } = useStartup();
-  const [orgs, setOrgs] = useState<{ id: string; name: string }[]>([]);
-
-  useEffect(() => {
-    if (!company_id) {
-      setOrgs([]);
-      return;
-    }
-    (async () => {
-      try {
-        const res = await fetch(LIST_CONNECTIONS_URL, { credentials: "include" });
-        if (!res.ok) {
-          setOrgs([]);
-          return;
-        }
-        const data = await res.json();
-        const connections: Connection[] = Array.isArray(data?.connections) ? data.connections : [];
-        setOrgs(
-          connections
-            .filter((c) => c.status === "connected")
-            .map((c) => ({ id: c.counterpart_id, name: c.counterpart_name }))
-        );
-      } catch {
-        setOrgs([]);
-      }
-    })();
-  }, [company_id]);
 
   if (isOrgViewer) {
     return (
@@ -546,26 +519,12 @@ export function AppSidebar() {
           CloudValley
         </Link>
         {startup && (
-          <div className="mt-3 space-y-1.5">
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
             {/* El nombre de la startup ya se ve en el header (orgLabel, ver
                 AppLayout.tsx) — mostrarlo también acá quedaba duplicado.
                 Se conserva la etapa: es información que no está en ningún
                 otro lado del shell. */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <StageBadge stage={startup.stage} />
-            </div>
-            {orgs.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {orgs.map((o) => (
-                  <span
-                    key={o.id}
-                    className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-black text-white"
-                  >
-                    {o.name}
-                  </span>
-                ))}
-              </div>
-            )}
+            <StageBadge stage={startup.stage} />
           </div>
         )}
       </SidebarHeader>
