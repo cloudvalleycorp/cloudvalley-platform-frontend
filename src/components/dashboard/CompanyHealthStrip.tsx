@@ -101,10 +101,13 @@ export function CompanyHealthStrip({ metrics, values, loading, onGoToMetrics }: 
       }
     >
       {loading ? (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3" aria-hidden="true">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="border border-dashed border-border rounded-lg h-28 animate-pulse bg-surface/50" />
-          ))}
+        <div aria-live="polite">
+          <span className="sr-only">Cargando KPIs…</span>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3" aria-hidden="true">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="border border-dashed border-border rounded-lg h-28 animate-pulse bg-surface/50" />
+            ))}
+          </div>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -155,7 +158,15 @@ export function CompanyHealthStrip({ metrics, values, loading, onGoToMetrics }: 
                 <span className="text-xs font-medium text-muted-foreground">{STANDARD_KEY_LABELS[key]}</span>
                 <div>
                   <div className="text-xl font-medium tabular-nums">{formatMetricValue(current, m.unit)}</div>
-                  {change != null ? (
+                  {change == null ? (
+                    <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <Minus size={12} strokeWidth={1.5} aria-hidden="true" /> Sin comparación
+                    </div>
+                  ) : change === 0 ? (
+                    <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <Minus size={12} strokeWidth={1.5} aria-hidden="true" /> Sin cambios
+                    </div>
+                  ) : (
                     <div
                       className={cn(
                         "text-xs font-medium flex items-center gap-1 mt-0.5",
@@ -168,10 +179,6 @@ export function CompanyHealthStrip({ metrics, values, loading, onGoToMetrics }: 
                         <ArrowDownRight size={12} strokeWidth={1.5} aria-hidden="true" />
                       )}
                       {Math.abs(change).toFixed(1)}%
-                    </div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                      <Minus size={12} strokeWidth={1.5} aria-hidden="true" /> Sin comparación
                     </div>
                   )}
                 </div>

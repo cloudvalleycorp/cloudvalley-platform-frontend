@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { handleMembershipError } from "@/lib/membership";
 import type { Connection } from "@/lib/connections";
@@ -30,6 +31,12 @@ export function useResourceShares(companyId: string | null, resourceType: Resour
   const [loading, setLoading] = useState(false);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const endpoints = ENDPOINTS[resourceType];
+  const queryClient = useQueryClient();
+  // useAllDocumentShares (Gestión de Accesos + badge de "compartida" en
+  // FolderRow) vive en react-query bajo esta queryKey — este hook es un
+  // useState aparte, sin invalidar esto acá quedan desactualizados hasta
+  // que esa query se refresque por su cuenta (foco de ventana, etc).
+  const invalidateAllShares = () => queryClient.invalidateQueries({ queryKey: ["data-room-all-shares", companyId] });
 
   const load = async (resourceId: string) => {
     if (!companyId) return;
@@ -77,6 +84,7 @@ export function useResourceShares(companyId: string | null, resourceType: Resour
       }
       toast.success(`Compartido con ${connection.counterpart_name}`);
       await load(resourceId);
+      invalidateAllShares();
     } catch {
       toast.error("No se pudo compartir");
     } finally {
@@ -101,6 +109,7 @@ export function useResourceShares(companyId: string | null, resourceType: Resour
       }
       toast.success(`Ya no se comparte con ${connection.counterpart_name}`);
       await load(resourceId);
+      invalidateAllShares();
     } catch {
       toast.error("No se pudo dejar de compartir");
     } finally {

@@ -38,3 +38,7 @@ playwright/fixtures/
 *.sw?
 
 .docs/*
+
+# Skills de Claude Code instaladas localmente (ej. ui-ux-pro-max) — tooling
+# del entorno de desarrollo, no parte del producto, nunca se commitea.
+.claude/skills/

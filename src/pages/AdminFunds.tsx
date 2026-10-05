@@ -297,7 +297,7 @@ export default function AdminFunds() {
                     <Link to={`/admin/funds/${f.fund_id}`} className="font-medium inline-flex items-center gap-1.5 hover:underline">
                       {f.name}
                       {f.is_demo && (
-                        <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-teal-subtle text-teal-dark">
+                        <span className="text-[0.6875rem] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-teal-subtle text-teal-dark">
                           Demo
                         </span>
                       )}

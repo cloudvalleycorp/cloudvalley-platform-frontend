@@ -27,13 +27,22 @@ function PickerRow({
   return (
     <div>
       <div
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        aria-disabled={disabled}
         className={cn(
           "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm",
           disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:bg-surface",
-          selectedId === node.id && !disabled && "bg-primary/10 text-primary"
+          selectedId === node.id && !disabled && "bg-primary/10 text-primary-dark"
         )}
         style={{ paddingLeft: 8 + depth * 18 }}
         onClick={() => !disabled && onSelect(node.id)}
+        onKeyDown={(e) => {
+          if (!disabled && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            onSelect(node.id);
+          }
+        }}
       >
         {node.children.length > 0 ? (
           <button
@@ -42,6 +51,8 @@ function PickerRow({
               e.stopPropagation();
               setOpen((o) => !o);
             }}
+            aria-label={open ? `Colapsar ${node.name}` : `Expandir ${node.name}`}
+            aria-expanded={open}
             className="text-muted-foreground shrink-0"
           >
             {open ? <ChevronDown size={13} strokeWidth={1.5} /> : <ChevronRight size={13} strokeWidth={1.5} />}
@@ -142,11 +153,19 @@ export function FolderPickerDialog({
           <div className="max-h-[50vh] overflow-y-auto -mx-1 px-1">
             {allowRoot && (
               <div
+                role="button"
+                tabIndex={0}
                 className={cn(
                   "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-surface",
-                  selectedId === null && "bg-primary/10 text-primary"
+                  selectedId === null && "bg-primary/10 text-primary-dark"
                 )}
                 onClick={() => setSelectedId(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedId(null);
+                  }
+                }}
               >
                 <span className="w-[13px] shrink-0" />
                 <FolderClosed size={14} strokeWidth={1.5} className="shrink-0 text-muted-foreground" />

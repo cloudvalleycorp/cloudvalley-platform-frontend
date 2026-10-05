@@ -55,9 +55,9 @@ export function DataReadinessSection({ issues, loading }: Props) {
         <>
           <div className="flex items-center gap-3 mb-4">
             <div
-              className="w-11 h-11 rounded-full shrink-0 flex items-center justify-center text-[11px] font-semibold"
+              className="w-11 h-11 rounded-full shrink-0 flex items-center justify-center text-xs font-medium"
               style={{
-                background: `conic-gradient(hsl(var(--warning)) 0% ${pct}%, hsl(var(--border)) ${pct}% 100%)`,
+                background: `conic-gradient(hsl(var(${summary.critical > 0 ? "--destructive" : "--warning"})) 0% ${pct}%, hsl(var(--border)) ${pct}% 100%)`,
               }}
             >
               <div className="w-[34px] h-[34px] rounded-full bg-card flex items-center justify-center">{pct}%</div>
@@ -78,7 +78,7 @@ export function DataReadinessSection({ issues, loading }: Props) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium">{issue.title}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{issue.description}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{issue.description}</p>
                   </div>
                   {issue.targetPath && <ChevronRight size={14} strokeWidth={1.5} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
                 </>
@@ -95,7 +95,7 @@ export function DataReadinessSection({ issues, loading }: Props) {
             })}
           </div>
           {issues.length > 6 && (
-            <Link to="/metrics?tab=health" className="text-xs font-medium text-primary mt-3 inline-block hover:underline">
+            <Link to="/metrics?tab=health" className="text-xs font-medium text-primary-dark mt-3 inline-flex min-h-[1.5rem] items-center hover:underline">
               Ver los {issues.length - 6} restantes en Salud de datos →
             </Link>
           )}

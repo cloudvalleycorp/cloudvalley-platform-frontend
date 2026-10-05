@@ -65,7 +65,7 @@ export function ScenarioEntryDialog({ open, onOpenChange, inputDefs, onSubmit }:
         onOpenChange(o);
       }}
       title="Cargar escenario"
-      description="Los valores de forecast/presupuesto se guardan aparte de tus datos reales y se pueden comparar desde Overview — nunca pisan lo ya cargado."
+      description="Los valores de forecast/presupuesto se guardan aparte de tus datos reales y se pueden comparar desde Overview. Nunca pisan lo ya cargado."
       contentClassName="sm:max-w-lg"
       submitLabel="Guardar escenario"
       onSubmit={handleSubmit}

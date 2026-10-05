@@ -5,7 +5,7 @@
 export function SectionNum({ n }: { n: number }) {
   return (
     <span
-      className="inline-flex items-center justify-center w-[19px] h-[19px] rounded-[5px] border border-border text-[10.5px] font-semibold text-tertiary shrink-0"
+      className="inline-flex items-center justify-center w-[19px] h-[19px] rounded border border-border text-xs font-medium text-tertiary shrink-0"
       aria-hidden="true"
     >
       {n}

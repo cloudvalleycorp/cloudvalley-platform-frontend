@@ -63,7 +63,7 @@ export function RawFieldPicker({ value, onChange, rawFields, placeholder = "Eleg
             <span className="truncate">
               {selected ? selected.sample_column : placeholder}
               {selected?.connection_label && (
-                <span className="text-tertiary"> · {selected.connection_label}</span>
+                <span className="text-muted-foreground"> · {selected.connection_label}</span>
               )}
             </span>
             <ChevronsUpDown size={12} className="opacity-50 shrink-0" aria-hidden="true" />
@@ -95,10 +95,10 @@ export function RawFieldPicker({ value, onChange, rawFields, placeholder = "Eleg
                       </span>
                     </div>
                     {f.connection_label && (
-                      <span className="text-[11px] text-muted-foreground truncate w-full">{f.connection_label}</span>
+                      <span className="text-xs text-muted-foreground truncate w-full">{f.connection_label}</span>
                     )}
                     {f.description && (
-                      <span className="text-[11px] text-tertiary truncate w-full">{f.description}</span>
+                      <span className="text-xs text-muted-foreground truncate w-full">{f.description}</span>
                     )}
                   </CommandItem>
                 ))}
@@ -108,7 +108,7 @@ export function RawFieldPicker({ value, onChange, rawFields, placeholder = "Eleg
         </PopoverContent>
       </Popover>
       {similarInOtherSources.length > 0 && (
-        <p className="text-[11px] text-muted-foreground mt-1 flex items-start gap-1">
+        <p className="text-xs text-muted-foreground mt-1 flex items-start gap-1">
           <Sigma size={11} strokeWidth={1.5} className="shrink-0 mt-0.5" />
           Campo{similarInOtherSources.length === 1 ? "" : "s"} con nombre parecido en otra fuente:{" "}
           {similarInOtherSources.map((f) => f.connection_label ?? f.field_key).join(", ")}. Se pueden sumar con

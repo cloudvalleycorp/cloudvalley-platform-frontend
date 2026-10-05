@@ -92,7 +92,7 @@ export function MetricHistoryChart({ metric, history, size = "lg" }: Props) {
             onClick={() => setMode("change")}
             aria-pressed={mode === "change"}
             className={cn(
-              "px-2.5 text-[11px] transition-all",
+              "px-2.5 text-xs transition-all",
               mode === "change" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -102,7 +102,7 @@ export function MetricHistoryChart({ metric, history, size = "lg" }: Props) {
             onClick={() => setMode("absolute")}
             aria-pressed={mode === "absolute"}
             className={cn(
-              "px-2.5 text-[11px] transition-all border-l border-border",
+              "px-2.5 text-xs transition-all border-l border-border",
               mode === "absolute" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -160,7 +160,7 @@ export function MetricHistoryChart({ metric, history, size = "lg" }: Props) {
           </div>
         )}
       </div>
-      <p className="text-[11px] text-tertiary mt-2">
+      <p className="text-xs text-muted-foreground mt-2">
         {mode === "change" ? "Variación porcentual respecto al mes anterior." : `Valor absoluto por mes (${absoluteLabel}).`}
       </p>
     </div>

@@ -8,8 +8,8 @@ import { toPeriodString } from "@/lib/metricPeriod";
  * disparo manual (nunca se pide solo al cargar la pantalla, es una llamada
  * de IA con costo y rate limit real).
  */
-export function useMetricHighlights(companyId: string | null) {
-  const [highlights, setHighlights] = useState<MetricHighlight[] | null>(null);
+export function useMetricHighlights(companyId: string | null, initial?: MetricHighlight[]) {
+  const [highlights, setHighlights] = useState<MetricHighlight[] | null>(initial ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 

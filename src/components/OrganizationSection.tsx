@@ -274,7 +274,7 @@ export function OrganizationSection() {
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <Avatar className="h-8 w-8 shrink-0">
                       <AvatarImage src={m.avatar_url ?? undefined} alt="" />
-                      <AvatarFallback className="text-[11px] font-medium">
+                      <AvatarFallback className="text-xs font-medium">
                         {(m.full_name || m.email || "?").trim().slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
@@ -284,7 +284,7 @@ export function OrganizationSection() {
                           {m.full_name || m.email}
                         </span>
                         {isMe && (
-                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          <span className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">
                             Vos
                           </span>
                         )}
@@ -296,12 +296,12 @@ export function OrganizationSection() {
                   </div>
                   <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                     {m.is_owner && (
-                      <Badge className="shrink-0 gap-1 text-[10px] font-medium">
+                      <Badge className="shrink-0 gap-1 text-xs font-medium">
                         <Crown size={10} strokeWidth={1.5} />
                         Owner
                       </Badge>
                     )}
-                    <Badge variant="secondary" className="shrink-0 text-[10px] font-medium">
+                    <Badge variant="secondary" className="shrink-0 text-xs font-medium">
                       {roleLabel(m.role)}
                     </Badge>
                     {is_owner && (
@@ -321,7 +321,7 @@ export function OrganizationSection() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        className="shrink-0 text-muted-foreground hover:text-destructive-dark"
                         onClick={() => setRemoveTarget(m)}
                         title={`Quitar de la ${role === "investor" ? "organización" : "startup"}`}
                         aria-label={`Quitar a ${m.full_name || m.email} de la ${role === "investor" ? "organización" : "startup"}`}
@@ -333,7 +333,7 @@ export function OrganizationSection() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        className="shrink-0 text-muted-foreground hover:text-destructive-dark"
                         onClick={() => setRemoveTarget(m)}
                         title={`Salir de ${role === "investor" ? "la organización" : "la startup"}`}
                         aria-label={`Salir de ${role === "investor" ? "la organización" : "la startup"}`}

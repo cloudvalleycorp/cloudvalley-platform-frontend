@@ -53,7 +53,7 @@ export function DuplicateTransactionsDialog({ open, onOpenChange, companyId, con
       open={open}
       onOpenChange={onOpenChange}
       title="Posibles transacciones duplicadas"
-      description={`${connectionLabel} — filas del mismo período, misma entidad y mismo valor exacto.`}
+      description={`${connectionLabel}: filas del mismo período, misma entidad y mismo valor exacto.`}
       contentClassName="sm:max-w-2xl"
       footer={
         <Button variant="ghost" onClick={() => onOpenChange(false)}>

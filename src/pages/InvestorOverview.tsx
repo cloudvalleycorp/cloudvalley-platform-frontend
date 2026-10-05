@@ -136,7 +136,7 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
                   const value = agg ? (r.value_type === "percentage" ? agg.avg : agg.sum) ?? null : null;
                   return (
                     <div key={r.requirement_id} className="border border-border rounded-lg bg-card p-3">
-                      <p className="text-[11px] text-muted-foreground uppercase tracking-wide truncate">{r.name}</p>
+                      <p className="text-[0.6875rem] text-muted-foreground uppercase tracking-wide truncate">{r.name}</p>
                       <p className="text-lg font-medium text-foreground tabular-nums mt-1">
                         {value !== null && value !== undefined ? formatRequirementValue(value, r) : "Sin reportar"}
                       </p>
@@ -144,7 +144,7 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
                   );
                 })}
                 <div className="border border-border rounded-lg bg-card p-3">
-                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Empresas</p>
+                  <p className="text-[0.6875rem] text-muted-foreground uppercase tracking-wide">Empresas</p>
                   <p className="text-lg font-medium text-foreground tabular-nums mt-1">{filteredCompanies.length}</p>
                 </div>
               </div>
@@ -171,7 +171,7 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
                         className="w-full flex items-center justify-between gap-2 py-1.5 text-sm text-left hover:underline"
                       >
                         <span className="truncate">{a.company_name}</span>
-                        <span className="text-xs text-destructive shrink-0">{a.reason}</span>
+                        <span className="text-xs text-destructive-dark shrink-0">{a.reason}</span>
                       </button>
                     ))}
                   </div>
@@ -198,7 +198,7 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
                         className="w-full flex items-center justify-between gap-2 py-1.5 text-sm text-left hover:underline"
                       >
                         <span className="truncate">{t.title}</span>
-                        <span className={`text-xs shrink-0 ${t.is_overdue ? "text-destructive" : "text-muted-foreground"}`}>
+                        <span className={`text-xs shrink-0 ${t.is_overdue ? "text-destructive-dark" : "text-muted-foreground"}`}>
                           {t.is_overdue ? "Vencida" : CRITICALITY_LABELS[t.criticality]}
                         </span>
                       </button>

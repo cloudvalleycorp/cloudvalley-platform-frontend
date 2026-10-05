@@ -4,7 +4,7 @@ import { Info, Upload, RefreshCw, FileBarChart, CheckCircle2, Circle, Pencil, Tr
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { dueLabel, type RoadmapPillar, type RoadmapTask, type RoadmapTaskStatus } from "@/lib/roadmap";
+import { CRITICALITY_LABELS, dueLabel, type RoadmapPillar, type RoadmapTask, type RoadmapTaskStatus } from "@/lib/roadmap";
 
 type Props = {
   pillars: RoadmapPillar[];
@@ -64,17 +64,25 @@ export function RoadmapTaskList({
         const done = p.items.filter((t) => t.status === "done").length;
         const pct = p.items.length > 0 ? Math.round((done / p.items.length) * 100) : 0;
         return (
-          <section key={p.id} className="border border-border rounded-lg bg-card overflow-hidden">
-            <div className="px-4 py-[13px] flex items-center justify-between gap-3 bg-surface/60">
-              <h3 className="text-[13px] font-medium">{p.name}</h3>
+          <section key={p.id} className="border border-border rounded-lg bg-card">
+            <div className="px-4 py-[13px] flex items-center justify-between gap-3 bg-surface/60 rounded-t-lg">
+              {/* h2, no h3 — CLAUDE.md pide jerarquía sin saltos, este pilar
+                  cuelga directo del h1 de PageHeader (Roadmap.tsx), no hay
+                  ningún h2 intermedio en el resto de la pantalla. */}
+              <h2 className="text-sm font-medium">{p.name}</h2>
               <div className="flex items-center gap-2 shrink-0">
                 <div className="w-[100px] h-[5px] rounded-full bg-border overflow-hidden shrink-0">
                   <div className="h-full bg-teal transition-all duration-150" style={{ width: `${pct}%` }} />
                 </div>
-                <span className="text-[11.5px] text-muted-foreground tabular-nums w-8 text-right">{pct}%</span>
+                <span className="text-xs text-muted-foreground tabular-nums w-8 text-right">{pct}%</span>
               </div>
             </div>
-            <ul className="border-t border-border">
+            {/* overflow-x-auto, no overflow-hidden (regla CLAUDE.md) — una fila
+                con checkbox+título+badge+hasta 4 íconos de acción puede no
+                entrar en 375px; antes overflow-hidden en el <section> recortaba
+                esos botones fuera del viewport sin ninguna forma de alcanzarlos. */}
+            <div className="border-t border-border overflow-x-auto">
+            <ul>
               {p.items.map((t) => (
                 <li
                   key={t.startup_task_id}
@@ -82,7 +90,7 @@ export function RoadmapTaskList({
                 >
                   {readOnly ? (
                     t.status === "done" ? (
-                      <CheckCircle2 size={16} strokeWidth={1.5} className="text-success shrink-0 mt-0.5" aria-label="Completada" />
+                      <CheckCircle2 size={16} strokeWidth={1.5} className="text-success-dark shrink-0 mt-0.5" aria-label="Completada" />
                     ) : (
                       <Circle size={16} strokeWidth={1.5} className="text-muted-foreground shrink-0 mt-0.5" aria-label="Pendiente" />
                     )
@@ -91,10 +99,11 @@ export function RoadmapTaskList({
                       className="mt-0.5"
                       checked={t.status === "done"}
                       onCheckedChange={() => onToggleStatus?.(t.startup_task_id, t.status === "done" ? "pending" : "done")}
+                      aria-label={`Marcar "${t.title}" como ${t.status === "done" ? "pendiente" : "hecha"}`}
                     />
                   )}
                   <div className="flex-1 min-w-0">
-                    <span className={cn("text-sm", t.status === "done" && "text-tertiary line-through")}>{t.title}</span>
+                    <span className={cn("text-sm", t.status === "done" && "text-muted-foreground line-through")}>{t.title}</span>
                     {(() => {
                       const due = dueLabel(t.due_date, t.is_overdue);
                       const requester = t.requested_by_name && t.requested_by_user_id !== currentUserId ? t.requested_by_name : null;
@@ -110,21 +119,22 @@ export function RoadmapTaskList({
                   </div>
                   <span
                     className={cn(
-                      "text-[10px] font-semibold uppercase tracking-wide px-2 py-[1.5px] rounded-full shrink-0 mt-[3px]",
+                      "text-[0.6875rem] font-medium uppercase tracking-wide px-2 py-[1.5px] rounded-full shrink-0 mt-[3px]",
                       t.criticality === "critical"
                         ? "bg-destructive/10 text-destructive-dark"
                         : "bg-secondary text-secondary-foreground"
                     )}
                   >
-                    {t.criticality}
+                    {CRITICALITY_LABELS[t.criticality]}
                   </span>
                   {t.requires_report && !readOnly && (
                     <Link
                       to="/reporting"
                       title="Se completa creando y compartiendo un reporte"
+                      aria-label="Se completa creando y compartiendo un reporte"
                       className="text-muted-foreground hover:text-foreground transition-all mt-0.5"
                     >
-                      <FileBarChart size={14} strokeWidth={1.5} />
+                      <FileBarChart size={14} strokeWidth={1.5} aria-hidden="true" />
                     </Link>
                   )}
                   {t.requires_doc && !readOnly && (
@@ -132,8 +142,13 @@ export function RoadmapTaskList({
                       className="cursor-pointer text-muted-foreground hover:text-foreground transition-all mt-0.5"
                       title={t.document_id ? "Reemplazar documento" : "Subir documento"}
                     >
-                      {t.document_id ? <RefreshCw size={14} strokeWidth={1.5} /> : <Upload size={14} strokeWidth={1.5} />}
-                      <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && onUpload?.(t, e.target.files[0])} />
+                      {t.document_id ? <RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" /> : <Upload size={14} strokeWidth={1.5} aria-hidden="true" />}
+                      <input
+                        type="file"
+                        className="hidden"
+                        aria-label={t.document_id ? "Reemplazar documento" : "Subir documento"}
+                        onChange={(e) => e.target.files?.[0] && onUpload?.(t, e.target.files[0])}
+                      />
                     </label>
                   )}
                   {onEditTask && t.requested_by_user_id && (
@@ -151,7 +166,7 @@ export function RoadmapTaskList({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 -m-1.5 shrink-0 text-muted-foreground hover:text-destructive"
+                      className="h-7 w-7 -m-1.5 shrink-0 text-muted-foreground hover:text-destructive-dark"
                       onClick={() => onCancelTask(t)}
                       aria-label={`Cancelar pedido de ${t.title}`}
                     >
@@ -160,7 +175,7 @@ export function RoadmapTaskList({
                   )}
                   <button
                     onClick={() => onOpenTask(t)}
-                    className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground transition-all"
+                    className="inline-flex min-h-11 min-w-11 -m-3 items-center justify-center text-muted-foreground hover:text-foreground transition-all"
                     aria-label={`Info sobre ${t.title}`}
                   >
                     <Info size={14} strokeWidth={1.5} />
@@ -168,6 +183,7 @@ export function RoadmapTaskList({
                 </li>
               ))}
             </ul>
+            </div>
           </section>
         );
       })}

@@ -250,7 +250,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   <span className="text-muted-foreground/50 md:hidden">/</span>
                   <Avatar className="h-6 w-6 rounded-md shrink-0 hidden md:flex">
                     <AvatarImage src={orgLogoUrl ?? undefined} alt="" />
-                    <AvatarFallback className="rounded-md text-[10px] font-semibold">
+                    <AvatarFallback className="rounded-md text-xs font-semibold">
                       <Building2 size={12} strokeWidth={1.5} />
                     </AvatarFallback>
                   </Avatar>
@@ -301,7 +301,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   <Button variant="ghost" size="sm" className="gap-2 pl-1.5 pr-2.5 text-muted-foreground hover:text-foreground">
                     <Avatar className="h-6 w-6">
                       <AvatarImage src={avatar_url ?? undefined} alt="" />
-                      <AvatarFallback className="text-[10px] font-semibold">
+                      <AvatarFallback className="text-xs font-semibold">
                         {displayName.trim().slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
@@ -312,7 +312,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   <DropdownMenuLabel className="flex items-center gap-2.5">
                     <Avatar className="h-8 w-8 shrink-0">
                       <AvatarImage src={avatar_url ?? undefined} alt="" />
-                      <AvatarFallback className="text-[11px] font-semibold">
+                      <AvatarFallback className="text-xs font-semibold">
                         {displayName.trim().slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
@@ -329,7 +329,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     Configuración
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={signOut} className="text-destructive focus:text-destructive">
+                  <DropdownMenuItem onClick={signOut} className="text-destructive-dark focus:text-destructive-dark">
                     <LogOut size={14} strokeWidth={1.5} className="mr-2" />
                     Cerrar sesión
                   </DropdownMenuItem>

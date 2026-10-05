@@ -38,7 +38,7 @@ import type { DataRoomFolder } from "@/lib/dataRoom";
 import { type MetricDef } from "@/lib/metrics";
 import { evalFormula } from "@/lib/formulaEngine";
 import { percentChange, formatMetricValue } from "@/lib/metrics";
-import { periodKey, prevMonth, toPeriodString, periodRange } from "@/lib/metricPeriod";
+import { periodKey, prevMonth, toPeriodString, periodRange, parsePeriodString, MONTH_LABELS } from "@/lib/metricPeriod";
 import { useRawFieldValues } from "@/hooks/useRawFieldValues";
 import { useMetricReportData } from "@/hooks/useMetricReportData";
 import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
@@ -206,6 +206,21 @@ export default function InvestorCompany() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkReportId, shared.reports]);
+
+  // Un update tiene período fijo: al abrirlo, la vista arranca en ese mes y no
+  // en el mes actual. Se aplica una sola vez por reporte para que un refetch
+  // no pise el período. Los reportes legacy (period null) quedan con el
+  // selector manual de siempre.
+  const periodSyncedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shared.selectedId || shared.loadingDetail) return;
+    if (periodSyncedFor.current === shared.selectedId) return;
+    periodSyncedFor.current = shared.selectedId;
+    if (shared.period) {
+      const { y, m } = parsePeriodString(shared.period);
+      setPeriod({ month: m, year: y });
+    }
+  }, [shared.selectedId, shared.period, shared.loadingDetail]);
 
   // Analítica real de lectura (contrato 2026-09-11): manda open/heartbeat/
   // close mientras el visor del reporte (tab Updates) está abierto — el
@@ -479,7 +494,14 @@ export default function InvestorCompany() {
                           </SelectContent>
                         </Select>
                       )}
-                      {shared.reports.length > 0 && <PeriodSelect period={period} onChange={setPeriod} />}
+                      {shared.reports.length > 0 &&
+                        (shared.period ? (
+                          <span className="inline-flex items-center h-9 px-3 rounded-md border border-border bg-surface text-sm text-muted-foreground">
+                            Período: {MONTH_LABELS[parsePeriodString(shared.period).m - 1]} {parsePeriodString(shared.period).y}
+                          </span>
+                        ) : (
+                          <PeriodSelect period={period} onChange={setPeriod} />
+                        ))}
                       {shared.selectedId && (
                         <Button size="sm" variant="outline" onClick={handleExportPdf} disabled={exportingPdf}>
                           <Download size={13} strokeWidth={1.5} className="mr-1.5" aria-hidden="true" />
@@ -606,7 +628,7 @@ export default function InvestorCompany() {
                               <FolderIcon size={16} strokeWidth={1.5} className="text-muted-foreground shrink-0" aria-hidden="true" />
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm truncate">Sin categorizar</div>
-                                <div className="text-[11px] text-muted-foreground mt-0.5">
+                                <div className="text-xs text-muted-foreground mt-0.5">
                                   Documentos subidos antes de las carpetas · {uncategorizedCount} documento{uncategorizedCount === 1 ? "" : "s"}
                                 </div>
                               </div>
@@ -839,10 +861,10 @@ function MetricsGrid({
             onClick={() => onOpen(m)}
             className="text-left border border-border rounded-lg bg-card p-3 hover:border-foreground/30 transition-colors"
           >
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide truncate">{m.name}</p>
+            <p className="text-[0.6875rem] text-muted-foreground uppercase tracking-wide truncate">{m.name}</p>
             <p className="text-lg font-medium text-foreground tabular-nums mt-1">{formatMetricValue(current, m.unit)}</p>
             {change !== null && (
-              <p className={cn("text-xs mt-0.5 tabular-nums", change >= 0 ? "text-success" : "text-destructive")}>
+              <p className={cn("text-xs mt-0.5 tabular-nums", change >= 0 ? "text-success-dark" : "text-destructive-dark")}>
                 {change >= 0 ? "↑" : "↓"} {Math.abs(change).toFixed(1)}%
               </p>
             )}

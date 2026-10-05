@@ -20,7 +20,7 @@ import {
 } from "@/lib/sheetsIntegration";
 import { handleMembershipError } from "@/lib/membership";
 
-type ApiKeyProvider = "stripe" | "mercury" | "amplitude";
+type ApiKeyProvider = "stripe" | "mercury";
 type Item = {
   id: string;
   provider: ApiKeyProvider;
@@ -43,8 +43,8 @@ type ApiKeyProviderConfig = {
   secretPlaceholder?: string;
   helpText: string;
   helpUrl: string;
-  // Estas 3 todavía escriben en metric_entries de Supabase, no en el módulo
-  // financiero de GCP que Growth Tracker lee desde la migración — conectarlas
+  // Stripe y Mercury todavía escriben en metric_entries de Supabase, no en el
+  // módulo financiero de GCP que Growth Tracker lee desde la migración — conectarlas
   // no actualiza ninguna métrica visible hoy. Sacar este flag cuando se
   // migren de verdad (mismo patrón que Sheets: un connect/sync propio contra
   // el gateway, escribiendo en financial_record).
@@ -97,21 +97,6 @@ const PROVIDERS: ProviderConfig[] = [
     keyPlaceholder: "secret-token:mercury_...",
     helpText: "Mercury → Settings → Tokens → Generate read-only token.",
     helpUrl: "https://app.mercury.com/settings/tokens",
-    notWiredToGrowthTracker: true,
-  },
-  {
-    kind: "api_key",
-    id: "amplitude",
-    name: "Amplitude",
-    description: "Métricas de uso de producto del último mes.",
-    metrics: "MAU",
-    needsSecret: true,
-    keyLabel: "API Key",
-    keyPlaceholder: "Project API key",
-    secretLabel: "Secret Key",
-    secretPlaceholder: "Project secret key",
-    helpText: "Amplitude → Settings → Projects → tu proyecto → API Keys.",
-    helpUrl: "https://amplitude.com/",
     notWiredToGrowthTracker: true,
   },
 ];
@@ -326,16 +311,16 @@ export function IntegrationsSection() {
                   <FileSpreadsheet size={14} strokeWidth={1.5} className="text-muted-foreground" />
                   <span className="text-sm font-medium">{p.name}</span>
                   {paused && (
-                    <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground bg-surface px-1.5 py-0.5 rounded">
+                    <span className="inline-flex items-center gap-1 text-[0.6875rem] uppercase tracking-wide text-muted-foreground bg-surface px-1.5 py-0.5 rounded">
                       <AlertTriangle size={10} /> Pausado
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">{p.description}</p>
-                <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wide">{p.metrics}</p>
+                <p className="text-[0.6875rem] text-muted-foreground mt-1 uppercase tracking-wide">{p.metrics}</p>
 
                 {paused && (
-                  <p className="text-[11px] text-muted-foreground mt-2">
+                  <p className="text-xs text-muted-foreground mt-2">
                     Un administrador de CloudValley la desactivó temporalmente.
                   </p>
                 )}
@@ -355,18 +340,18 @@ export function IntegrationsSection() {
                         <span className="truncate">{a.google_account_email}</span>
                         <div className="flex items-center gap-1 shrink-0">
                           {a.reconnect_required ? (
-                            <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={connectSheets} disabled={connectingSheets}>
+                            <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={connectSheets} disabled={connectingSheets}>
                               <AlertTriangle size={10} className="mr-1" /> Reconectar
                             </Button>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-foreground">
+                            <span className="inline-flex items-center gap-1 text-[0.6875rem] uppercase tracking-wide text-foreground">
                               <CheckCircle2 size={10} /> Conectada
                             </span>
                           )}
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-6 px-2 text-[11px]"
+                            className="h-6 px-2 text-xs"
                             onClick={() => setConfirmDisconnectAccount(a)}
                             disabled={disconnectingAccountId === a.account_id}
                           >
@@ -383,7 +368,7 @@ export function IntegrationsSection() {
 
                 <button
                   onClick={() => navigate(p.href)}
-                  className="text-xs text-primary hover:underline mt-3 inline-flex items-center gap-1"
+                  className="text-xs text-primary-dark hover:underline mt-3 inline-flex min-h-[1.5rem] items-center gap-1"
                 >
                   Gestioná tus hojas conectadas en Métricas <ArrowRight size={11} strokeWidth={1.5} />
                 </button>
@@ -401,36 +386,40 @@ export function IntegrationsSection() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{p.name}</span>
                     {connected && p.notWiredToGrowthTracker ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-warning-foreground bg-surface px-1.5 py-0.5 rounded">
+                      <span className="inline-flex items-center gap-1 text-[0.6875rem] uppercase tracking-wide text-warning-dark bg-surface px-1.5 py-0.5 rounded">
                         <AlertTriangle size={10} /> Conectado, sin sincronizar
                       </span>
                     ) : (
                       connected && (
-                        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-foreground bg-surface px-1.5 py-0.5 rounded">
+                        <span className="inline-flex items-center gap-1 text-[0.6875rem] uppercase tracking-wide text-foreground bg-surface px-1.5 py-0.5 rounded">
                           <CheckCircle2 size={10} /> Conectado
                         </span>
                       )
                     )}
                     {error && (
-                      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-destructive">
+                      <span className="inline-flex items-center gap-1 text-[0.6875rem] uppercase tracking-wide text-destructive-dark">
                         <AlertCircle size={10} /> Error
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">{p.description}</p>
-                  <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wide">{p.metrics}</p>
+                  <p className="text-[0.6875rem] text-muted-foreground mt-1 uppercase tracking-wide">{p.metrics}</p>
+                  {/* warning-dark, no warning-foreground: ese token es el
+                      neutro oscuro pensado para texto SOBRE un fill
+                      bg-warning, no para texto libre sobre blanco. Antes
+                      renderizaba casi negro, sin leerse como advertencia. */}
                   {p.notWiredToGrowthTracker && (
-                    <p className="text-[11px] text-warning-foreground mt-1.5 flex items-center gap-1">
+                    <p className="text-xs text-warning-dark mt-1.5 flex items-center gap-1">
                       <AlertTriangle size={11} strokeWidth={1.5} className="shrink-0" />
                       Todavía no actualiza las métricas de Growth Tracker.
                     </p>
                   )}
                   {item && (
-                    <p className="text-[11px] text-muted-foreground mt-2">
+                    <p className="text-xs text-muted-foreground mt-2">
                       {item.account_label && <span>{item.account_label} · </span>}
                       Última sync: {timeAgo(item.last_synced_at)}
                       {error && item.last_sync_error && (
-                        <span className="text-destructive"> · {item.last_sync_error}</span>
+                        <span className="text-destructive-dark"> · {item.last_sync_error}</span>
                       )}
                     </p>
                   )}
@@ -512,7 +501,7 @@ export function IntegrationsSection() {
                 />
               </div>
             )}
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Tu credencial se guarda encriptada y solo se usa desde el servidor para leer tus métricas.
             </p>
           </>

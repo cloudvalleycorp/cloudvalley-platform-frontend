@@ -7,7 +7,11 @@ async function fetchRoadmap(companyId: string): Promise<ListRoadmapResponse> {
   const res = await fetch(`${LIST_ROADMAP_URL}?company_id=${encodeURIComponent(companyId)}`, {
     credentials: "include",
   });
-  if (!res.ok) return { readiness_score: 0, pillars: [], tasks: [] };
+  // Bug real encontrado en auditoría (2026-09-29): un !res.ok (500, CORS)
+  // devolvía silenciosamente {pillars:[], tasks:[]} — idéntico a un roadmap
+  // genuinamente vacío. Tirar acá deja que react-query exponga isError, para
+  // que la pantalla pueda distinguir "no tenés tareas" de "falló la carga".
+  if (!res.ok) throw new Error("No se pudo cargar el roadmap");
   const data = await res.json();
   return {
     readiness_score: data?.readiness_score ?? 0,
@@ -21,7 +25,7 @@ export function useRoadmap(companyId: string | null) {
   const queryClient = useQueryClient();
   const queryKey = ["roadmap", companyId] as const;
 
-  const { data, isLoading: loading } = useQuery({
+  const { data, isLoading: loading, isError: error, refetch } = useQuery({
     queryKey,
     queryFn: () => fetchRoadmap(companyId!),
     enabled: !!companyId,
@@ -52,6 +56,8 @@ export function useRoadmap(companyId: string | null) {
     tasks: data?.tasks ?? [],
     readinessScore: data?.readiness_score ?? 0,
     loading,
+    error,
+    retry: refetch,
     toggleStatus,
     reload,
   };

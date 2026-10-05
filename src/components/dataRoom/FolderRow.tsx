@@ -18,6 +18,8 @@ type Props = {
   subfolderCount: number;
   /** Todos los document_id de esta carpeta y sus subcarpetas — para "Ver actividad" (useFolderAnalytics). */
   documentIds: string[];
+  /** Tiene al menos un share activo (list-all-document-shares) — a diferencia de un documento, una carpeta no tiene is_public ni shared_connection_count, así que esto es lo único que indica "esta carpeta ya se comparte con alguien". */
+  isShared?: boolean;
   canEdit: boolean;
   /** Compartir — igual que documentos, solo el owner de la startup. */
   isOwner: boolean;
@@ -29,7 +31,7 @@ type Props = {
 };
 
 /** Una subcarpeta dentro del directorio actual de Data Room — nombre, cantidad de contenido, acciones. */
-export function FolderRow({ folder, docCount, subfolderCount, documentIds, canEdit, isOwner, companyId, onOpen, onRename, onMove, onDelete }: Props) {
+export function FolderRow({ folder, docCount, subfolderCount, documentIds, isShared = false, canEdit, isOwner, companyId, onOpen, onRename, onMove, onDelete }: Props) {
   const [sharing, setSharing] = useState(false);
   const [viewingActivity, setViewingActivity] = useState(false);
   const countLabel = [
@@ -52,10 +54,17 @@ export function FolderRow({ folder, docCount, subfolderCount, documentIds, canEd
         <div className="text-sm truncate flex items-center gap-1.5">
           {folder.name}
           {folder.is_locked && (
-            <Lock size={11} strokeWidth={1.5} className="text-tertiary shrink-0" aria-label="Carpeta fija" />
+            <span title="Carpeta fija" aria-label="Carpeta fija" className="inline-flex shrink-0">
+              <Lock size={11} strokeWidth={1.5} className="text-tertiary" aria-hidden="true" />
+            </span>
+          )}
+          {isOwner && isShared && (
+            <span title="Compartida con al menos un fondo" aria-label="Compartida con al menos un fondo" className="inline-flex shrink-0">
+              <Share2 size={11} strokeWidth={1.5} className="text-teal-dark" aria-hidden="true" />
+            </span>
           )}
         </div>
-        <div className="text-[11px] text-muted-foreground mt-0.5">{countLabel}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{countLabel}</div>
       </div>
       {canEdit && (
         <DropdownMenu>
@@ -96,7 +105,7 @@ export function FolderRow({ folder, docCount, subfolderCount, documentIds, canEd
             {!folder.is_locked && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={onDelete} className="text-destructive-dark focus:text-destructive-dark">
                   <Trash2 size={12} strokeWidth={1.5} className="mr-2" />
                   Eliminar
                 </DropdownMenuItem>
@@ -105,24 +114,30 @@ export function FolderRow({ folder, docCount, subfolderCount, documentIds, canEd
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+      {/* stopPropagation: Dialog/Sheet de Radix hacen portal fuera del DOM
+          de esta fila, pero React sigue burbujeando el evento por el árbol
+          de COMPONENTES (no el de DOM) — sin esto, tocar el Switch de
+          adentro de ShareDialog también disparaba el onClick={onOpen} de la
+          fila entera, navegando a la carpeta en pleno medio de compartirla.
+          Mismo problema que ya resuelve DropdownMenuContent arriba. */}
       {isOwner && companyId && (
-        <ShareDialog
-          open={sharing}
-          onOpenChange={setSharing}
-          companyId={companyId}
-          resourceType="folder"
-          resourceId={folder.id}
-          resourceName={folder.name}
-        />
-      )}
-      {isOwner && companyId && (
-        <FolderAnalyticsSheet
-          open={viewingActivity}
-          onOpenChange={setViewingActivity}
-          companyId={companyId}
-          folderName={folder.name}
-          documentIds={documentIds}
-        />
+        <div onClick={(e) => e.stopPropagation()}>
+          <ShareDialog
+            open={sharing}
+            onOpenChange={setSharing}
+            companyId={companyId}
+            resourceType="folder"
+            resourceId={folder.id}
+            resourceName={folder.name}
+          />
+          <FolderAnalyticsSheet
+            open={viewingActivity}
+            onOpenChange={setViewingActivity}
+            companyId={companyId}
+            folderName={folder.name}
+            documentIds={documentIds}
+          />
+        </div>
       )}
     </div>
   );

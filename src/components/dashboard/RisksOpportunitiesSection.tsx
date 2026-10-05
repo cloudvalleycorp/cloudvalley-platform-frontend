@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Wand2 } from "lucide-react";
 import { SectionNum } from "@/components/dashboard/SectionNum";
@@ -31,6 +31,12 @@ const GOOD_DIRECTION_UP: Record<string, boolean> = {
 
 const SIGNIFICANT_DELTA_PCT = 10;
 const HIGH_IMPACT_DELTA_PCT = 25;
+// Sin tope, esta sección se volvía eterna con una cuenta con muchos issues de
+// salud de datos (visto en vivo: 15 cards seguidas) — mismo criterio de "tope
+// + ver más" que ya usan DataReadinessSection/ActionCenterSection en esta
+// misma pantalla, pero como expandir en el lugar (no hay una única pantalla
+// destino para "ver el resto", esto combina 3 fuentes distintas).
+const MAX_VISIBLE = 6;
 
 type Item = {
   id: string;
@@ -113,8 +119,8 @@ export function RisksOpportunitiesSection({
         confidenceLabel: m.proposal?.low_confidence ? "baja" : "alta",
         why:
           m.status === "proposal_connect"
-            ? "Se carga a mano hoy — la podemos calcular sola con lo que ya conectaste."
-            : "Ya se calcula sola — hay una fuente nueva conectada para sumarle.",
+            ? "Se carga a mano hoy. La podemos calcular sola con lo que ya conectaste."
+            : "Ya se calcula sola. Hay una fuente nueva conectada para sumarle.",
         actionLabel: "Revisar en Métricas",
         actionHref: "/metrics",
       });
@@ -123,6 +129,8 @@ export function RisksOpportunitiesSection({
     const order: Record<Item["impact"], number> = { high: 0, medium: 1 };
     return list.sort((a, b) => order[a.impact] - order[b.impact]);
   }, [metrics, highlights, healthIssues, coverage]);
+  const [expanded, setExpanded] = useState(false);
+  const visibleItems = expanded ? items : items.slice(0, MAX_VISIBLE);
 
   return (
     <SectionCard
@@ -139,7 +147,7 @@ export function RisksOpportunitiesSection({
           bordered={false}
           icon={Wand2}
           title="Generá Qué cambió y Qué podemos mejorar para ver riesgos y oportunidades acá."
-          description="Esta sección combina esos dos resultados con la salud de tus datos — no dispara ninguna llamada de IA nueva."
+          description="Esta sección combina esos dos resultados con la salud de tus datos. No dispara ninguna llamada de IA nueva."
           action={{ label: "Generar Qué cambió", onClick: onLoadHighlights }}
           secondaryAction={{ label: "Buscar mejoras", onClick: onLoadCoverage }}
         />
@@ -147,7 +155,7 @@ export function RisksOpportunitiesSection({
         <EmptyState bordered={false} icon={Wand2} title="Nada que priorizar por ahora." description="No encontramos riesgos ni oportunidades significativas con lo que ya generaste." />
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <div
               key={item.id}
               className={cn(
@@ -163,7 +171,7 @@ export function RisksOpportunitiesSection({
                 <div>
                   <p
                     className={cn(
-                      "text-[10.5px] font-semibold uppercase tracking-wide",
+                      "text-[0.6875rem] font-medium uppercase tracking-wide",
                       item.kind === "risk" ? "text-destructive-dark" : "text-teal-dark"
                     )}
                   >
@@ -177,14 +185,23 @@ export function RisksOpportunitiesSection({
               </div>
               <p className="text-xs text-muted-foreground">{item.why}</p>
               <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-border mt-auto">
-                <span className="text-xs text-tertiary">{item.confidenceLabel ? `Confianza: ${item.confidenceLabel}` : "Señal determinística"}</span>
-                <Link to={item.actionHref} className="text-xs font-medium text-primary hover:underline">
+                <span className="text-xs text-muted-foreground">{item.confidenceLabel ? `Confianza: ${item.confidenceLabel}` : "Señal determinística"}</span>
+                <Link to={item.actionHref} className="text-xs font-medium text-primary-dark hover:underline">
                   {item.actionLabel} →
                 </Link>
               </div>
             </div>
           ))}
         </div>
+      )}
+      {items.length > MAX_VISIBLE && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="text-xs font-medium text-primary-dark mt-3 inline-flex min-h-[1.5rem] items-center hover:underline"
+        >
+          {expanded ? "Ver menos" : `Ver los ${items.length - MAX_VISIBLE} restantes`}
+        </button>
       )}
       {hasTriggeredEither && (
         <div className="flex items-center gap-2 mt-4">

@@ -3,6 +3,7 @@ import { DollarSign, Hash, Percent, Plus, Search as SearchIcon } from "lucide-re
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { DataTableToolbar } from "@/components/DataTableToolbar";
 import { EmptyState } from "@/components/EmptyState";
+import { TablePagination } from "@/components/admin/TablePagination";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -34,6 +35,7 @@ type Props = {
 
 const ORPHAN_ORIGIN = "__orphan__";
 const MULTI_ORIGIN = "__multi__";
+const PAGE_SIZE = 20;
 
 // Origen unificado: para "input" es de dónde se carga el dato (manual/sheet,
 // sin cambios); para "calculated" ahora resuelve sus fuentes reales en vez
@@ -59,6 +61,7 @@ export function MetricsManager({ metrics, categories, allMetrics, rawFields, onS
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [originFilter, setOriginFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
 
   const origins = useMemo(() => {
     const map = new Map<string, string>();
@@ -79,6 +82,10 @@ export function MetricsManager({ metrics, categories, allMetrics, rawFields, onS
       return true;
     });
   }, [metrics, allMetrics, rawFields, search, typeFilter, originFilter, categoryFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const columns: DataTableColumn<MetricDef>[] = [
     {
@@ -159,7 +166,7 @@ export function MetricsManager({ metrics, categories, allMetrics, rawFields, onS
 
       <DataTable
         columns={columns}
-        rows={filtered}
+        rows={pageRows}
         rowKey={(m) => m.id}
         onRowClick={onSelect}
         emptyLabel={
@@ -174,6 +181,7 @@ export function MetricsManager({ metrics, categories, allMetrics, rawFields, onS
           )
         }
       />
+      <TablePagination page={currentPage} totalPages={totalPages} totalCount={filtered.length} onPageChange={setPage} />
     </div>
   );
 }

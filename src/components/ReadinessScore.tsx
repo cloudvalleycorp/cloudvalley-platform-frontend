@@ -5,7 +5,7 @@ export function ReadinessScore({ score, pillars }: { score: number; pillars: Pil
     <div className="border border-border rounded-lg bg-card p-8">
       <div className="flex items-baseline gap-2">
         <span className="text-6xl font-medium tracking-tight text-foreground">{score}</span>
-        <span className="text-2xl text-tertiary">/100</span>
+        <span className="text-2xl text-muted-foreground">/100</span>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">Readiness score</p>
 

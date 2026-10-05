@@ -29,21 +29,25 @@ export function GridLayoutMapping({ periodOrientation, periodAxis, conceptAxis, 
         </p>
         <div className="flex flex-wrap gap-1.5">
           {periodAxis.map((p) => (
-            <Badge key={p.index} variant="outline" className="text-[11px] font-mono">
+            <Badge key={p.index} variant="outline" className="text-xs font-mono">
               {p.period}
             </Badge>
           ))}
         </div>
         {periodAxis.length === 0 && (
           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <AlertTriangle size={12} strokeWidth={1.5} /> No se detectó ningún período — revisá manualmente antes de confirmar.
+            <AlertTriangle size={12} strokeWidth={1.5} /> No se detectó ningún período. Revisá manualmente antes de confirmar.
           </p>
         )}
       </div>
 
       <div>
         <p className="text-xs font-medium mb-1.5">Conceptos detectados ({conceptAxis.length})</p>
-        <div className="space-y-1.5">
+        {/* overflow-x-auto, no overflow-hidden (regla CLAUDE.md) — cada fila
+            combina label+Input(160px)+2 Select(96/112px) de ancho fijo, no
+            entra en 375px; min-w-max evita que el flex interno se aplaste. */}
+        <div className="overflow-x-auto">
+        <div className="space-y-1.5 min-w-max">
           {conceptAxis.map((c) => (
             <div key={c.index} className="flex items-center gap-2 border border-border rounded-md p-2 bg-surface">
               <div className="min-w-0 flex-1">
@@ -51,7 +55,7 @@ export function GridLayoutMapping({ periodOrientation, periodAxis, conceptAxis, 
                   {c.label}
                 </p>
                 {c.derived_from && c.derived_from.length > 0 && (
-                  <p className="text-[11px] text-tertiary truncate">Calculado a partir de: {c.derived_from.join(", ")}</p>
+                  <p className="text-xs text-muted-foreground truncate">Calculado a partir de: {c.derived_from.join(", ")}</p>
                 )}
               </div>
               <Input
@@ -84,8 +88,9 @@ export function GridLayoutMapping({ periodOrientation, periodAxis, conceptAxis, 
             </div>
           ))}
         </div>
-        <p className="text-[11px] text-tertiary mt-1.5">
-          "Ya calculado" significa que la planilla ya hizo la cuenta (ej. EBITDA) — se guarda tal cual, sin volver a
+        </div>
+        <p className="text-xs text-muted-foreground mt-1.5">
+          "Ya calculado" significa que la planilla ya hizo la cuenta (ej. EBITDA). Se guarda tal cual, sin volver a
           sumarlo.
         </p>
       </div>

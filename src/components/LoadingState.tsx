@@ -1,6 +1,9 @@
 import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BrandLoader } from "@/components/BrandLoader";
 
+// Pantalla completa y sección: logo de CloudValley. Dentro de un botón o en
+// una línea de texto no va: ahí el spinner chico o el texto alcanzan.
+// Listas y tablas usan SkeletonSection, no este componente.
 export function LoadingState({
   variant = "centered",
   label = "Cargando…",
@@ -12,22 +15,15 @@ export function LoadingState({
 }) {
   if (variant === "fullScreen") {
     return (
-      <div
-        role="status"
-        className={cn("min-h-screen flex items-center justify-center", className)}
-      >
-        <img src="/logo.svg" alt="" className="h-10 w-10 animate-fade-in" />
-        <span className="sr-only">{label}</span>
+      <div className={cn("min-h-screen flex items-center justify-center", className)}>
+        <BrandLoader size="lg" label={label} />
       </div>
     );
   }
   if (variant === "centered") {
     return (
-      <div role="status" className={cn("p-8 flex flex-col items-center gap-2.5", className)}>
-        <Skeleton className="h-3.5 w-40" />
-        <Skeleton className="h-3 w-56" />
-        <Skeleton className="h-3 w-32" />
-        <span className="sr-only">{label}</span>
+      <div className={cn("p-8 flex justify-center", className)}>
+        <BrandLoader size="md" label={label} />
       </div>
     );
   }

@@ -2,10 +2,13 @@ import { Badge } from "@/components/ui/badge";
 
 export type UserRole = "admin" | "user" | "investor";
 
+// Solo tokens de marca: los tres roles se distinguen por familia (neutro,
+// teal, rojo de marca) y el modo oscuro lo resuelven los tokens, sin variantes
+// `dark:` a mano. El rojo de error no se usa acá a propósito.
 const ROLE_STYLES: Record<UserRole, string> = {
-  admin: "border-transparent bg-purple-100 text-purple-800 hover:bg-purple-100 dark:bg-purple-950 dark:text-purple-300 dark:hover:bg-purple-950",
-  user: "border-transparent bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300 dark:hover:bg-blue-950",
-  investor: "border-transparent bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-950",
+  admin: "border-border bg-surface text-foreground hover:bg-surface",
+  user: "border-transparent bg-teal-subtle text-teal-dark hover:bg-teal-subtle",
+  investor: "border-transparent bg-primary/10 text-primary-dark hover:bg-primary/10",
 };
 
 const ROLE_LABELS: Record<UserRole, string> = {

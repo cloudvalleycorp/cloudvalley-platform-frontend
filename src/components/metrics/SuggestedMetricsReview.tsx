@@ -154,7 +154,7 @@ export function SuggestedMetricsReview({
       if (row.mode !== "create") {
         const target = allMetrics.find((m) => m.id === row.target_metric_id);
         if (!target) {
-          rowErrorMessages.push(`"${row.name}" no se pudo conectar — no encontramos la métrica existente.`);
+          rowErrorMessages.push(`"${row.name}" no se pudo conectar. No encontramos la métrica existente.`);
           nextRows.push(row);
           continue;
         }
@@ -297,7 +297,7 @@ export function SuggestedMetricsReview({
     if (savedCount > 0 || connectedCount > 0) onSaved();
     for (const msg of rowErrorMessages) toast.error(msg);
     if (failedSilently > 0) {
-      toast.error(`${failedSilently} métrica${failedSilently === 1 ? "" : "s"} no se pudo guardar por un error de red — probá de nuevo.`);
+      toast.error(`${failedSilently} métrica${failedSilently === 1 ? "" : "s"} no se pudo guardar por un error de red. Probá de nuevo.`);
     }
     if (pendingDuplicateCount > 0) {
       // El paso queda abierto a propósito: hay decisiones reales pendientes
@@ -425,8 +425,8 @@ export function SuggestedMetricsReview({
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {row.mode === "enrich"
-                          ? "Ya se calculaba sola — se le suma el aporte de esta hoja sin perder lo que ya tenía."
-                          : "Todavía se cargaba a mano — pasa a calcularse sola con esta fuente."}
+                          ? "Ya se calculaba sola. Se le suma el aporte de esta hoja sin perder lo que ya tenía."
+                          : "Todavía se cargaba a mano. Pasa a calcularse sola con esta fuente."}
                       </p>
                     </div>
                   </label>
@@ -471,11 +471,11 @@ export function SuggestedMetricsReview({
                   />
                   {row.possibleDuplicate && (
                     <div className="mt-1.5 space-y-1.5">
-                      <p className="text-xs text-warning flex items-center gap-1">
+                      <p className="text-xs text-warning-dark flex items-center gap-1">
                         <AlertTriangle size={11} strokeWidth={1.5} />
                         {row.duplicateFromServer
-                          ? `Ya existe "${row.possibleDuplicate.name}" — no se creó de nuevo.`
-                          : `Parecida a "${row.possibleDuplicate.name}" — revisá antes de crear otra.`}
+                          ? `Ya existe "${row.possibleDuplicate.name}". No se creó de nuevo.`
+                          : `Parecida a "${row.possibleDuplicate.name}". Revisá antes de crear otra.`}
                       </p>
                       {(row.possibleDuplicate.metric_type === "input" ||
                         (row.possibleDuplicate.metric_type === "calculated" && row.possibleDuplicate.query)) && (
@@ -549,7 +549,7 @@ export function SuggestedMetricsReview({
                     <div className="rounded-md bg-surface border border-border p-2.5">
                       <QuerySummary query={row.query} className="text-xs" />
                     </div>
-                    <p className="text-[11px] text-tertiary mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Se puede ajustar después desde "Editar métrica" con el query builder completo.
                     </p>
                   </div>

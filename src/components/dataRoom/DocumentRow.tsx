@@ -86,25 +86,25 @@ export function DocumentRow({
       <div className="flex-1 min-w-0">
         <div className="text-sm truncate">{doc.name}</div>
         {doc.status !== "missing" && (
-          <div className="text-[11px] text-muted-foreground mt-0.5">
+          <div className="text-xs text-muted-foreground mt-0.5">
             {doc.uploaded_by_name ? `Subido por ${doc.uploaded_by_name} el ` : "Subido el "}
             {new Date(doc.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" })}
           </div>
         )}
         {showRoadmapBadge && doc.task_title && (
-          <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+          <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
             <FileText size={10} strokeWidth={1.5} />
             Roadmap: {doc.task_title}
           </div>
         )}
         {legacyCategoryLabel && (
-          <div className="text-[10px] text-tertiary mt-0.5">Categoría anterior: {legacyCategoryLabel}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">Categoría anterior: {legacyCategoryLabel}</div>
         )}
         {/* Lado investor (canEdit=false): si lo ve pero no es is_public, es
             porque tu fondo tiene un share puntual — mostrarlo, con
             vencimiento si tiene. */}
         {!canEdit && !doc.is_public && (
-          <div className="text-[10px] text-teal-dark mt-0.5">
+          <div className="text-xs text-teal-dark mt-0.5">
             Compartido con el fondo
             {doc.expires_at && ` · vence el ${new Date(doc.expires_at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}`}
           </div>
@@ -156,11 +156,16 @@ export function DocumentRow({
             ) : (
               <RefreshCw size={14} strokeWidth={1.5} />
             )}
-            <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])} />
+            <input
+              type="file"
+              className="hidden"
+              aria-label={doc.status === "missing" ? "Subir documento" : "Reemplazar documento"}
+              onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
+            />
           </label>
           <button
             onClick={onDelete}
-            className="p-1.5 -m-1.5 text-muted-foreground hover:text-destructive transition-all"
+            className="p-1.5 -m-1.5 text-muted-foreground hover:text-destructive-dark transition-all"
             title="Eliminar documento"
             aria-label={`Eliminar ${doc.name}`}
           >
@@ -173,7 +178,10 @@ export function DocumentRow({
                 disabled={doc.status === "missing"}
                 className={cn(
                   "p-1.5 -m-1.5 transition-all disabled:opacity-30 disabled:pointer-events-none",
-                  doc.status === "verified" ? "text-success" : "text-muted-foreground hover:text-foreground"
+                  // success-dark: el token base da ~2.22:1 contra blanco
+                  // (documentado), por debajo incluso del piso de 3:1 para
+                  // un ícono que transmite estado.
+                  doc.status === "verified" ? "text-success-dark" : "text-muted-foreground hover:text-foreground"
                 )}
                 title={doc.status === "verified" ? "Quitar verificación" : "Marcar como verificado"}
                 aria-label={
@@ -190,7 +198,7 @@ export function DocumentRow({
               >
                 <Share2 size={14} strokeWidth={1.5} />
                 {!doc.is_public && !!doc.shared_connection_count && (
-                  <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-primary text-primary-foreground text-[8px] font-semibold flex items-center justify-center">
+                  <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-primary text-primary-foreground text-[0.6875rem] font-medium flex items-center justify-center">
                     {doc.shared_connection_count}
                   </span>
                 )}
@@ -209,7 +217,7 @@ export function DocumentRow({
               )}
             </>
           ) : (
-            <span className="text-[10px] text-tertiary" title="Solo un owner puede cambiar esto">
+            <span className="text-xs text-muted-foreground" title="Solo un owner puede cambiar esto">
               {doc.is_public ? "Visible" : doc.shared_connection_count ? `Compartido (${doc.shared_connection_count})` : "Privado"}
             </span>
           )}

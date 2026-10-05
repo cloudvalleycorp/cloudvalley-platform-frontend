@@ -65,13 +65,13 @@ function SidebarUserFooter() {
           <button className="flex items-center gap-2.5 w-full rounded-md p-1.5 text-left hover:bg-sidebar-accent transition-colors">
             <Avatar className="h-8 w-8 shrink-0">
               <AvatarImage src={avatar_url ?? undefined} alt="" />
-              <AvatarFallback className="text-[11px] font-semibold">
+              <AvatarFallback className="text-xs font-semibold">
                 {displayName.trim().slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-medium truncate">{displayName}</span>
-              <span className="block text-[11px] text-muted-foreground truncate">{subLabel}</span>
+              <span className="block text-xs text-muted-foreground truncate">{subLabel}</span>
             </span>
           </button>
         </DropdownMenuTrigger>
@@ -81,7 +81,7 @@ function SidebarUserFooter() {
             Configuración
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={signOut} className="text-destructive focus:text-destructive">
+          <DropdownMenuItem onClick={signOut} className="text-destructive-dark focus:text-destructive-dark">
             <LogOut size={14} strokeWidth={1.5} className="mr-2" />
             Cerrar sesión
           </DropdownMenuItem>

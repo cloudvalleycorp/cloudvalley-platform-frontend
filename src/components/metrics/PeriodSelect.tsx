@@ -23,14 +23,23 @@ export function PeriodSelect({ period, onChange, className }: Props) {
       className={cn("border border-border rounded-md px-3 py-1.5 text-sm bg-background h-9", className)}
       aria-label="Seleccionar período"
     >
-      {Array.from({ length: 12 }, (_, i) => {
-        const d = new Date(now.getFullYear(), now.getMonth() - i);
-        return (
-          <option key={i} value={`${d.getFullYear()}-${d.getMonth() + 1}`}>
-            {MONTH_LABELS[d.getMonth()]} {d.getFullYear()}
+      {(() => {
+        const options = Array.from({ length: 12 }, (_, i) => {
+          const d = new Date(now.getFullYear(), now.getMonth() - i);
+          return { value: `${d.getFullYear()}-${d.getMonth() + 1}`, label: `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}` };
+        });
+        // Un reporte fijado a un mes más viejo que la ventana de 12 meses
+        // igual tiene que mostrar ese mes, si no el select queda desfasado.
+        const current = `${period.year}-${period.month}`;
+        if (!options.some((o) => o.value === current)) {
+          options.push({ value: current, label: `${MONTH_LABELS[period.month - 1]} ${period.year}` });
+        }
+        return options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
           </option>
-        );
-      })}
+        ));
+      })()}
     </select>
   );
 }

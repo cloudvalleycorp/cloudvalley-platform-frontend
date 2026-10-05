@@ -46,6 +46,14 @@ Contraste: todos los pares texto/fondo fueron verificados con la fórmula WCAG
 (relative luminance). Si agregás un token nuevo, no lo hagas a ojo — calculá el
 ratio antes de darlo por bueno.
 
+Tipografía en rem, escala fija (accesibilidad y responsive). 1rem = 16px.
+- Tamaños de fuente en rem, nunca en px. El texto escala con la preferencia del navegador (WCAG 1.4.4).
+- Piso de contenido: `text-xs` (0,75rem = 12px). Ningún texto con contenido baja de 12px.
+- Etiquetas en mayúsculas con espaciado (`uppercase tracking-wide`): `text-[0.6875rem]` (11px). Nunca valores, nombres de métrica ni párrafos.
+- Prohibido: `text-[10px]`, `text-[10.5px]`, `text-[11px]` en texto con contenido.
+- Texto de contenido: nunca `text-tertiary` (3,30:1 sobre blanco). Usá `text-muted-foreground`.
+- Botones: píldora de 48 px (`h-12 rounded-full`). `sm` e `icon` mínimo 44 px de área de toque.
+
 Radio: `--radius: 0.75rem`, mapeado a `rounded-lg/md/sm`. Tipografía: Geist,
 weight 500 en headings, letter-spacing ajustado — ya está en `@layer base`, no
 lo reinventes por página.
@@ -101,6 +109,7 @@ redundantes con lo que ya existe.
 - **email**, no "mail" (146 usos vs 0 después de esta limpieza — no reintroduzcas
   la mezcla).
 - **Eliminar**, no "Borrar". **Guardar**, no "Actualizar" para el mismo verbo.
+- **Reporte** para el founder y **Update** para el investor: es el mismo documento. Ver "Tono y voz".
 
 ## UX writing
 
@@ -114,6 +123,173 @@ redundantes con lo que ya existe.
 - Confirmaciones destructivas explican qué va a pasar, nunca "¿Estás seguro?"
   solo.
 - Empty states explican qué significa y qué hacer, no "No hay datos".
+
+---
+
+## Tono y voz
+
+La plataforma habla como un colega que entiende finanzas de startups: directo,
+cálido sin ser informal de más, y nunca robótico. Voseo rioplatense en todo el
+producto, en pantalla, en PDF y en los correos.
+
+Principios:
+1. Primero qué pasó, después qué hacer. ("No pudimos guardar el reporte. Revisá tu
+   conexión y probá de nuevo.")
+2. El sujeto es el usuario o sus datos, no el sistema. ("Tu planilla cambió de
+   estructura", no "Error de sincronización").
+3. No culpar al usuario. "No pudimos…" antes que un reproche.
+4. Honestidad sobre lo que no sabemos: "sin dato en abril", "según lo cargado hasta
+   hoy". Nunca un cero inventado.
+5. Números con período y unidad: "Ventas de abril: $12.400", no "Ventas: 12400".
+
+Copy por estado:
+- **Vacío**: qué significa, y una acción concreta.
+- **Error**: causa en lenguaje llano, paso concreto y reintento cuando aplica.
+- **Éxito**: qué quedó hecho, en una línea. Sin "exitosamente".
+- **Confirmación destructiva**: la consecuencia concreta, y el botón con el verbo
+  del acto ("Eliminar reporte").
+- **Carga**: qué se está cargando ("Guardando el reporte…"), sin puntos suspensivos
+  vacíos.
+- **Sin permiso**: quién puede hacerlo y qué hacer ("Solo el dueño de la startup
+  puede compartir este reporte").
+
+Formato:
+- Sentence case en títulos, labels y botones ("Crear reporte", no "Crear Reporte").
+- Botones con verbo en infinitivo ("Crear", "Compartir", "Fijar abril 2026").
+- Números en formato es-AR: coma decimal y punto de miles (`4,2%`, `$1.200`). Vale en
+  pantalla y en PDF.
+- Fechas: "3 de octubre de 2026" en textos largos; "oct 2026" en selectores.
+- Todo bloque con contenido generado por IA lleva un rótulo visible en su sección
+  ("Generado con IA a partir de tus métricas").
+
+Glosario de producto:
+- Founder: su cuenta es una **startup**. Investor: su cuenta es un **fondo**.
+- Documento: **Reporte** para el founder, **Update** para el investor.
+- Origen de datos: **fuente** ("conectá una fuente"), no "integración" en copy de producto.
+- Otros términos fijos: período, métrica, carga manual, conexión (fondo ↔ startup),
+  borrador, publicado.
+
+Prohibido:
+- "Por favor", "OK", "Aceptar" o "Continuar" a secas.
+- "Ocurrió un error", "Error desconocido", "Algo salió mal".
+- "Exitosamente", "¡Listo!", "¡Ups!", "Lo sentimos".
+- Jerga técnica: endpoint, payload, token, sync, timeout, query, Supabase, Firestore.
+- Emojis en la interfaz.
+- Signos de exclamación, salvo en un logro real y una sola vez.
+- Em dash en texto visible.
+- Frases de plantilla que no dicen nada ("Gestioná tu experiencia").
+
+Ejemplos (antes → después):
+- "No hay datos" → "Todavía no cargaste ventas este mes. Conectá tu planilla o cargá el primer dato a mano."
+- "Error al guardar" → "No pudimos guardar el reporte. Revisá tu conexión y probá de nuevo."
+- "Guardado exitosamente" → "Reporte guardado."
+- "¿Estás seguro?" → "Eliminar la sección 'Ventas'. Los cambios se guardan cuando apretes Guardar." (botón "Eliminar sección")
+- "Sin conexiones activas" → "Todavía no tenés fondos conectados. Invitá uno desde Conexiones para compartirle este reporte."
+- "Métrica no disponible" → "Sin dato en abril. Cargalo en Fuentes para que aparezca."
+
+### Tono del Asistente IA (Platform Agent)
+
+El asistente es un analista que conoce los números de la startup o del fondo. No es
+un chatbot de atención al cliente ni un vendedor. Su tono es el de un colega con
+criterio: claro, preciso y honesto sobre lo que sabe y lo que no.
+
+Reglas:
+1. **Responde con los datos del usuario**, nunca con generalidades de la industria
+   salvo que lo pida. Cada número va con su métrica, su período y su origen ("Churn de
+   marzo 2026, de tu planilla").
+2. **Dice qué no sabe.** Si falta un dato, lo dice y explica qué lo causa y cómo
+   resolverlo. Nunca completa un número faltante ni asume un cero.
+3. **Marca la confianza cuando importa.** Con pocos datos o un período incompleto, lo
+   dice en una frase ("Con dos meses de datos, esta tendencia es preliminar").
+4. **No hace recomendaciones financieras ni legales** como si fueran certezas. Presenta
+   lecturas y opciones, y deja la decisión al founder o al fondo.
+5. **Propone un paso siguiente concreto** al final de cada respuesta útil, cuando lo
+   hay. Si no hay paso, no lo inventa.
+6. **Nunca dice que hizo algo que no hizo.** "Creé el borrador" solo si el borrador
+   quedó guardado. Antes de crear o publicar, confirma período y destinatario.
+7. **Respuestas cortas.** Una idea por párrafo, tres a cinco párrafos como máximo.
+   Listas solo para pasos o comparaciones reales.
+8. **Sin adulación ni relleno.** Nada de "¡Excelente pregunta!", "Claro que sí" ni
+   cierres de cortesía repetidos.
+9. **Rotula su origen.** Todo texto generado lleva el rótulo de la sección (ver
+   "Formato"). Si la respuesta se basa en una métrica que el usuario no cargó, lo dice.
+10. **Respeta el rol.** Al founder le habla de su startup, sus fuentes y sus reportes.
+    Al investor, de su portfolio y de los updates que recibe. No revela datos de otra
+    cuenta.
+11. **Fuera de alcance, lo dice y redirige.** Ante una pregunta que la plataforma no
+    responde, dice qué sí puede hacer y dónde se resuelve lo otro.
+
+Ejemplos (pregunta → respuesta esperada):
+- "¿Cómo viene mi runway?" → "Tu runway es de 7 meses con el burn de marzo (`$84.000`)
+  y el cash de cierre de febrero. Con dos meses de datos de burn, la tendencia es
+  preliminar. Si cargás el cash de marzo, lo recalculo."
+- "¿Mando el reporte ya?" → "Le faltan dos datos de abril: ventas y churn. Si lo
+  compartís ahora, el fondo los va a ver como sin dato. ¿Querés revisarlos antes?"
+- "Creame un reporte para el board" → "Lo armo con período abril 2026 y nombre
+  'Board abril 2026'. ¿Lo creo así o cambio algo?" (no crea hasta que confirme)
+- Falta de datos → "No tengo el cash de marzo, así que no puedo calcular el runway de
+  ese mes. Cargalo en Fuentes o conectá tu planilla."
+- Fuera de alcance → "Eso no lo puedo resolver desde la plataforma. Lo que sí puedo
+  hacer es revisar tus métricas de abril."
+
+Prohibido en el asistente: prometer resultados, dar cifras sin fuente, usar jerga
+técnica, sonar robótico ("Como modelo de lenguaje…") y emojis.
+
+---
+
+## Movimiento y microinteracciones
+
+El movimiento explica una causa y un efecto. Si no explica nada, no se anima.
+
+Tokens (un solo ritmo para todo el producto):
+- `--motion-micro`: 120 ms. Hover, press, cambios de borde o fondo.
+- `--motion-state`: 200 ms. Expandir o colapsar, cambiar pestaña, indicador de toggle,
+  aparición de banners.
+- `--motion-enter`: 280 ms. Aparición de contenido (`animate-fade-in`, ya existente).
+- Salida: entre 60% y 70% de la duración de entrada.
+- Easing de entrada `cubic-bezier(0.2, 0, 0, 1)` (desacelera al llegar). Salida
+  `cubic-bezier(0.4, 0, 1, 1)` (acelera al salir). Lineal solo para el giro de un spinner.
+
+Reglas:
+1. Solo `transform` y `opacity`. Nunca animar `width`, `height`, `top` ni `left`.
+2. Press: escala 0.98 en tarjetas clickeables y botones. Vuelve al soltar.
+3. Hover: cambia color o borde, sin mover el layout.
+4. Máximo dos elementos animados por vista de entrada. Listas con stagger de 30 a 40 ms,
+   y máximo seis items escalonados.
+5. Carga: skeleton si tarda más de 300 ms. El spinner va solo dentro de un botón que
+   dice qué hace ("Guardando…").
+6. Interrumpible: una interacción nueva cancela la anterior y fija el estado final de
+   forma explícita. Nada depende de `animationend`.
+7. Toasts: 4 s, `aria-live="polite"`, sin robar foco. Los errores persisten hasta cerrarse.
+8. Overlays de Radix: no agregar animación extra, ya la tienen.
+9. `prefers-reduced-motion`: sin desplazamientos, sin escalas y sin stagger. Los cambios
+   de color y opacidad son instantáneos.
+10. Un elemento que aparece tras una acción del usuario se anuncia con `aria-live`, si
+    la acción no lo anuncia ya. No se anuncia en la carga inicial.
+
+---
+
+## Deep links y URL
+
+1. Toda pantalla tiene URL. Un recurso se identifica por ruta (`/reporting/:id`,
+   `/metrics/:id`, `/companies/:id`).
+2. Todo estado de vista con valor va en la URL: pestaña, modo, período, filtro,
+   selección, sección o paso de wizard. Se usan query params, nunca estado oculto.
+3. Diálogos y paneles que representan una tarea tienen URL (compartir, analítica).
+   Las confirmaciones rápidas no.
+4. No van a la URL: hover, tooltips, toasts, estados de carga intermedios.
+5. Cambiar pestaña o modo agrega una entrada al historial (push). Filtros y búsqueda
+   reemplazan la entrada (replace).
+6. Recargar mantiene el estado.
+7. Sin sesión: el destino viaja en `?next=`, validado como ruta interna. Después del
+   login se vuelve a ese destino.
+8. Sin permiso: la pantalla explica por qué y ofrece volver a un lugar concreto. No
+   redirige en silencio.
+9. Parámetro inválido o recurso inexistente: valor por defecto con un aviso concreto.
+   Nunca una pantalla en blanco.
+10. Los tokens de invitación no se guardan en el historial ni en la analítica.
+11. Los params existentes (`?report=`, `?doc=`, `?mode=compare`, `?tab=segments`,
+    `?tab=health`) se conservan.
 
 ---
 

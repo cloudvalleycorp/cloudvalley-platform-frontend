@@ -155,7 +155,7 @@ export function collectDataHealthIssues(input: {
         severity: "warning",
         category: "Anomalía estadística",
         title: `Valor atípico en ${bi.field_key} (${bi.period})`,
-        description: `${bi.value} — se esperaba algo cercano a ${bi.expected_range.mean.toFixed(1)}.`,
+        description: `${bi.value}, se esperaba algo cercano a ${bi.expected_range.mean.toFixed(1)}.`,
         targetPath: `/growth-tracker/sheets?connection_id=${encodeURIComponent(bi.connection_id)}`,
       });
     }

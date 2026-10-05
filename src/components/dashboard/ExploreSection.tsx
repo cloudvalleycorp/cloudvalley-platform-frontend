@@ -92,7 +92,7 @@ export function ExploreSection({
               <p className="text-sm font-medium">{c.title}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{c.stat}</p>
             </div>
-            <div className="text-xs font-medium text-primary flex items-center gap-1 mt-auto">
+            <div className="text-xs font-medium text-primary-dark flex items-center gap-1 mt-auto">
               {c.cta}
               <ArrowRight size={12} strokeWidth={1.5} className="group-hover:translate-x-0.5 transition-transform" aria-hidden="true" />
             </div>

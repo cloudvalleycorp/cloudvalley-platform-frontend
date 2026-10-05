@@ -2,13 +2,14 @@ import { cn } from "@/lib/utils";
 import { REPORTING_STATUS_LABELS, type ReportingStatus } from "@/lib/portfolioIntelligence";
 
 // Mismo patrón que ComplianceStatusPill.tsx — color y texto juntos, nunca
-// solo color.
+// solo color. Variantes -dark: el token base como texto no pasa WCAG AA
+// (calculado, ver ComplianceStatusPill.tsx).
 const STYLES: Record<ReportingStatus, string> = {
-  up_to_date: "bg-success/10 text-success",
-  new_update: "bg-primary/10 text-primary",
-  needs_review: "bg-warning/15 text-warning",
+  up_to_date: "bg-success/10 text-success-dark",
+  new_update: "bg-primary/10 text-primary-dark",
+  needs_review: "bg-warning/15 text-warning-dark",
   awaiting_update: "bg-secondary text-secondary-foreground",
-  missing_data: "bg-destructive/10 text-destructive",
+  missing_data: "bg-destructive/10 text-destructive-dark",
 };
 
 export function ReportingStatusPill({ status, className }: { status: ReportingStatus; className?: string }) {

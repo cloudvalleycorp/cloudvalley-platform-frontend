@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/AppLayout";
@@ -18,6 +18,7 @@ import { LIST_FINANCIAL_REPORTS_URL, type ReportSummary } from "@/lib/financialR
 import { handleMembershipError } from "@/lib/membership";
 import { STANDARD_KEY_ORDER } from "@/lib/metricRequirements";
 import { periodRange } from "@/lib/metricPeriod";
+import { getDashboardAiCache, setDashboardAiCache } from "@/lib/dashboardAiCache";
 import type { RoadmapTask } from "@/lib/roadmap";
 
 import { ExecutiveSummaryCard } from "@/components/dashboard/ExecutiveSummaryCard";
@@ -34,7 +35,7 @@ type CoverageErrorKind = "rate_limit" | "unavailable" | "generic";
 export default function Dashboard() {
   // user.id NO es el id real del usuario (alias legacy a company_id, ver
   // AuthContext.tsx) — para comparar "es mi propia tarea" hace falta user_id.
-  const { role, company_id, user_id, email, full_name } = useAuth();
+  const { role, company_id, user_id, email, full_name, loading: authLoading, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -82,12 +83,18 @@ export default function Dashboard() {
   const actual = useEvaluatedMetrics(company_id ?? null, standardMetricIds, periodSpec, "actual");
   const forecast = useEvaluatedMetrics(company_id ?? null, standardMetricIds, periodSpec, "forecast");
 
-  const highlights = useMetricHighlights(company_id ?? null);
+  // Se auto-generan una sola vez por sesión de pestaña (cache en memoria,
+  // dashboardAiCache.ts) — pedido explícito del usuario 2026-09-29: "no
+  // debería darse click para que dé el reporte, sino que aparezca el resumen
+  // insight". Hidratar desde cache evita volver a disparar la llamada al
+  // navegar a otra pantalla y volver dentro de la misma sesión.
+  const cachedDashboardAi = company_id ? getDashboardAiCache(company_id) : {};
+  const highlights = useMetricHighlights(company_id ?? null, cachedDashboardAi.highlights);
 
   // list-metric-source-coverage — mismo endpoint/criterio que "Qué podemos
   // mejorar" en MetricsOverviewTab.tsx (disparo manual, sin hook dedicado
   // todavía porque hoy solo lo consumen esas dos pantallas).
-  const [coverage, setCoverage] = useState<ListMetricSourceCoverageResponse | null>(null);
+  const [coverage, setCoverage] = useState<ListMetricSourceCoverageResponse | null>(cachedDashboardAi.coverage ?? null);
   const [loadingCoverage, setLoadingCoverage] = useState(false);
   const [coverageError, setCoverageError] = useState<CoverageErrorKind | null>(null);
   const loadCoverage = async () => {
@@ -102,13 +109,35 @@ export default function Dashboard() {
         await handleMembershipError(res);
         return setCoverageError("generic");
       }
-      setCoverage((await res.json()) as ListMetricSourceCoverageResponse);
+      const data = (await res.json()) as ListMetricSourceCoverageResponse;
+      setCoverage(data);
+      if (company_id) setDashboardAiCache(company_id, { coverage: data });
     } catch {
       setCoverageError("generic");
     } finally {
       setLoadingCoverage(false);
     }
   };
+
+  const autoTriggeredHighlights = useRef(false);
+  const autoTriggeredCoverage = useRef(false);
+  useEffect(() => {
+    if (!company_id) return;
+    if (!highlights.highlights && !autoTriggeredHighlights.current) {
+      autoTriggeredHighlights.current = true;
+      highlights.load();
+    }
+    if (!coverage && !autoTriggeredCoverage.current) {
+      autoTriggeredCoverage.current = true;
+      loadCoverage();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company_id]);
+
+  useEffect(() => {
+    if (company_id && highlights.highlights) setDashboardAiCache(company_id, { highlights: highlights.highlights });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlights.highlights]);
 
   // list-data-health-issues — mismo endpoint que Metrics > Salud de datos.
   const [backendHealthIssues, setBackendHealthIssues] = useState<DataHealthIssue[]>([]);
@@ -157,13 +186,26 @@ export default function Dashboard() {
   };
 
   const greeting = full_name?.trim() ? `Hola, ${full_name.trim().split(" ")[0]}` : "Buen día";
-  const today = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+  // es-AR devuelve en minúscula ("domingo, 4 de octubre"): solo la primera letra va en mayúscula.
+  const todayRaw = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+  const today = todayRaw.charAt(0).toUpperCase() + todayRaw.slice(1);
 
   // Bug real (auditado 2026-09-21): esta pantalla no tenía ningún guard de
   // rol — investor/admin caían acá con company_id null y todos los hooks de
   // arriba se quedaban en enabled:false para siempre (render vacío/roto, sin
   // mensaje). Va después de todos los hooks (rules-of-hooks), mismo criterio
   // que ya usa Reporting.tsx/DataRoom.tsx para separar por rol.
+  //
+  // Segundo bug real, encontrado en vivo auditando Roadmap.tsx (2026-09-29):
+  // faltaba esperar a `authLoading` antes de evaluar el rol — `role` arranca
+  // en `null` mientras useAuth() resuelve la sesión, así que en una recarga
+  // completa `role !== "user"` daba true por un instante y mandaba a /admin,
+  // que a su vez rebota de vuelta acá (mismo guard) — un founder recargando
+  // /dashboard podía ver un parpadeo a /admin sin ningún error visible.
+  if (authLoading) return null;
+  // Sin sesión, role queda en null: sin esta guarda, /dashboard → /admin →
+  // /dashboard en loop. Sin user se va a login, nunca se rebota entre rutas.
+  if (!user) return <Navigate to="/login" replace />;
   if (role === "investor") return <Navigate to="/overview" replace />;
   if (role !== "user") return <Navigate to="/admin" replace />;
 
@@ -200,8 +242,8 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      <div className="max-w-6xl mx-auto px-8 py-12 space-y-6">
-        <PageHeader size="compact" title={greeting} subtitle={<span className="capitalize">{today}</span>} className="mb-0" />
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-12 space-y-6">
+        <PageHeader size="compact" title={greeting} subtitle={today} className="mb-0" />
 
         {pageLoading ? (
           <div className="space-y-6" aria-hidden="true">

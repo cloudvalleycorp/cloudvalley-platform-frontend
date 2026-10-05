@@ -59,7 +59,7 @@ export function NodeShell({ depth, onCombine, onRemove, children }: Props) {
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive-dark"
             onClick={onRemove}
             aria-label="Quitar"
           >

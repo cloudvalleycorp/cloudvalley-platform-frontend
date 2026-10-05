@@ -1,14 +1,22 @@
+import { useState } from "react";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { groupRowErrors, type ImportLogEntry } from "@/lib/financialData";
 import { EmptyState } from "@/components/EmptyState";
 
+// El historial puede tener decenas de entradas (una por sync/carga) sin
+// ningún tope visual — mismo patrón de truncar+expandir ya usado en
+// RisksOpportunitiesSection.tsx del Dashboard.
+const MAX_VISIBLE = 8;
+
 export function ImportLogTable({ logs, emptyLabel }: { logs: ImportLogEntry[]; emptyLabel: string }) {
+  const [expanded, setExpanded] = useState(false);
   if (logs.length === 0) {
     return <EmptyState title={emptyLabel} />;
   }
+  const visibleLogs = expanded ? logs : logs.slice(0, MAX_VISIBLE);
   return (
     <div className="space-y-2">
-      {logs.map((log) => {
+      {visibleLogs.map((log) => {
         const failed = log.status === "error" || (log.rows_processed === 0 && log.rows_rejected > 0);
         const hasErrors = log.rows_rejected > 0;
         const grouped = groupRowErrors(log.row_errors);
@@ -28,7 +36,7 @@ export function ImportLogTable({ logs, emptyLabel }: { logs: ImportLogEntry[]; e
                 </div>
               </div>
               <span
-                className={`inline-flex items-center gap-1 text-xs shrink-0 ${hasErrors ? "text-destructive" : "text-muted-foreground"}`}
+                className={`inline-flex items-center gap-1 text-xs shrink-0 ${hasErrors ? "text-destructive-dark" : "text-muted-foreground"}`}
               >
                 {hasErrors ? <AlertCircle size={12} strokeWidth={1.5} /> : <CheckCircle2 size={12} strokeWidth={1.5} />}
                 {failed
@@ -40,7 +48,7 @@ export function ImportLogTable({ logs, emptyLabel }: { logs: ImportLogEntry[]; e
             {grouped.length > 0 && (
               <ul className="mt-3 pt-3 border-t border-border/50 space-y-1.5">
                 {grouped.map((g, i) => (
-                  <li key={i} className="text-xs text-destructive">
+                  <li key={i} className="text-xs text-destructive-dark">
                     <span className="font-medium">{g.field}</span>: {g.reason}
                     {g.count > 1 && (
                       <span className="text-muted-foreground">
@@ -59,6 +67,15 @@ export function ImportLogTable({ logs, emptyLabel }: { logs: ImportLogEntry[]; e
           </div>
         );
       })}
+      {logs.length > MAX_VISIBLE && (
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="inline-flex min-h-[1.5rem] items-center text-xs text-primary-dark hover:underline"
+        >
+          {expanded ? "Ver menos" : `Ver los ${logs.length - MAX_VISIBLE} restantes`}
+        </button>
+      )}
     </div>
   );
 }

@@ -40,7 +40,7 @@ export function MetricRefPicker({ value, onChange, metricOptions }: Props) {
                   className="flex items-center justify-between gap-3"
                 >
                   <span className="truncate">{m.name}</span>
-                  {m.unit && <span className="text-[10px] text-tertiary shrink-0">{m.unit}</span>}
+                  {m.unit && <span className="text-xs text-muted-foreground shrink-0">{m.unit}</span>}
                 </CommandItem>
               ))}
             </CommandGroup>

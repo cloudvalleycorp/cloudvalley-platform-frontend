@@ -6,6 +6,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { SheetConnection, GoogleAccount, DataRole } from "@/lib/sheetsIntegration";
 import { fieldCountLabel } from "@/lib/sheetsIntegration";
 import type { MetricDef, RawField } from "@/lib/metrics";
@@ -100,9 +101,20 @@ export function MetricsDataSourcesTab({ connections, accounts, metrics, rawField
       header: (
         <span className="inline-flex items-center gap-1">
           Rol
-          <span title="Qué tan confiable es esta fuente si otra mide lo mismo y no coincide. 'Fuente de verdad' gana en caso de conflicto.">
-            <Info size={11} strokeWidth={1.5} className="text-muted-foreground" aria-hidden="true" />
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
+                aria-label="Qué tan confiable es esta fuente si otra mide lo mismo y no coincide. Fuente de verdad gana en caso de conflicto."
+              >
+                <Info size={11} strokeWidth={1.5} aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs max-w-64">
+              Qué tan confiable es esta fuente si otra mide lo mismo y no coincide. Fuente de verdad gana en caso de conflicto.
+            </TooltipContent>
+          </Tooltip>
         </span>
       ),
       cell: (c) => (c.data_role ? <Badge variant="secondary">{DATA_ROLE_LABELS[c.data_role]}</Badge> : <span className="text-muted-foreground text-xs">—</span>),

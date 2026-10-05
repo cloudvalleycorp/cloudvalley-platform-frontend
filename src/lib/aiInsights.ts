@@ -233,6 +233,15 @@ export type PlatformAgentRequest = {
 // nivel de la entrada del trace. Presente y único en surfaces de una sola
 // empresa (investor_company). Se usa para armar el deep-link
 // /companies/:id?tab=... de las acciones del agente, ver PlatformAgentPanel.tsx.
+// Propuesta de create-report-from-proposal (contrato 2026-10): el frontend la
+// muestra para confirmar y la reenvía EXACTA en el confirm_write. Nunca se
+// vuelve a generar con IA en ese paso.
+export type ReportProposal = {
+  name: string;
+  period: string;
+  sections: { title: string; metric_ids: string[] }[];
+};
+
 export type ObservabilityTraceEntry = { tool: string; company_id?: string | null; result: Record<string, unknown> };
 
 export type PlatformAgentResponse = {

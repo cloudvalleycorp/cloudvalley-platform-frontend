@@ -52,7 +52,7 @@ export function RoadmapTaskDetailSheet({ task, onClose, ownTaskActions }: Props)
             <Button variant="outline" size="sm" onClick={ownTaskActions.onEdit}>
               <Pencil size={13} strokeWidth={1.5} className="mr-1.5" aria-hidden="true" /> Editar
             </Button>
-            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={ownTaskActions.onDelete}>
+            <Button variant="ghost" size="sm" className="text-destructive-dark hover:text-destructive-dark" onClick={ownTaskActions.onDelete}>
               <Trash2 size={13} strokeWidth={1.5} className="mr-1.5" aria-hidden="true" /> Eliminar
             </Button>
           </SheetFooter>

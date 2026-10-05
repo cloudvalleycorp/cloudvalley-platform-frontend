@@ -141,13 +141,13 @@ export function MetricLineagePanel({ metric, allMetrics, rawFields, companyId, e
         <ul className="space-y-1.5 text-sm">
           {backendLineage.map((node, i) => (
             <li key={i} className="text-muted-foreground">
-              {node.sheet_name ?? node.workbook_id ?? node.source_id ?? "Fuente"} — {node.formula}
+              {node.sheet_name ?? node.workbook_id ?? node.source_id ?? "Fuente"}: {node.formula}
             </li>
           ))}
         </ul>
       ) : clientSources.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Esta métrica todavía no está conectada a ninguna fuente de datos — su fórmula no referencia ningún campo
+          Esta métrica todavía no está conectada a ninguna fuente de datos. Su fórmula no referencia ningún campo
           mapeado.
         </p>
       ) : clientSources.length === 1 ? (
@@ -191,9 +191,9 @@ export function MetricLineagePanel({ metric, allMetrics, rawFields, companyId, e
                 <li key={i} className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs truncate">{r.leaf.kind === "aggregation" ? r.leaf.connectionLabel : r.leaf.metricName}</p>
-                    <p className="text-[11px] text-tertiary truncate">
+                    <p className="text-xs text-muted-foreground truncate">
                       {r.leaf.kind === "aggregation" ? (
-                        <QuerySummary query={r.leaf.node} rawFields={rawFields} className="text-[11px] text-tertiary" />
+                        <QuerySummary query={r.leaf.node} rawFields={rawFields} className="text-xs text-muted-foreground" />
                       ) : (
                         "Valor ingresado manualmente"
                       )}

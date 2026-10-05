@@ -23,22 +23,26 @@ export function EavLayoutMapping({ periodColumn, metricNameColumn, valueColumn, 
     <div className="space-y-4">
       <div className="text-xs text-muted-foreground grid sm:grid-cols-3 gap-2">
         <div>
-          <span className="text-tertiary">Columna de período</span>
+          <span className="text-muted-foreground">Columna de período</span>
           <p className="font-medium text-foreground">{periodColumn}</p>
         </div>
         <div>
-          <span className="text-tertiary">Columna de nombre de métrica</span>
+          <span className="text-muted-foreground">Columna de nombre de métrica</span>
           <p className="font-medium text-foreground">{metricNameColumn}</p>
         </div>
         <div>
-          <span className="text-tertiary">Columna de valor</span>
+          <span className="text-muted-foreground">Columna de valor</span>
           <p className="font-medium text-foreground">{valueColumn}</p>
         </div>
       </div>
 
       <div>
         <p className="text-xs font-medium mb-1.5">Métricas encontradas en "{metricNameColumn}" ({metricMapping.length})</p>
-        <div className="space-y-1.5">
+        {/* overflow-x-auto, no overflow-hidden (regla CLAUDE.md) — mismo caso
+            que GridLayoutMapping: label+Input(160px)+2 Select(96/112px) no
+            entra en 375px; min-w-max evita que el flex interno se aplaste. */}
+        <div className="overflow-x-auto">
+        <div className="space-y-1.5 min-w-max">
           {metricMapping.map((m, i) => (
             <div key={`${m.observed_value}-${i}`} className="flex items-center gap-2 border border-border rounded-md p-2 bg-surface">
               <p className="text-sm font-medium min-w-0 flex-1 truncate" title={m.observed_value}>
@@ -73,6 +77,7 @@ export function EavLayoutMapping({ periodColumn, metricNameColumn, valueColumn, 
           {metricMapping.length === 0 && (
             <p className="text-xs text-muted-foreground">No se encontró ningún valor de métrica en esta columna.</p>
           )}
+        </div>
         </div>
       </div>
     </div>

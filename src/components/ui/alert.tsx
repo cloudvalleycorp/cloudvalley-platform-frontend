@@ -9,7 +9,10 @@ const alertVariants = cva(
     variants: {
       variant: {
         default: "bg-background text-foreground",
-        destructive: "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
+        // text-destructive-dark: el texto del alert necesita 4.5:1 (falla en
+        // ~3.55:1 calculado); el ícono ([&>svg]) se queda en el token base,
+        // ahí el piso es 3:1, que sí cumple.
+        destructive: "border-destructive/50 text-destructive-dark dark:border-destructive [&>svg]:text-destructive",
       },
     },
     defaultVariants: {

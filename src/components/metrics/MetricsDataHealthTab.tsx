@@ -32,8 +32,8 @@ const SEVERITY_ICON: Record<HealthIssueSeverity, typeof AlertCircle> = {
 // fila; el resumen de arriba en cambio es texto chico sobre blanco, ahí sí
 // hace falta la variante -dark (6.11:1/4.81:1, el token base no pasa AA).
 const SEVERITY_CHIP: Record<HealthIssueSeverity, string> = {
-  critical: "bg-destructive/10 text-destructive",
-  warning: "bg-warning/10 text-warning",
+  critical: "bg-destructive/10 text-destructive-dark",
+  warning: "bg-warning/10 text-warning-dark",
   info: "bg-muted text-muted-foreground",
 };
 
@@ -90,7 +90,7 @@ export function MetricsDataHealthTab({ companyId, metrics, warnings, rawFields, 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">{issue.title}</p>
-                    <Badge variant="outline" className="text-[10px] shrink-0">
+                    <Badge variant="outline" className="text-xs shrink-0">
                       {issue.category}
                     </Badge>
                   </div>

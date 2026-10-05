@@ -306,7 +306,7 @@ function PortfolioCatalogView({
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Avatar className="h-8 w-8 shrink-0">
                     <AvatarImage src={c.logo_url ?? undefined} alt="" />
-                    <AvatarFallback className="text-[10px] font-semibold">
+                    <AvatarFallback className="text-xs font-semibold">
                       {c.name.trim().slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
@@ -330,7 +330,7 @@ function PortfolioCatalogView({
                         </div>
                       );
                     })}
-                    {extra > 0 && <span className="text-[11px] text-primary font-medium">+{extra} más</span>}
+                    {extra > 0 && <span className="text-xs text-primary-dark font-medium">+{extra} más</span>}
                   </div>
                 )}
               </Link>
@@ -458,7 +458,7 @@ function PortfolioCompareView({
                 aria-pressed={active}
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                   active
-                    ? "bg-primary/10 border-primary/30 text-primary font-medium"
+                    ? "bg-primary/10 border-primary/30 text-primary-dark font-medium"
                     : "bg-transparent border-border text-muted-foreground hover:border-foreground/30"
                 }`}
               >

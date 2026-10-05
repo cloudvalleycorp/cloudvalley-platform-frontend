@@ -209,7 +209,7 @@ function InvestorDataRoomContent({ companies }: { companies: { id: string; name:
                           <Folder size={16} strokeWidth={1.5} className="text-muted-foreground shrink-0" aria-hidden="true" />
                           <div className="flex-1 min-w-0">
                             <div className="text-sm truncate">Sin categorizar</div>
-                            <div className="text-[11px] text-muted-foreground mt-0.5">
+                            <div className="text-xs text-muted-foreground mt-0.5">
                               Documentos subidos antes de las carpetas · {uncategorizedCount} documento{uncategorizedCount === 1 ? "" : "s"}
                             </div>
                           </div>
@@ -283,7 +283,7 @@ function InvestorDataRoomContent({ companies }: { companies: { id: string; name:
                                   )}
                                 </span>
                                 {!doc.is_public && (
-                                  <span className="block text-[11px] text-teal-dark no-underline">
+                                  <span className="block text-xs text-teal-dark no-underline">
                                     Compartido con el fondo
                                     {doc.expires_at &&
                                       ` · vence el ${new Date(doc.expires_at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}`}

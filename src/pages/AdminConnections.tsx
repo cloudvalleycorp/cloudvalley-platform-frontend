@@ -148,7 +148,7 @@ export default function AdminConnections() {
                   <span className="inline-flex items-center gap-1.5">
                     <Badge variant={STATUS_BADGE[c.status]}>{STATUS_LABEL[c.status]}</Badge>
                     {c.status === "pending" && daysAgo(c.created_at) >= 7 && (
-                      <span className="text-[11px] text-warning-dark">hace {daysAgo(c.created_at)} días</span>
+                      <span className="text-xs text-warning-dark">hace {daysAgo(c.created_at)} días</span>
                     )}
                   </span>
                 ),

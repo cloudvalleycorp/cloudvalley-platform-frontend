@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FormActions } from "@/components/FormActions";
 import { FormField } from "@/components/FormField";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { LoadingCard } from "@/components/LoadingCard";
 import { ImageUploadField } from "@/components/ImageUploadField";
 import {
@@ -108,6 +109,7 @@ export function MyOrganization() {
   const [savingName, setSavingName] = useState(false);
 
   const [regenerating, setRegenerating] = useState(false);
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitingByEmail, setInvitingByEmail] = useState(false);
@@ -297,10 +299,7 @@ export function MyOrganization() {
   };
 
   const regenerate = async () => {
-    const message = org.join_code
-      ? "¿Regenerar el código? El código anterior dejará de funcionar."
-      : `¿Generar un código para ${w.demonstrative} ${w.noun}?`;
-    if (!confirm(message)) return;
+    setConfirmRegenerate(false);
     setRegenerating(true);
     try {
       const res = await fetch(orgUrl, {
@@ -357,6 +356,7 @@ export function MyOrganization() {
   };
 
   return (
+    <>
     <section className="border border-border rounded-lg p-6 bg-card space-y-6">
       <div>
         <div className="flex items-center gap-2 mb-4">
@@ -373,6 +373,7 @@ export function MyOrganization() {
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
               className="h-9"
+              aria-label={org.type === "company" ? "Nombre de la startup" : "Nombre de la organización"}
               autoFocus
             />
             <FormActions
@@ -393,7 +394,7 @@ export function MyOrganization() {
               <button
                 type="button"
                 onClick={() => setEditingName(true)}
-                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                className="inline-flex min-h-[1.5rem] items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
                 title="Editar nombre"
               >
                 <Pencil size={12} strokeWidth={1.5} />
@@ -411,6 +412,7 @@ export function MyOrganization() {
               onClick={copy}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-surface font-mono text-sm tracking-widest hover:border-foreground/40 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               title="Copiar código"
+              aria-label={`Copiar código ${org.join_code}`}
             >
               <span>{org.join_code}</span>
               {copied ? (
@@ -427,9 +429,9 @@ export function MyOrganization() {
           {org.is_owner && (
             <button
               type="button"
-              onClick={regenerate}
+              onClick={() => setConfirmRegenerate(true)}
               disabled={regenerating}
-              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+              className="inline-flex min-h-[1.5rem] items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
               title={org.join_code ? "Regenerar código" : "Generar código"}
             >
               <RefreshCw size={12} strokeWidth={1.5} />
@@ -442,7 +444,7 @@ export function MyOrganization() {
             <button
               type="button"
               onClick={copyInviteLink}
-              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              className="inline-flex min-h-[1.5rem] items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
             >
               {copiedLink ? (
                 <Check size={12} strokeWidth={1.5} />
@@ -487,7 +489,7 @@ export function MyOrganization() {
               </Button>
             </div>
             {inviteEmailNote && (
-              <p className="text-xs text-muted-foreground mt-2" aria-live="polite">{inviteEmailNote}</p>
+              <p className="text-xs text-destructive-dark mt-2" aria-live="polite">{inviteEmailNote}</p>
             )}
           </div>
         )}
@@ -509,7 +511,7 @@ export function MyOrganization() {
               <button
                 type="button"
                 onClick={() => setEditingDetails(true)}
-                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                className="inline-flex min-h-[1.5rem] items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
               >
                 <Pencil size={12} strokeWidth={1.5} />
                 Editar
@@ -667,5 +669,16 @@ export function MyOrganization() {
         </div>
       )}
     </section>
+    <ConfirmationDialog
+      open={confirmRegenerate}
+      onOpenChange={setConfirmRegenerate}
+      title={org.join_code ? "¿Regenerar el código?" : `¿Generar un código para ${w.demonstrative} ${w.noun}?`}
+      description={org.join_code ? "El código anterior deja de funcionar de inmediato, incluidos los enlaces de invitación ya compartidos." : undefined}
+      confirmLabel={org.join_code ? "Regenerar" : "Generar"}
+      variant={org.join_code ? "destructive" : "default"}
+      busy={regenerating}
+      onConfirm={regenerate}
+    />
+    </>
   );
 }

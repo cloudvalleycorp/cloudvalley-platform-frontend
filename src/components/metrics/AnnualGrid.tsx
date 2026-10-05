@@ -288,7 +288,7 @@ export function AnnualGrid({
             {inputDefs.length > 0 && (
               <>
                 <tr>
-                  <td colSpan={13} className="px-4 py-2 text-[11px] uppercase tracking-wide text-tertiary bg-surface/40">
+                  <td colSpan={13} className="px-4 py-2 text-[0.6875rem] uppercase tracking-wide text-muted-foreground bg-surface/40">
                     Inputs
                   </td>
                 </tr>
@@ -313,7 +313,7 @@ export function AnnualGrid({
                           settingsPath ? (
                             <Link
                               to={settingsPath}
-                              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5 hover:text-foreground hover:border-foreground/30 transition-colors"
+                              className="inline-flex items-center gap-1 text-xs text-muted-foreground border border-border rounded-full px-2 py-0.5 hover:text-foreground hover:border-foreground/30 transition-colors"
                               title={`Se sincroniza desde ${syncedFrom}. Click para ir a la conexión.`}
                             >
                               <Zap size={10} strokeWidth={2} aria-hidden="true" />
@@ -321,7 +321,7 @@ export function AnnualGrid({
                             </Link>
                           ) : (
                             <span
-                              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-border rounded-full px-2 py-0.5"
+                              className="inline-flex items-center gap-1 text-xs text-muted-foreground border border-border rounded-full px-2 py-0.5"
                               title={`Se sincroniza desde ${syncedFrom}.`}
                             >
                               <Zap size={10} strokeWidth={2} aria-hidden="true" />
@@ -340,8 +340,8 @@ export function AnnualGrid({
                           <button
                             type="button"
                             onClick={() => onInfo(def)}
-                            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground border border-dashed border-border rounded-full px-2 py-0.5 hover:text-primary hover:border-primary/50 transition-colors"
-                            title="Este dato se carga a mano — conectalo a una fuente si ya la tenés."
+                            className="inline-flex items-center gap-1 text-xs text-muted-foreground border border-dashed border-border rounded-full px-2 py-0.5 hover:text-primary-dark hover:border-primary/50 transition-colors"
+                            title="Este dato se carga a mano. Conectalo a una fuente si ya la tenés."
                           >
                             <Zap size={10} strokeWidth={2} aria-hidden="true" />
                             Conectar fuente
@@ -413,7 +413,7 @@ export function AnnualGrid({
             {calcDefs.length > 0 && (
               <>
                 <tr>
-                  <td colSpan={13} className="px-4 py-2 text-[11px] uppercase tracking-wide text-tertiary bg-surface/40 border-t border-border">
+                  <td colSpan={13} className="px-4 py-2 text-[0.6875rem] uppercase tracking-wide text-muted-foreground bg-surface/40 border-t border-border">
                     Calculadas
                   </td>
                 </tr>

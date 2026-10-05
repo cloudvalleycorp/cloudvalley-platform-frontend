@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { type MetricDef, type InputsMap, type PeriodInputs } from "@/lib/metrics";
-import { evalFormula, evalFormulaDetailed, type CalcDefLike } from "@/lib/formulaEngine";
+import { type CalcDefLike } from "@/lib/formulaEngine";
 import type { ReportSection } from "@/lib/financialReports";
 import { periodRange, prevMonth, toPeriodString } from "@/lib/metricPeriod";
+import { buildHistoryPeriodStrs, isQueryBasedMetric, resolveReportBlock } from "@/lib/reportBlockResolver";
 import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
 import { MetricValueCard } from "@/components/metrics/MetricValueCard";
 import { EmptyState } from "@/components/EmptyState";
@@ -53,18 +54,7 @@ export function ReportSectionView({
   const currentPeriodStr = toPeriodString(period.month, period.year);
   const prevPeriod = prevMonth(period.month, period.year);
   const prevPeriodStr = toPeriodString(prevPeriod.m, prevPeriod.y);
-  const historyPeriodStrs = useMemo(() => {
-    const out: string[] = [];
-    let m = period.month;
-    let y = period.year;
-    for (let i = 0; i < 6; i++) {
-      out.unshift(toPeriodString(m, y));
-      const p = prevMonth(m, y);
-      m = p.m;
-      y = p.y;
-    }
-    return out;
-  }, [period.month, period.year]);
+  const historyPeriodStrs = useMemo(() => buildHistoryPeriodStrs(period), [period.month, period.year]);
   const evalRange = periodRange(period, 5);
 
   const queryMetricIds = useMemo(
@@ -80,7 +70,7 @@ export function ReportSectionView({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-medium">{section.title}</h3>
+        <h2 className="text-sm font-medium">{section.title}</h2>
         {section.subtitle && <p className="text-xs text-muted-foreground mt-0.5">{section.subtitle}</p>}
       </div>
       {resolvedBlocks.length === 0 ? (
@@ -143,47 +133,27 @@ function MetricBlockCard({
   historyPeriodStrs: string[];
   onInfo: (m: MetricDef) => void;
 }) {
-  const expr = def.metric_type === "calculated" ? def.formula_expression : null;
-  const isQueryBased = def.metric_type === "calculated" && !!def.query && !def.formula_expression;
+  const isQueryBased = isQueryBasedMetric(def);
 
-  const resolved = useMemo(() => {
-    if (isQueryBased) {
-      if (!evaluatedByPeriod) {
-        return {
-          current: null,
-          change: null,
-          sparkData: historyPeriodStrs.map(() => ({ v: 0 })),
-          missing: [evaluating ? "__query_evaluating__" : "__query_no_data__"],
-          error: null,
-        };
-      }
-      const current = evaluatedByPeriod[currentPeriodStr] ?? null;
-      const prev = evaluatedByPeriod[prevPeriodStr] ?? null;
-      const change = current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
-      const sparkData = historyPeriodStrs.map((p) => ({ v: evaluatedByPeriod[p] ?? 0 }));
-      return { current, change, sparkData, missing: current == null ? ["__query_no_data__"] : [], error: null };
-    }
-
-    const valueFor = (inputs: InputsMap, history?: PeriodInputs[], raw?: Record<string, number | null>): number | null => {
-      if (expr) return evalFormula(expr, inputs, history, calcDefs, raw);
-      return def.input_key ? inputs[def.input_key] ?? null : null;
-    };
-
-    const currentDetailed = expr ? evalFormulaDetailed(expr, currentInputs, formulaHistory, calcDefs, rawFieldValues) : null;
-    const current = expr ? currentDetailed!.value : valueFor(currentInputs);
-    const prev = valueFor(prevInputs, undefined, prevRawFieldValues);
-    const change = current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
-    const sparkData = historyInputs.map((inp) => ({ v: valueFor(inp) ?? 0 }));
-    const missing = expr
-      ? currentDetailed!.missing
-      : def.input_key && currentInputs[def.input_key] === undefined
-        ? [def.input_key]
-        : [];
-    const error = currentDetailed?.error ?? null;
-
-    return { current, change, sparkData, missing, error };
+  const resolved = useMemo(
+    () =>
+      resolveReportBlock({
+        def,
+        currentInputs,
+        prevInputs,
+        historyInputs,
+        formulaHistory,
+        calcDefs,
+        rawFieldValues,
+        prevRawFieldValues,
+        evaluatedByPeriod,
+        evaluating,
+        currentPeriodStr,
+        prevPeriodStr,
+        historyPeriodStrs,
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
+    [
     def,
     currentInputs,
     prevInputs,

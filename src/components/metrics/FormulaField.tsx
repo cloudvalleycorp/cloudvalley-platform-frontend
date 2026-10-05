@@ -54,9 +54,9 @@ function SuggestionRow({ s }: { s: Suggestion }) {
       <div className="flex items-center justify-between gap-3 min-w-0 w-full">
         <span className="min-w-0">
           <span className="block truncate">{s.name}</span>
-          {sig && <span className="block text-[10px] text-tertiary truncate">{sig.description}</span>}
+          {sig && <span className="block text-xs text-muted-foreground truncate">{sig.description}</span>}
         </span>
-        <span className="text-[10px] uppercase tracking-wide text-tertiary shrink-0">función</span>
+        <span className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground shrink-0">función</span>
       </div>
     );
   }
@@ -65,9 +65,9 @@ function SuggestionRow({ s }: { s: Suggestion }) {
       <div className="flex items-center justify-between gap-3 min-w-0 w-full">
         <span className="min-w-0">
           <span className="block truncate font-mono">{s.fieldKey}</span>
-          <span className="block text-[10px] text-tertiary truncate">Inserta FIELDSUM("{s.fieldKey}")</span>
+          <span className="block text-xs text-muted-foreground truncate">Inserta FIELDSUM("{s.fieldKey}")</span>
         </span>
-        <span className="text-[10px] uppercase tracking-wide text-tertiary shrink-0">
+        <span className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground shrink-0">
           {s.valueType === "text" ? "texto" : "número"}
         </span>
       </div>
@@ -79,7 +79,7 @@ function SuggestionRow({ s }: { s: Suggestion }) {
     <div className="flex items-center justify-between gap-3 min-w-0 w-full">
       <span className="min-w-0">
         <span className="block truncate">{s.label}</span>
-        <span className="block text-[10px] font-mono text-tertiary truncate">{identifier}</span>
+        <span className="block text-xs font-mono text-muted-foreground truncate">{identifier}</span>
       </span>
       <span className="text-xs tabular-nums text-muted-foreground shrink-0">{display}</span>
     </div>
@@ -462,7 +462,7 @@ export function FormulaField({
                 return (
                   <span key={i}>
                     {i > 0 && <span className="text-muted-foreground">, </span>}
-                    <span className={isCurrent ? "text-primary font-medium" : "text-muted-foreground"}>{p}</span>
+                    <span className={isCurrent ? "text-primary-dark font-medium" : "text-muted-foreground"}>{p}</span>
                   </span>
                 );
               })
@@ -487,7 +487,7 @@ export function FormulaField({
             hasRawFieldRefs && rawFieldValuesLoading
               ? "border-border bg-surface text-muted-foreground"
               : preview.error
-                ? "border-destructive/40 bg-destructive/5 text-destructive"
+                ? "border-destructive/40 bg-destructive/5 text-destructive-dark"
                 : preview.value !== null
                   ? "border-success/40 bg-success/5 text-foreground"
                   : "border-border bg-surface text-muted-foreground"

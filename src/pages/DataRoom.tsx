@@ -19,6 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useDocuments } from "@/hooks/useDocuments";
 import { useDocumentFolders } from "@/hooks/useDocumentFolders";
 import { useDataRoomTasks } from "@/hooks/useDataRoomTasks";
+import { useAllDocumentShares } from "@/hooks/useAllDocumentShares";
 import { LEGACY_CATEGORY_LABELS, type DataRoomDocument } from "@/lib/dataRoom";
 import InvestorDataRoom from "@/pages/InvestorDataRoom";
 
@@ -29,18 +30,30 @@ const UNCATEGORIZED = "__uncategorized__" as const;
 type BrowseTarget = string | typeof UNCATEGORIZED | null; // null = raíz
 
 export default function DataRoom() {
-  const { company_id, role, is_owner, loading: authLoading } = useAuth();
+  const { company_id, role, is_owner, loading: authLoading, user } = useAuth();
   const { documents, loading, uploadFile, createAndUpload, deleteDocument, togglePrivacy, setVerified, linkTask } =
     useDocuments(company_id);
   const folders = useDocumentFolders(company_id);
   const { tasks } = useDataRoomTasks(company_id);
+  // Mismo query que AccessManagementTab (misma queryKey vía react-query,
+  // sin request duplicado) — se reusa acá solo para saber qué carpetas ya
+  // tienen algún share activo, sin agregar ningún fetch nuevo del lado
+  // backend (list-all-document-shares no tiene equivalente por-carpeta).
+  const { shares: allShares } = useAllDocumentShares(company_id);
+  const sharedFolderIds = useMemo(
+    () => new Set(allShares.filter((s) => s.resource_type === "folder" && !s.is_expired && s.folder_id).map((s) => s.folder_id!)),
+    [allShares]
+  );
 
   const [tab, setTab] = useState<"explore" | "access">("explore");
   const [current, setCurrent] = useState<BrowseTarget>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [creatingFolderBusy, setCreatingFolderBusy] = useState(false);
   const [renamingFolder, setRenamingFolder] = useState<{ id: string; name: string } | null>(null);
+  const [renamingFolderBusy, setRenamingFolderBusy] = useState(false);
   const [movingFolder, setMovingFolder] = useState<{ id: string; name: string } | null>(null);
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<{ id: string; name: string } | null>(null);
+  const [deletingFolderBusy, setDeletingFolderBusy] = useState(false);
   const [addingDocument, setAddingDocument] = useState(false);
   const [savingUpload, setSavingUpload] = useState(false);
   const [deletingDoc, setDeletingDoc] = useState<DataRoomDocument | null>(null);
@@ -104,6 +117,7 @@ export default function DataRoom() {
   const totalUploaded = documents.filter((d) => d.status !== "missing").length;
 
   if (authLoading) return null;
+  if (!user) return <Navigate to="/login" replace />;
   // Rediseño Investor (2026-08-23): misma ruta /data-room, role-branched —
   // useDocuments/useDataRoomTasks arriba no pisan nada del lado investor
   // (company_id es null para ese rol, quedan deshabilitados solos). Cero
@@ -130,7 +144,9 @@ export default function DataRoom() {
 
   const handleDeleteFolder = async () => {
     if (!confirmDeleteFolder) return;
+    setDeletingFolderBusy(true);
     const ok = await folders.deleteFolder(confirmDeleteFolder.id);
+    setDeletingFolderBusy(false);
     if (ok) setConfirmDeleteFolder(null);
   };
 
@@ -145,11 +161,12 @@ export default function DataRoom() {
           title="Data Room"
           subtitle={`${totalUploaded} de ${documents.length} documentos cargados`}
           action={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {is_owner && (
                 <div className="inline-flex border border-border rounded-md overflow-hidden h-9">
                   <button
                     onClick={() => setTab("explore")}
+                    aria-pressed={tab === "explore"}
                     className={cn(
                       "px-3 text-xs flex items-center gap-1.5 transition-all",
                       tab === "explore" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
@@ -159,6 +176,7 @@ export default function DataRoom() {
                   </button>
                   <button
                     onClick={() => setTab("access")}
+                    aria-pressed={tab === "access"}
                     className={cn(
                       "px-3 text-xs flex items-center gap-1.5 transition-all border-l border-border",
                       tab === "access" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
@@ -185,7 +203,7 @@ export default function DataRoom() {
         <div className="flex items-center gap-1.5 text-sm mb-6 flex-wrap">
           <button
             onClick={() => setCurrent(null)}
-            className={current === null ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}
+            className={`inline-flex min-h-[1.5rem] items-center ${current === null ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             Data Room
           </button>
@@ -238,15 +256,22 @@ export default function DataRoom() {
               <EmptyState
                 icon={FolderPlus}
                 title="Todavía no creaste ninguna carpeta."
-                description="Creá tu primera carpeta para empezar a organizar y subir documentos — el Data Room ya no usa categorías fijas, vos decidís cómo lo ordenás."
+                description="Creá tu primera carpeta para empezar a organizar y subir documentos. El Data Room ya no usa categorías fijas, vos decidís cómo lo ordenás."
                 action={{ label: "Crear carpeta", onClick: () => setCreatingFolder(true) }}
               />
             ) : (
-              <div className="border border-border rounded-lg bg-card overflow-hidden">
+              // overflow-x-auto, no overflow-hidden (regla CLAUDE.md) — cada
+              // fila combina badge+nombre+dropdown+TaskSelector(160px)+hasta
+              // 4 íconos, no entra en 375px sin recortar controles.
+              <div className="border border-border rounded-lg bg-card overflow-x-auto">
                 {childFolders.length === 0 && visibleDocs.length === 0 && current !== null ? (
-                  <div className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    Esta carpeta está vacía.
-                  </div>
+                  <EmptyState
+                    bordered={false}
+                    icon={FolderOpen}
+                    title="Esta carpeta está vacía."
+                    description="Subí un documento o creá una subcarpeta para organizar el contenido."
+                    action={{ label: "Agregar documento", onClick: () => setAddingDocument(true) }}
+                  />
                 ) : (
                   <>
                     {childFolders.map((f) => (
@@ -256,6 +281,7 @@ export default function DataRoom() {
                         docCount={docCountByFolder.get(f.id) ?? 0}
                         subfolderCount={f.children.length}
                         documentIds={documentIdsUnderFolder(f.id)}
+                        isShared={sharedFolderIds.has(f.id)}
                         canEdit
                         isOwner={is_owner}
                         companyId={company_id}
@@ -276,7 +302,7 @@ export default function DataRoom() {
                         <Inbox size={16} strokeWidth={1.5} className="text-muted-foreground shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm truncate">Sin categorizar</div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">
+                          <div className="text-xs text-muted-foreground mt-0.5">
                             Documentos subidos antes de las carpetas · {uncategorizedDocs.length} documento
                             {uncategorizedDocs.length === 1 ? "" : "s"}
                           </div>
@@ -315,8 +341,11 @@ export default function DataRoom() {
         open={creatingFolder}
         onOpenChange={setCreatingFolder}
         mode="create"
+        busy={creatingFolderBusy}
         onSubmit={async (name) => {
+          setCreatingFolderBusy(true);
           const id = await folders.createFolder(name, currentFolderId);
+          setCreatingFolderBusy(false);
           if (id) setCreatingFolder(false);
         }}
       />
@@ -326,9 +355,12 @@ export default function DataRoom() {
         onOpenChange={(o) => !o && setRenamingFolder(null)}
         mode="rename"
         initialName={renamingFolder?.name}
+        busy={renamingFolderBusy}
         onSubmit={async (name) => {
           if (!renamingFolder) return;
+          setRenamingFolderBusy(true);
           const ok = await folders.renameFolder(renamingFolder.id, name);
+          setRenamingFolderBusy(false);
           if (ok) setRenamingFolder(null);
         }}
       />
@@ -388,11 +420,12 @@ export default function DataRoom() {
         description={
           <>
             Se eliminará la carpeta <strong>{confirmDeleteFolder?.name}</strong>. Solo se puede eliminar si está
-            vacía — movés o borrás su contenido primero.
+            vacía, movés o borrás su contenido primero.
           </>
         }
         confirmLabel="Eliminar carpeta"
         variant="destructive"
+        busy={deletingFolderBusy}
         onConfirm={handleDeleteFolder}
       />
     </AppLayout>

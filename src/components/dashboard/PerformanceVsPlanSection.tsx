@@ -84,7 +84,7 @@ export function PerformanceVsPlanSection({ metrics, forecastValues, actualValues
         <div className="overflow-x-auto -mx-1 px-1">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-[10.5px] font-semibold uppercase tracking-wide text-tertiary">
+              <tr className="text-left text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
                 <th className="pb-2 pr-4">Métrica</th>
                 <th className="pb-2 pr-4">Actual</th>
                 <th className="pb-2 pr-4">Target (forecast)</th>
@@ -100,6 +100,8 @@ export function PerformanceVsPlanSection({ metrics, forecastValues, actualValues
                   <td className="py-2.5 tabular-nums">
                     {r.variance == null ? (
                       <span className="text-muted-foreground">Sin datos para comparar</span>
+                    ) : r.variance === 0 ? (
+                      <span className="text-muted-foreground">Sin variación</span>
                     ) : (
                       <span className={cn("font-medium", r.isGood ? "text-success-dark" : "text-destructive-dark")}>
                         {r.variance >= 0 ? "+" : ""}

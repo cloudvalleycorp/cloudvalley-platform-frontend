@@ -16,12 +16,37 @@ export const LIST_SHARED_FINANCIAL_REPORTS_URL = `${API_BASE_URL}/list-shared-fi
 // list-reporting-status ahora se calcula solo del lado backend a partir de
 // estos eventos, >=80% scroll y >=30s activos).
 export const EXPORT_REPORT_PDF_URL = `${API_BASE_URL}/export-report-pdf`;
+// Contrato 2026-10 (versiones): publica un snapshot inmutable del borrador.
+export const PUBLISH_FINANCIAL_REPORT_URL = `${API_BASE_URL}/publish-financial-report`;
 export const TRACK_REPORT_VIEW_EVENT_URL = `${API_BASE_URL}/track-report-view-event`;
 export const LIST_REPORT_ANALYTICS_URL = `${API_BASE_URL}/list-report-analytics`;
 
-export type SharedReportSummary = { report_id: string; name: string };
+// Contrato 2026-10 (lista del fondo): el período y la versión publicada que ve
+// el fondo. published_version es null si el reporte nunca se publicó.
+export type SharedReportSummary = {
+  report_id: string;
+  name: string;
+  period: string | null;
+  published_version: number | null;
+  published_at: string | null;
+};
 
-export type ReportSummary = { report_id: string; name: string; updated_at: string };
+// "YYYY-MM" fijado al crear el reporte. null = reporte legacy anterior a
+// este campo: no se asume el mes en curso, la UI muestra un estado explícito.
+export type ReportPeriod = string | null;
+
+// Contrato 2026-10 (versiones): published_version es null si nunca se publicó.
+// has_unpublished_changes se deriva en backend (updated_at del borrador vs
+// last_published_at), nunca se guarda.
+export type ReportSummary = {
+  report_id: string;
+  name: string;
+  updated_at: string;
+  period: ReportPeriod;
+  published_version: number | null;
+  last_published_at: string | null;
+  has_unpublished_changes: boolean;
+};
 
 export type ReportBlock = { metric_id: string };
 
@@ -31,6 +56,7 @@ export type ReportDetail = {
   report_id: string;
   company_id: string;
   name: string;
+  period: ReportPeriod;
   sections: ReportSection[];
 };
 
@@ -48,6 +74,8 @@ export type ReportShare = {
 };
 
 export type ExportReportPdfResponse = { download_url: string };
+
+export type PublishReportResponse = { report_id: string; version: number; published_at: string };
 
 export type ReportViewEventType = "open" | "heartbeat" | "close";
 
@@ -69,12 +97,16 @@ export type ReportAnalyticsByPerson = {
   max_scroll_pct: number;
 };
 
+// Contrato 2026-10: aperturas agrupadas por la versión publicada que se abrió.
+export type ReportAnalyticsByVersion = { version: number; opens: number; total_active_seconds: number };
+
 export type ReportAnalytics = {
   report_id: string;
   total_opens: number;
   total_active_seconds: number;
   by_fund: ReportAnalyticsByFund[];
   by_person: ReportAnalyticsByPerson[];
+  by_version?: ReportAnalyticsByVersion[];
 };
 
 // Los 8 campos originales de Revenue/Cash & Efficiency. submit-record ya

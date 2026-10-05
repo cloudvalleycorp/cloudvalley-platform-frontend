@@ -108,12 +108,12 @@ export function AccessManagementTab({ companyId, documentIdsUnderFolder }: Props
                         <div className="text-sm truncate flex items-center gap-1.5">
                           {name}
                           {share.is_expired && (
-                            <Badge variant="secondary" className="text-[10px]">
+                            <Badge variant="secondary" className="text-xs">
                               Vencido
                             </Badge>
                           )}
                         </div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                        <div className="text-xs text-muted-foreground mt-0.5">
                           Compartido el {formatDate(share.shared_at)}
                           {share.shared_by_name ? ` por ${share.shared_by_name}` : ""}
                           {share.expires_at ? ` · vence el ${formatDate(share.expires_at)}` : ""}
@@ -137,7 +137,7 @@ export function AccessManagementTab({ companyId, documentIdsUnderFolder }: Props
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 shrink-0 hover:text-destructive"
+                        className="h-7 w-7 shrink-0 hover:text-destructive-dark"
                         title="Revocar acceso"
                         aria-label={`Revocar acceso a ${name}`}
                         onClick={() => setRevoking({ share, counterpartName: group.counterpart_name })}

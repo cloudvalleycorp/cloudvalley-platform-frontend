@@ -32,7 +32,7 @@ export function PrivacyToggle({
             "inline-flex items-center justify-center p-1 rounded-md transition-all duration-150",
             isPublic
               ? "text-foreground hover:bg-surface"
-              : "text-tertiary hover:text-muted-foreground hover:bg-surface",
+              : "text-muted-foreground hover:text-muted-foreground hover:bg-surface",
             className
           )}
           aria-label={isPublic ? publicLabel : privateLabel}

@@ -43,30 +43,30 @@ export function FundRequiredMetricsSection({ rows, ownMetrics, onChanged, onCrea
     <>
       <SectionCard
         title="Requisitos de tus fondos"
-        description="Métricas que tus fondos conectados te piden — vos decidís cómo calcularlas con tus propios datos."
+        description="Métricas que tus fondos conectados te piden. Vos decidís cómo calcularlas con tus propios datos."
         className="mb-8"
       >
-        <div className="border border-border rounded-lg divide-y divide-border overflow-hidden">
+        <div className="border border-border rounded-lg divide-y divide-border overflow-x-auto">
           {rows.map((r) => {
             const linkedMetric = r.linked_own_metric_id ? metricById[r.linked_own_metric_id] : null;
             return (
               <div key={r.requirement_id} className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-foreground truncate">{r.name}</span>
-                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span className="text-sm font-medium text-foreground break-words min-w-0">{r.name}</span>
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                       <Landmark size={11} strokeWidth={1.5} aria-hidden="true" />
                       {r.source_fund_name}
                     </span>
                     <ComplianceStatusPill status={r.compliance_status} />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                  <p className="text-xs text-muted-foreground mt-0.5 break-words">
                     {r.unit} · {PERIODICITY_LABELS[r.periodicity]}
                     {r.description ? ` · ${r.description}` : ""}
                     {linkedMetric ? ` · Vinculada a "${linkedMetric.name}"` : ""}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                   {r.compliance_status === "not_applicable" ? (
                     <Button variant="ghost" size="sm" onClick={() => setClearingNa(r)}>
                       Revertir "no aplicable"
@@ -113,7 +113,7 @@ export function FundRequiredMetricsSection({ rows, ownMetrics, onChanged, onCrea
         open={!!markingNa}
         onOpenChange={(o) => !o && setMarkingNa(null)}
         title={`Marcar "${markingNa?.name ?? ""}" como no aplicable`}
-        description="Se lo comunica al fondo de inmediato, sin que tenga que aprobarlo — pero necesita un motivo."
+        description="Se lo comunica al fondo de inmediato, sin que tenga que aprobarlo, pero necesita un motivo."
         onSubmit={async () => {
           if (!markingNa || !reason.trim()) return;
           const ok = await setApplicability(markingNa.requirement_id, "not_applicable", reason.trim());
@@ -154,7 +154,7 @@ export function FundRequiredMetricsSection({ rows, ownMetrics, onChanged, onCrea
         open={!!clearingNa}
         onOpenChange={(o) => !o && setClearingNa(null)}
         title="¿Volver a activar este requisito?"
-        description="Deja de estar marcado como no aplicable — vuelve a contar como pendiente hasta que lo vincules."
+        description="Deja de estar marcado como no aplicable. Vuelve a contar como pendiente hasta que lo vincules."
         confirmLabel="Reactivar"
         onConfirm={async () => {
           if (!clearingNa) return;
@@ -203,7 +203,7 @@ function LinkMetricDialog({
       open={!!requirement}
       onOpenChange={onOpenChange}
       title={`Vincular una métrica para "${requirement?.name ?? ""}"`}
-      description="El fondo va a ver el valor que calcules acá — nunca la fórmula."
+      description="El fondo va a ver el valor que calcules acá, nunca la fórmula."
       onSubmit={() => selected && onConfirm(selected)}
       submitLabel="Vincular"
       busy={busy}
@@ -253,7 +253,7 @@ function LinkMetricDialog({
       <button
         type="button"
         onClick={onCreateNew}
-        className="text-xs text-primary hover:underline"
+        className="text-xs text-primary-dark hover:underline"
       >
         Ninguna me sirve, crear una métrica nueva para esto
       </button>

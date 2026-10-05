@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
-import { Map, Plus, Compass } from "lucide-react";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Map, Plus, Compass, AlertTriangle } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { SkeletonSection } from "@/components/SkeletonSection";
@@ -12,7 +12,7 @@ import { useStartup } from "@/hooks/useStartup";
 import { useRoadmap } from "@/hooks/useRoadmap";
 import { useDocuments } from "@/hooks/useDocuments";
 import { useDocumentFolders } from "@/hooks/useDocumentFolders";
-import { useRoadmapCatalogMutations } from "@/hooks/useRoadmapCatalogMutations";
+import { useDeleteStartupTask } from "@/hooks/useDeleteStartupTask";
 import { type RoadmapTask } from "@/lib/roadmap";
 import { StageBadge } from "@/components/StageBadge";
 import { RoadmapTaskList } from "@/components/roadmap/RoadmapTaskList";
@@ -21,14 +21,21 @@ import { AddRoadmapTaskDialog } from "@/components/roadmap/AddRoadmapTaskDialog"
 import { FolderPickerDialog } from "@/components/dataRoom/FolderPickerDialog";
 
 export default function Roadmap() {
+  const navigate = useNavigate();
   // user.id NO es el id real del usuario (alias legacy a company_id, ver
   // AuthContext.tsx) — para "es mi propia tarea" hace falta user_id.
-  const { role, user_id, company_id } = useAuth();
+  const { role, user_id, company_id, loading: authLoading, user } = useAuth();
   const { startup } = useStartup();
-  const { pillars, tasks, readinessScore, loading: loadingRoadmap, toggleStatus, reload } = useRoadmap(company_id);
+  const { pillars, tasks, readinessScore, loading: loadingRoadmap, error: roadmapError, retry: retryRoadmap, toggleStatus, reload } = useRoadmap(company_id);
   const { createAndUpload, uploadFile } = useDocuments(company_id);
   const folders = useDocumentFolders(company_id);
-  const { deleteTask } = useRoadmapCatalogMutations();
+  // Bug real encontrado en auditoría (2026-09-29): esto llamaba a
+  // useRoadmapCatalogMutations().deleteTask, admin-only sobre el catálogo
+  // global (DELETE_ROADMAP_TASK_URL) — un founder eliminando su propia tarea
+  // daba 403 en producción. useDeleteStartupTask es el endpoint correcto
+  // (DELETE_STARTUP_TASK_URL, ya usado por InvestorTasks.tsx del lado
+  // inversor para el mismo tipo de acción).
+  const { deleteTask } = useDeleteStartupTask();
   // Data Room ya no infiere sola en qué carpeta va un documento pedido por
   // una tarea de Roadmap (las carpetas no llevan vínculo a pilar en esta
   // versión) — se le pide al founder que elija (o cree) la carpeta a mano.
@@ -44,9 +51,9 @@ export default function Roadmap() {
   const [deletingTask, setDeletingTask] = useState(false);
 
   const handleDeleteTask = async () => {
-    if (!confirmDeleteTask) return;
+    if (!confirmDeleteTask || !company_id) return;
     setDeletingTask(true);
-    const ok = await deleteTask(confirmDeleteTask.task_id);
+    const ok = await deleteTask(company_id, confirmDeleteTask.startup_task_id);
     setDeletingTask(false);
     if (ok) {
       setConfirmDeleteTask(null);
@@ -95,12 +102,24 @@ export default function Roadmap() {
   // rol — investor/admin caían acá con company_id null y useRoadmap se
   // quedaba en enabled:false para siempre (0% readiness, cero pilares, sin
   // mensaje). Mismo criterio que Reporting.tsx/DataRoom.tsx.
+  //
+  // Segundo bug real, encontrado en vivo (2026-09-29): faltaba esperar a
+  // `authLoading` antes de evaluar el rol — `role` arranca en `null` mientras
+  // useAuth() resuelve la sesión, así que en una recarga completa
+  // `role !== "user"` daba true por un instante y mandaba a /admin, que a su
+  // vez rebota a /dashboard (mismo guard ahí) — un founder recargando
+  // /roadmap terminaba en Dashboard sin ningún error visible. Mismo bug
+  // pendiente de verificar en Dashboard.tsx y el resto de las pantallas de
+  // founder (Metrics/GrowthTrackerSheets/Reporting/DataRoom comparten el
+  // mismo patrón de guard).
+  if (authLoading) return null;
+  if (!user) return <Navigate to="/login" replace />;
   if (role === "investor") return <Navigate to="/overview" replace />;
   if (role !== "user") return <Navigate to="/admin" replace />;
 
   return (
     <AppLayout>
-      <div className="max-w-6xl mx-auto px-8 py-12">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-12">
         <PageHeader
           size="compact"
           title="Fundraising Roadmap"
@@ -120,7 +139,7 @@ export default function Roadmap() {
         />
 
         {deepLinkTaskId && openTask?.startup_task_id === deepLinkTaskId && (
-          <div className="flex items-center gap-2 rounded-lg border border-teal/30 bg-teal-subtle text-teal-dark text-sm px-4 py-2.5 mb-6">
+          <div className="flex items-center gap-2 rounded-lg border border-teal/30 bg-teal-subtle text-teal-dark text-sm px-4 py-2.5 mb-6" aria-live="polite">
             <Compass size={14} strokeWidth={1.5} aria-hidden="true" />
             Llegaste desde el Dashboard.
           </div>
@@ -128,11 +147,19 @@ export default function Roadmap() {
 
         {loadingRoadmap ? (
           <SkeletonSection rows={4} columns={2} />
+        ) : roadmapError ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="No pudimos cargar tu roadmap."
+            description="Puede ser un problema temporal de conexión. Probá de nuevo en un momento."
+            action={{ label: "Reintentar", onClick: () => retryRoadmap() }}
+          />
         ) : tasks.length === 0 ? (
           <EmptyState
             icon={Map}
             title="Todavía no hay tareas en tu roadmap."
-            description="Cuando se generen las tareas de tu etapa, van a aparecer acá agrupadas por pilar."
+            description="Cuando se generen las tareas de tu etapa, van a aparecer acá agrupadas por pilar. Mientras tanto, podés seguir viendo el resto de tu cuenta."
+            action={{ label: "Volver al Dashboard", onClick: () => navigate("/dashboard") }}
           />
         ) : (
           <RoadmapTaskList
@@ -141,6 +168,11 @@ export default function Roadmap() {
             onOpenTask={setOpenTask}
             onToggleStatus={toggleStatus}
             onUpload={handleUpload}
+            // Antes el founder necesitaba 1 click extra (abrir el detalle) para
+            // editar/eliminar su propia tarea, a diferencia del inversor
+            // (InvestorCompany.tsx) que ya tiene lápiz/tacho inline en la fila.
+            onEditTask={setEditingTask}
+            onCancelTask={setConfirmDeleteTask}
             currentUserId={user_id}
           />
         )}

@@ -1,23 +1,30 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sparkles, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/SectionCard";
 import { SectionNum } from "@/components/dashboard/SectionNum";
 import { usePlatformAgent } from "@/hooks/usePlatformAgent";
+import { getDashboardAiCache, setDashboardAiCache } from "@/lib/dashboardAiCache";
 
 type Props = { companyId: string | null };
 
 const INITIAL_QUESTION =
   "Dame un resumen ejecutivo del estado actual de la startup: qué cambió este período, por qué, y qué deberíamos priorizar ahora.";
 
-// Disparo manual siempre (nunca se pide solo al entrar al Dashboard) — mismo
-// principio que "Destacados"/"Qué podemos mejorar" en MetricsOverviewTab.tsx:
-// es una llamada de IA con costo real, el founder la pide cuando la quiere.
+// Se auto-genera solo una vez por sesión de pestaña (cache en memoria,
+// dashboardAiCache.ts) — pedido explícito del usuario 2026-09-29: "no
+// debería darse click para que dé el reporte, sino que aparezca el resumen
+// insight". El costo real de la llamada de IA sigue siendo la razón de por
+// qué esto se cachea en vez de auto-disparar en cada render, no un motivo
+// que haya dejado de existir. "Actualizar" sigue siendo la única forma de
+// forzar una regeneración real.
 export function ExecutiveSummaryCard({ companyId }: Props) {
   const { ask, asking } = usePlatformAgent(companyId, "founder_dashboard");
-  const [answer, setAnswer] = useState<string | null>(null);
-  const [actionRequests, setActionRequests] = useState<string[]>([]);
+  const cached = companyId ? getDashboardAiCache(companyId).executiveSummary : undefined;
+  const [answer, setAnswer] = useState<string | null>(cached?.answer ?? null);
+  const [actionRequests, setActionRequests] = useState<string[]>(cached?.actionRequests ?? []);
   const [error, setError] = useState(false);
+  const autoTriggered = useRef(false);
 
   const run = async (question: string) => {
     setError(false);
@@ -30,7 +37,15 @@ export function ExecutiveSummaryCard({ companyId }: Props) {
     }
     setAnswer(res.answer);
     setActionRequests(res.action_requests ?? []);
+    if (companyId) setDashboardAiCache(companyId, { executiveSummary: { answer: res.answer, actionRequests: res.action_requests ?? [] } });
   };
+
+  useEffect(() => {
+    if (!companyId || answer || autoTriggered.current) return;
+    autoTriggered.current = true;
+    run(INITIAL_QUESTION);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
 
   return (
     <SectionCard
@@ -70,7 +85,8 @@ export function ExecutiveSummaryCard({ companyId }: Props) {
         </div>
       ) : (
         <div aria-live="polite">
-          <p className="text-sm leading-relaxed whitespace-pre-line">{answer}</p>
+          <p className="text-sm leading-relaxed whitespace-pre-line max-w-[70ch]">{answer}</p>
+          <p className="mt-3 text-xs font-medium text-teal-dark">Generado con IA a partir de tus métricas</p>
           {actionRequests.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-4">
               {actionRequests.map((a, i) => (

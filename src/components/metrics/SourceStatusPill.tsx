@@ -4,13 +4,13 @@ import { SOURCE_STATUS_LABELS, type SourceStatus } from "@/lib/dataFreshness";
 // Mismo patrón que ReportingStatusPill.tsx (investor) — color y texto
 // juntos, nunca solo color.
 const STYLES: Record<SourceStatus, string> = {
-  up_to_date: "bg-success/10 text-success",
+  up_to_date: "bg-success/10 text-success-dark",
   recent: "bg-secondary text-secondary-foreground",
-  stale: "bg-warning/15 text-warning",
-  critical: "bg-destructive/10 text-destructive",
-  never_synced: "bg-destructive/10 text-destructive",
-  sync_error: "bg-destructive/10 text-destructive",
-  reconnect_required: "bg-destructive/10 text-destructive",
+  stale: "bg-warning/15 text-warning-dark",
+  critical: "bg-destructive/10 text-destructive-dark",
+  never_synced: "bg-destructive/10 text-destructive-dark",
+  sync_error: "bg-destructive/10 text-destructive-dark",
+  reconnect_required: "bg-destructive/10 text-destructive-dark",
 };
 
 export function SourceStatusPill({ status, className }: { status: SourceStatus; className?: string }) {

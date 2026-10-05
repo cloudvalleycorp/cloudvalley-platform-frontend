@@ -49,7 +49,7 @@ export function WhatChangedSection({ companyId, highlights, loading, error, onLo
       action={
         !highlights && !loading ? (
           <Button variant="outline" size="sm" onClick={onLoad}>
-            <Sparkles size={13} className="mr-1.5" aria-hidden="true" /> Generar
+            <Sparkles size={13} className="mr-1.5" aria-hidden="true" /> Generar Qué cambió
           </Button>
         ) : undefined
       }
@@ -77,7 +77,7 @@ export function WhatChangedSection({ companyId, highlights, loading, error, onLo
       ) : highlights.length === 0 ? (
         <EmptyState bordered={false} icon={Sparkles} title="Sin cambios destacados este período." description="Ningún KPI principal tuvo una variación significativa." />
       ) : (
-        <div className="border border-border rounded-lg divide-y divide-border overflow-hidden">
+        <div className="border border-border rounded-lg divide-y divide-border overflow-x-auto">
           {highlights.map((h) => {
             const key = h.metric_id + h.title;
             const state = why[key];
@@ -96,11 +96,11 @@ export function WhatChangedSection({ companyId, highlights, loading, error, onLo
                     )}
                   </div>
                   <div className="text-right shrink-0">
-                    <div className={cn("text-sm font-semibold tabular-nums", isGood ? "text-success-dark" : "text-destructive-dark")}>
+                    <div className={cn("text-sm font-medium tabular-nums", isGood ? "text-success-dark" : "text-destructive-dark")}>
                       {isGood ? "+" : ""}
                       {h.delta.delta_pct.toFixed(1)}%
                     </div>
-                    <div className="text-[10px] text-tertiary mt-0.5">confianza {h.confidence.score >= 0.7 ? "alta" : h.confidence.score >= 0.4 ? "media" : "baja"}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">confianza {h.confidence.score >= 0.7 ? "alta" : h.confidence.score >= 0.4 ? "media" : "baja"}</div>
                   </div>
                 </div>
 
@@ -108,7 +108,7 @@ export function WhatChangedSection({ companyId, highlights, loading, error, onLo
                   <button
                     type="button"
                     onClick={() => explainWhy(h)}
-                    className="mt-2.5 text-xs font-medium text-primary flex items-center gap-1"
+                    className="mt-2.5 min-h-[1.5rem] text-xs font-medium text-primary-dark flex items-center gap-1"
                   >
                     ¿Por qué? <ChevronDown size={12} strokeWidth={1.5} aria-hidden="true" />
                   </button>
@@ -120,11 +120,11 @@ export function WhatChangedSection({ companyId, highlights, loading, error, onLo
                       <p className="text-xs text-muted-foreground">No se pudo investigar esto ahora.</p>
                     ) : (
                       <div className="bg-surface rounded-md p-3">
-                        <p className="text-xs leading-relaxed">{state.text}</p>
+                        <p className="text-xs leading-relaxed max-w-[70ch]">{state.text}</p>
                         <button
                           type="button"
                           onClick={() => setWhy((prev) => { const next = { ...prev }; delete next[key]; return next; })}
-                          className="mt-2 text-[11px] font-medium text-muted-foreground flex items-center gap-1"
+                          className="mt-2 text-xs font-medium text-muted-foreground flex items-center gap-1"
                         >
                           Ocultar <ChevronUp size={11} strokeWidth={1.5} aria-hidden="true" />
                         </button>

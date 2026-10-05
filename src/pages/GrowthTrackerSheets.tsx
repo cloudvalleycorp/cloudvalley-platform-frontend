@@ -603,6 +603,20 @@ export default function GrowthTrackerSheets() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingConnections, connections]);
 
+  // El wizard no guarda progreso en ningún lado (ni borrador ni localStorage)
+  // — a partir de "Reconociendo"/"Mapear columnas" el usuario ya invirtió
+  // trabajo real (mapeo de columnas a mano) que se pierde por completo si
+  // cierra o recarga la pestaña. Sin esto no había ningún aviso.
+  useEffect(() => {
+    if (!wizardAccountId || step < 3) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [wizardAccountId, step]);
+
   const loadSheets = async (accountId: string) => {
     if (!company_id) return;
     setLoadingSheets(true);
@@ -879,7 +893,7 @@ export default function GrowthTrackerSheets() {
       setMetricsNeedingMoreData(analysis.metrics_needing_more_data);
       toast.success(
         remappedMetrics.length > 0
-          ? `La IA propone ${remappedMetrics.length} métrica${remappedMetrics.length === 1 ? "" : "s"} — revisalas al guardar el mapeo.`
+          ? `La IA propone ${remappedMetrics.length} métrica${remappedMetrics.length === 1 ? "" : "s"}. Revisalas al guardar el mapeo.`
           : "La IA no encontró métricas nuevas para proponer con las columnas actuales."
       );
     } else {
@@ -2081,14 +2095,14 @@ export default function GrowthTrackerSheets() {
                                   {conn.last_sync_status && (
                                     <>
                                       {" · "}
-                                      <span className={conn.last_sync_status === "success" ? "" : "text-destructive"}>
+                                      <span className={conn.last_sync_status === "success" ? "" : "text-destructive-dark"}>
                                         {conn.last_sync_status}
                                       </span>
                                     </>
                                   )}
                                 </p>
                                 <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                                  <Badge variant="outline" className="text-[10px]">
+                                  <Badge variant="outline" className="text-xs">
                                     {conn.source === "excel"
                                       ? conn.spreadsheet_name.toLowerCase().endsWith(".csv")
                                         ? "CSV"
@@ -2096,11 +2110,11 @@ export default function GrowthTrackerSheets() {
                                       : "Google Sheets"}
                                   </Badge>
                                   {conn.data_role && (
-                                    <Badge variant="secondary" className="text-[10px]">
+                                    <Badge variant="secondary" className="text-xs">
                                       {DATA_ROLE_LABELS[conn.data_role]}
                                     </Badge>
                                   )}
-                                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                                  <Badge variant="outline" className="text-xs text-muted-foreground">
                                     {SYNC_MODE_LABELS[conn.sync_mode]}
                                     {conn.sync_frequency && ` · ${SYNC_FREQUENCY_LABELS[conn.sync_frequency]}`}
                                     {conn.sync_frequency === "daily_fixed_hour" && conn.sync_hour_utc != null &&
@@ -2174,7 +2188,7 @@ export default function GrowthTrackerSheets() {
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem
                                       onClick={() => setConfirmRemoveConnection(conn)}
-                                      className="text-destructive focus:text-destructive"
+                                      className="text-destructive-dark focus:text-destructive-dark"
                                     >
                                       <Trash2 size={12} strokeWidth={1.5} className="mr-2" />
                                       Eliminar
@@ -2195,8 +2209,8 @@ export default function GrowthTrackerSheets() {
                             )}
 
                             {missing && missing.length > 0 && (
-                              <div className="border border-destructive/40 bg-destructive/5 rounded-md p-2.5 mt-2.5 text-xs">
-                                <p className="font-medium text-destructive">La planilla cambió de estructura</p>
+                              <div className="border border-destructive/40 bg-destructive/5 rounded-md p-2.5 mt-2.5 text-xs" aria-live="polite">
+                                <p className="font-medium text-destructive-dark">La planilla cambió de estructura</p>
                                 <p className="text-muted-foreground mt-0.5">
                                   Estas columnas ya no existen: {missing.join(", ")}.
                                 </p>
@@ -2247,7 +2261,7 @@ export default function GrowthTrackerSheets() {
                                     {grouped.length > 0 && (
                                       <ul className="mt-1.5 space-y-1">
                                         {grouped.map((g, i) => (
-                                          <li key={i} className="text-destructive">
+                                          <li key={i} className="text-destructive-dark">
                                             <span className="font-medium">{g.field}</span>: {g.reason}
                                             {g.count > 1 && (
                                               <span className="text-muted-foreground"> (afecta {g.count} filas)</span>
@@ -2300,11 +2314,11 @@ export default function GrowthTrackerSheets() {
                             {timeAgo(conn.last_synced_at)}
                           </p>
                           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                            <Badge variant="outline" className="text-[10px]">
+                            <Badge variant="outline" className="text-xs">
                               {conn.spreadsheet_name.toLowerCase().endsWith(".csv") ? "CSV" : "Excel"}
                             </Badge>
                             {conn.data_role && (
-                              <Badge variant="secondary" className="text-[10px]">
+                              <Badge variant="secondary" className="text-xs">
                                 {DATA_ROLE_LABELS[conn.data_role]}
                               </Badge>
                             )}
@@ -2355,7 +2369,7 @@ export default function GrowthTrackerSheets() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => setConfirmRemoveConnection(conn)}
-                                className="text-destructive focus:text-destructive"
+                                className="text-destructive-dark focus:text-destructive-dark"
                               >
                                 <Trash2 size={12} strokeWidth={1.5} className="mr-2" />
                                 Eliminar
@@ -2374,8 +2388,8 @@ export default function GrowthTrackerSheets() {
                         />
                       )}
                       {missing && missing.length > 0 && (
-                        <div className="border border-destructive/40 bg-destructive/5 rounded-md p-2.5 mt-2.5 text-xs">
-                          <p className="font-medium text-destructive">El archivo cambió de estructura</p>
+                        <div className="border border-destructive/40 bg-destructive/5 rounded-md p-2.5 mt-2.5 text-xs" aria-live="polite">
+                          <p className="font-medium text-destructive-dark">El archivo cambió de estructura</p>
                           <p className="text-muted-foreground mt-0.5">Estas columnas ya no existen: {missing.join(", ")}.</p>
                           <Button size="sm" className="mt-2 h-7 text-xs" onClick={() => openExcelUpload(conn.connection_id)}>
                             Subir versión corregida
@@ -2430,7 +2444,12 @@ export default function GrowthTrackerSheets() {
             {excelMode && step === 1 && excelStep === "pick_sheet" && (
               <SectionCard title="Elegí la hoja" description={excelFileName}>
                 {excelSheets.length === 0 ? (
-                  <EmptyState bordered={false} icon={FileSpreadsheet} title="No encontramos hojas con datos en este archivo." />
+                  <EmptyState
+                    bordered={false}
+                    icon={FileSpreadsheet}
+                    title="No encontramos hojas con datos en este archivo."
+                    description="Revisá que el archivo tenga al menos una hoja con contenido, o subí otro desde Cancelar."
+                  />
                 ) : (
                   <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
                     {excelSheets.map((s) => (
@@ -2530,7 +2549,12 @@ export default function GrowthTrackerSheets() {
                   {loadingTabs ? (
                     <LoadingState />
                   ) : tabs.length === 0 ? (
-                    <EmptyState bordered={false} icon={FileSpreadsheet} title="Esta planilla no tiene hojas." />
+                    <EmptyState
+                      bordered={false}
+                      icon={FileSpreadsheet}
+                      title="Esta planilla no tiene hojas."
+                      description="Volvé atrás y elegí otra planilla, o agregale una hoja en Google Sheets."
+                    />
                   ) : (
                     <>
                       {tabs.length > 8 && (
@@ -2567,7 +2591,7 @@ export default function GrowthTrackerSheets() {
                                     )
                                   : undefined;
                                 if (existing) {
-                                  toast.message("Ya tenías esta hoja conectada — abrimos su mapeo para editar.");
+                                  toast.message("Ya tenías esta hoja conectada. Abrimos su mapeo para editar.");
                                   openEditConnection(existing);
                                   return;
                                 }
@@ -2637,12 +2661,12 @@ export default function GrowthTrackerSheets() {
                           <SelectItem value="eav">Vertical (una columna de fecha, una de nombre de métrica, una de valor)</SelectItem>
                         </SelectContent>
                       </Select>
-                      <p className="text-[11px] text-tertiary mt-1">
-                        {sheetLayout !== "row_based" ? "Sugerido automáticamente — cambialo si no es correcto." : "Podés cambiarlo si tu hoja no es una fila por período."}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {sheetLayout !== "row_based" ? "Sugerido automáticamente. Cambialo si no es correcto." : "Podés cambiarlo si tu hoja no es una fila por período."}
                       </p>
                     </div>
                     <div className="overflow-x-auto -mx-1">
-                      <table className="text-[11px] font-mono border-collapse min-w-full">
+                      <table className="text-xs font-mono border-collapse min-w-full">
                         <thead>
                           <tr>
                             {headers.map((h, i) => (
@@ -2674,7 +2698,7 @@ export default function GrowthTrackerSheets() {
                       Todavía no podemos mapear este tipo de hoja automáticamente
                     </p>
                     <p className="text-muted-foreground mt-0.5">
-                      Parece una lista de entidades (ej. clientes), donde cada fila no tiene un período — no
+                      Parece una lista de entidades (ej. clientes), donde cada fila no tiene un período. No
                       encaja en el mapeo de siempre. Por ahora no hay una forma automática de cargar esto. Probá con
                       otra hoja, o subí esta más adelante cuando lo soportemos.
                     </p>
@@ -2702,8 +2726,8 @@ export default function GrowthTrackerSheets() {
                 {!loadingHeaders && headers.length > 0 && (
                   <p className="text-xs text-muted-foreground mb-3">
                     Elegí qué columna marca el período. Para las demás, decidí cuáles traer y cómo se van a llamar:
-                    solo lectura de datos acá, nada de sumar ni filtrar, eso se define después con fórmulas en la
-                    sección de Métricas (por ejemplo <code className="font-mono">FIELDSUM("monto")</code>).
+                    acá solo se leen los datos tal cual están en la hoja, sin sumar ni filtrar nada. Eso se arma
+                    después, desde la sección de Métricas.
                   </p>
                 )}
                 {aiEnrichmentFailed && (
@@ -2711,7 +2735,7 @@ export default function GrowthTrackerSheets() {
                     <p className="font-medium">No pudimos generar la sugerencia de IA para esta hoja.</p>
                     <p className="text-muted-foreground mt-0.5">
                       Los nombres de campo se completaron igual, pero el tipo de dato de cada columna no se revisó
-                      automáticamente — confirmá que cada una diga "Texto" o "Número" correctamente antes de guardar.
+                      automáticamente. Confirmá que cada una diga "Texto" o "Número" correctamente antes de guardar.
                     </p>
                   </div>
                 )}
@@ -2729,11 +2753,11 @@ export default function GrowthTrackerSheets() {
                 )}
                 {duplicateHeaders.length > 0 && effectiveLayout !== "row_based" && (
                   <div className="border border-destructive/40 bg-destructive/5 rounded-md p-3 mb-4 text-xs" aria-live="polite">
-                    <p className="font-medium text-destructive">
+                    <p className="font-medium text-destructive-dark">
                       Esta hoja tiene columnas con el mismo nombre repetido: {duplicateHeaders.join(", ")}
                     </p>
                     <p className="text-muted-foreground mt-0.5">
-                      No podemos distinguir cuál es cuál en este modo de mapeo — si guardás así, se pierden los datos
+                      No podemos distinguir cuál es cuál en este modo de mapeo. Si guardás así, se pierden los datos
                       de una de las dos. Renombrá las columnas repetidas en el archivo (ej. "Monto" y "Monto 2") y
                       subilo de nuevo.
                     </p>
@@ -2747,13 +2771,13 @@ export default function GrowthTrackerSheets() {
                 )}
                 {duplicateFieldKeys.length > 0 && (
                   <div className="border border-destructive/40 bg-destructive/5 rounded-md p-3 mb-4 text-xs" aria-live="polite">
-                    <p className="font-medium text-destructive">Hay nombres de campo repetidos: {duplicateFieldKeys.join(", ")}</p>
+                    <p className="font-medium text-destructive-dark">Hay nombres de campo repetidos: {duplicateFieldKeys.join(", ")}</p>
                     <p className="text-muted-foreground mt-0.5">Cada campo tiene que tener un nombre único.</p>
                   </div>
                 )}
                 {crossConnectionDuplicateKeys.length > 0 && (
                   <div className="border border-destructive/40 bg-destructive/5 rounded-md p-3 mb-4 text-xs" aria-live="polite">
-                    <p className="font-medium text-destructive">
+                    <p className="font-medium text-destructive-dark">
                       Ya se usa{crossConnectionDuplicateKeys.length === 1 ? "" : "n"} en otra hoja conectada:{" "}
                       {crossConnectionDuplicateKeys.join(", ")}
                     </p>
@@ -2766,7 +2790,12 @@ export default function GrowthTrackerSheets() {
                 {loadingHeaders ? (
                   <LoadingState />
                 ) : headers.length === 0 ? (
-                  <EmptyState bordered={false} icon={FileSpreadsheet} title="Esta hoja no tiene columnas en la primera fila." />
+                  <EmptyState
+                    bordered={false}
+                    icon={FileSpreadsheet}
+                    title="Esta hoja no tiene columnas en la primera fila."
+                    description="La primera fila tiene que tener el nombre de cada columna. Agregalos en la hoja y volvé a analizarla, o elegí otra hoja desde Atrás."
+                  />
                 ) : effectiveLayout === "grid" ? (
                   extractingLayout ? (
                     <LoadingState variant="inline" label="Entendiendo la estructura de la hoja…" />
@@ -2821,9 +2850,9 @@ export default function GrowthTrackerSheets() {
                         />
                       </div>
                       {periodColumnLooksWrong(periodColumn, headers, sampleRows) && (
-                        <p className="text-xs text-warning mt-1.5 flex items-start gap-1.5" aria-live="polite">
+                        <p className="text-xs text-warning-dark mt-1.5 flex items-start gap-1.5" aria-live="polite">
                           <AlertTriangle size={12} strokeWidth={1.5} className="shrink-0 mt-0.5" />
-                          Los valores de "{periodColumn}" no parecen fechas — revisá que sea realmente la columna que
+                          Los valores de "{periodColumn}" no parecen fechas. Revisá que sea realmente la columna que
                           marca el mes de cada fila. Si tu archivo tiene los meses como columnas en vez de como
                           filas, probá "Cuadrícula" arriba en vez de "Fila por período".
                         </p>
@@ -2832,7 +2861,12 @@ export default function GrowthTrackerSheets() {
 
                     <div>
                       <label className="text-xs font-medium block mb-1.5">Columnas a traer</label>
-                      <div className="space-y-1.5">
+                      {/* overflow-x-auto, no overflow-hidden (regla CLAUDE.md) — cada fila
+                          combina label+Input(160px)+Select(112px) de ancho fijo, no entra
+                          en 375px; min-w-max evita que el flex interno se aplaste en vez
+                          de scrollear. */}
+                      <div className="overflow-x-auto">
+                      <div className="space-y-1.5 min-w-max">
                         {headers
                           .map((header, index) => ({ header, index }))
                           .filter(
@@ -2859,6 +2893,7 @@ export default function GrowthTrackerSheets() {
                             );
                           })}
                       </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -2867,7 +2902,7 @@ export default function GrowthTrackerSheets() {
                     {!periodColumn
                       ? "Falta elegir la columna de período (mes)."
                       : periodColumnAmbiguous
-                        ? "Esta hoja tiene más de una columna llamada así — elegí cuál de las dos es el período."
+                        ? "Esta hoja tiene más de una columna llamada así. Elegí cuál de las dos es el período."
                         : usedColumnsCount === 0
                           ? "Elegí al menos una columna para traer."
                           : !allMappingsValid
@@ -2912,7 +2947,7 @@ export default function GrowthTrackerSheets() {
                           variant="outline"
                           onClick={reanalyzeWithAi}
                           disabled={analyzingSheet}
-                          title="Vuelve a mirar las columnas actuales — nunca pisa un mapeo que ya guardaste, solo completa las que falten y propone métricas nuevas."
+                          title="Vuelve a mirar las columnas actuales. Nunca pisa un mapeo que ya guardaste, solo completa las que falten y propone métricas nuevas."
                         >
                           <Sparkles size={14} className="mr-1.5" aria-hidden="true" />
                           {analyzingSheet ? "Analizando…" : "Volver a analizar con IA"}
@@ -2931,7 +2966,7 @@ export default function GrowthTrackerSheets() {
                           variant="outline"
                           onClick={handleReanalyzeLayout}
                           disabled={extractingLayout}
-                          title="Vuelve a mirar la estructura de la hoja — nunca pisa un mapeo que ya guardaste, solo propone métricas nuevas si aparecieron conceptos nuevos."
+                          title="Vuelve a mirar la estructura de la hoja. Nunca pisa un mapeo que ya guardaste, solo propone métricas nuevas si aparecieron conceptos nuevos."
                         >
                           <Sparkles size={14} className="mr-1.5" aria-hidden="true" />
                           {extractingLayout ? "Analizando…" : "Volver a analizar con IA"}
@@ -3001,8 +3036,8 @@ export default function GrowthTrackerSheets() {
         description={
           confirmRemoveConnection
             ? confirmRemoveConnection.field_mappings === null
-              ? `Se elimina "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}" y TODOS los datos que ya se sincronizaron desde ahí — no solo se desconecta. Cualquier fórmula que use sus campos (FIELDSUM, etc.) deja de calcular. Esta acción no se puede deshacer: si volvés a conectar la misma hoja después, es una carga nueva desde cero. No afecta la cuenta de Google ni tus otras conexiones.`
-              : `Se elimina "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}" y TODOS los datos que ya se sincronizaron desde sus ${confirmRemoveConnection.field_mappings.length} campo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} crudo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} — no solo se desconecta. Cualquier fórmula que los use (FIELDSUM, etc.) deja de calcular. Esta acción no se puede deshacer: si volvés a conectar la misma hoja después, es una carga nueva desde cero. No afecta la cuenta de Google ni tus otras conexiones.`
+              ? `Se elimina "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}" y TODOS los datos que ya se sincronizaron desde ahí, no solo se desconecta. Cualquier fórmula que use sus campos (FIELDSUM, etc.) deja de calcular. Esta acción no se puede deshacer: si volvés a conectar la misma hoja después, es una carga nueva desde cero. No afecta la cuenta de Google ni tus otras conexiones.`
+              : `Se elimina "${confirmRemoveConnection.spreadsheet_name} · ${confirmRemoveConnection.sheet_name}" y TODOS los datos que ya se sincronizaron desde sus ${confirmRemoveConnection.field_mappings.length} campo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"} crudo${confirmRemoveConnection.field_mappings.length === 1 ? "" : "s"}, no solo se desconecta. Cualquier fórmula que los use (FIELDSUM, etc.) deja de calcular. Esta acción no se puede deshacer: si volvés a conectar la misma hoja después, es una carga nueva desde cero. No afecta la cuenta de Google ni tus otras conexiones.`
             : ""
         }
         confirmLabel="Eliminar hoja"
@@ -3058,19 +3093,31 @@ export default function GrowthTrackerSheets() {
 // más arriba para cómo se traduce desde el WizardStep real).
 function StepRail({ labels, current }: { labels: string[]; current: number }) {
   return (
-    <div className="flex items-center mb-4" role="list" aria-label="Pasos">
+    // overflow-x-auto, no overflow-hidden (regla CLAUDE.md) — con 5 pasos de
+    // texto whitespace-nowrap no entra en 375px, antes se recortaba sin
+    // forma de verlo completo.
+    <div className="overflow-x-auto mb-4">
+      <span className="sr-only" aria-live="polite">
+        Paso {current} de {labels.length}: {labels[current - 1]}
+      </span>
+      <div className="flex items-center min-w-max" role="list" aria-label="Pasos">
       {labels.map((label, i) => {
         const n = i + 1;
         const state = n === current ? "active" : n < current ? "done" : "pending";
         return (
-          <div key={label} className={cn("flex items-center", i < labels.length - 1 && "flex-1")} role="listitem">
+          <div
+            key={label}
+            className={cn("flex items-center", i < labels.length - 1 && "flex-1")}
+            role="listitem"
+            aria-current={state === "active" ? "step" : undefined}
+          >
             <div className="flex items-center gap-1.5 shrink-0">
               <span
                 className={cn(
-                  "w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-medium shrink-0",
+                  "w-5 h-5 rounded-full border flex items-center justify-center text-xs font-medium shrink-0",
                   state === "active" && "bg-primary border-primary text-primary-foreground",
                   state === "done" && "bg-success border-success text-success-foreground",
-                  state === "pending" && "border-border text-tertiary"
+                  state === "pending" && "border-border text-muted-foreground"
                 )}
               >
                 {state === "done" ? <Check size={11} strokeWidth={2.5} /> : n}
@@ -3078,7 +3125,7 @@ function StepRail({ labels, current }: { labels: string[]; current: number }) {
               <span
                 className={cn(
                   "text-xs whitespace-nowrap",
-                  state === "pending" ? "text-tertiary" : "text-foreground",
+                  state === "pending" ? "text-muted-foreground" : "text-foreground",
                   state === "active" && "font-medium"
                 )}
               >
@@ -3091,6 +3138,7 @@ function StepRail({ labels, current }: { labels: string[]; current: number }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -3141,7 +3189,7 @@ function ConnectionSettingsPanel({
             ))}
           </SelectContent>
         </Select>
-        <p className="text-[11px] text-muted-foreground mt-1.5">
+        <p className="text-xs text-muted-foreground mt-1.5">
           Solo importa si vas a conectar otra fuente que mida lo mismo. Si en algún momento no coinciden, la marcada
           "Fuente de verdad" es la que gana.
         </p>
@@ -3208,7 +3256,7 @@ function ConnectionSettingsPanel({
             </Select>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground mt-1.5">
+        <p className="text-xs text-muted-foreground mt-1.5">
           {connection.next_sync_at
             ? `Próxima sincronización automática: ${new Date(connection.next_sync_at).toLocaleString("es-AR")}. Podés apretar "Sincronizar" cuando quieras igual.`
             : "Define cada cuánto buscamos datos nuevos sin que hagas nada. Podés apretar \"Sincronizar\" a mano en cualquier momento."}
@@ -3374,12 +3422,12 @@ function FieldMappingRow({
             className="h-7 text-xs flex-1 min-w-0"
           />
           {descriptionState === "edited" && (
-            <Badge variant="secondary" className="shrink-0 text-[10px]">
+            <Badge variant="secondary" className="shrink-0 text-xs">
               Editado
             </Badge>
           )}
           {descriptionState === "generated" && (
-            <Badge variant="outline" className="shrink-0 text-[10px] text-muted-foreground">
+            <Badge variant="outline" className="shrink-0 text-xs text-muted-foreground">
               Generada
             </Badge>
           )}

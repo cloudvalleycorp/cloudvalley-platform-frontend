@@ -99,7 +99,7 @@ export function SimpleSourceList({ leaves, onChange, rawFields, onSwitchToAdvanc
               <button
                 type="button"
                 onClick={() => removeLeaf(i)}
-                className="shrink-0 text-muted-foreground hover:text-destructive p-1 -m-1"
+                className="shrink-0 text-muted-foreground hover:text-destructive-dark p-1 -m-1"
                 aria-label="Quitar esta fuente"
               >
                 <X size={13} strokeWidth={1.5} />
@@ -114,11 +114,11 @@ export function SimpleSourceList({ leaves, onChange, rawFields, onSwitchToAdvanc
       </Button>
 
       {leaves.length > 0 && (
-        <p className="text-[11px] text-tertiary">
-          Cada fuente se suma tal cual — nunca se combina en silencio.
+        <p className="text-xs text-muted-foreground">
+          Cada fuente se suma tal cual. Nunca se combina en silencio.
         </p>
       )}
-      <button type="button" onClick={onSwitchToAdvanced} className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground">
+      <button type="button" onClick={onSwitchToAdvanced} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
         ¿Necesitás filtros, restar, o referenciar otra métrica? Usá el editor avanzado.
       </button>
     </div>

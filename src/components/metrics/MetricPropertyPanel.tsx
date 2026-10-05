@@ -265,7 +265,7 @@ export function MetricPropertyPanel({
             </div>
             <SheetDescription>
               {fulfillsRequirementId
-                ? "Al guardar, esta métrica queda vinculada automáticamente al pedido del fondo — el fondo solo va a ver el valor, nunca esta fórmula."
+                ? "Al guardar, esta métrica queda vinculada automáticamente al pedido del fondo. El fondo solo va a ver el valor, nunca esta fórmula."
                 : creating
                   ? "Se agrega solo para tu startup, no afecta a las demás."
                   : "Los cambios aplican solo para tu startup."}
@@ -355,7 +355,7 @@ export function MetricPropertyPanel({
                         <>
                           <p className="text-sm">Se carga a mano.</p>
                           <p className="text-xs text-muted-foreground mt-1.5">
-                            No se puede reasignar esta carga a una integración desde acá — pero sí podés hacer que
+                            No se puede reasignar esta carga a una integración desde acá, pero sí podés hacer que
                             este número salga de una fuente ya conectada: cambiá el Tipo a "Calculada" y elegí el
                             campo desde el selector, sin escribir nada a mano.
                           </p>
@@ -370,7 +370,7 @@ export function MetricPropertyPanel({
                           </Button>
                         </>
                       ) : settingsPath ? (
-                        <a href={settingsPath} className="text-sm text-primary hover:underline">
+                        <a href={settingsPath} className="text-sm text-primary-dark hover:underline">
                           Se sincroniza desde {syncedFrom} → ver conexión
                         </a>
                       ) : (
@@ -413,7 +413,7 @@ export function MetricPropertyPanel({
                           <button
                             type="button"
                             onClick={() => setAdvancedMode(false)}
-                            className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
                           >
                             ← Volver a la vista simple
                           </button>
@@ -460,7 +460,7 @@ export function MetricPropertyPanel({
                 metric && (
                   <Button
                     variant="ghost"
-                    className="text-destructive hover:text-destructive"
+                    className="text-destructive-dark hover:text-destructive-dark"
                     onClick={() => {
                       setDeleteRecordsToo(false);
                       setConfirmDelete(true);
@@ -515,7 +515,7 @@ export function MetricPropertyPanel({
               <p>{pendingDuplicate.message}</p>
               <a
                 href={`/metrics/${pendingDuplicate.existingMetricId}`}
-                className="text-sm text-primary hover:underline inline-block"
+                className="text-sm text-primary-dark hover:underline inline-block"
               >
                 Ver la métrica existente
               </a>

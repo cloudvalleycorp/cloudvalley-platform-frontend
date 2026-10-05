@@ -19,7 +19,7 @@ type Props = {
   missingMessage?: ReactNode;
   error?: string | null;
   change: number | null;
-  sparkData: { v: number }[];
+  sparkData: { v: number | null }[];
 };
 
 export const MetricValueCard = memo(function MetricValueCard({
@@ -43,7 +43,9 @@ export const MetricValueCard = memo(function MetricValueCard({
             {privacyToggle}
             <h3 className="text-sm font-medium text-muted-foreground">{name}</h3>
           </div>
-          {subtitle && <p className="text-xs text-muted-foreground/70 mt-0.5">{subtitle}</p>}
+          {/* Sin /70: la opacidad bajaba el contraste real a ~2.88:1
+              (calculado) — muted-foreground sin opacidad ya da 5.2:1. */}
+          {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
         </div>
         <button
           onClick={onInfo}
@@ -57,7 +59,7 @@ export const MetricValueCard = memo(function MetricValueCard({
       <div className="mt-4" aria-live="polite">
         {error ? (
           <div className="border border-dashed border-destructive/40 rounded-md p-3 mt-1">
-            <p className="text-xs text-destructive">{error}</p>
+            <p className="text-xs text-destructive-dark">{error}</p>
           </div>
         ) : missing.length > 0 ? (
           <div className="border border-dashed border-border rounded-md p-3 mt-1">
@@ -84,7 +86,7 @@ export const MetricValueCard = memo(function MetricValueCard({
         <div className="mt-4 h-10">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={sparkData}>
-              <Line type="monotone" dataKey="v" stroke="hsl(var(--foreground))" strokeWidth={1} dot={false} />
+              <Line type="monotone" dataKey="v" stroke="hsl(var(--foreground))" strokeWidth={1} dot={false} connectNulls={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>

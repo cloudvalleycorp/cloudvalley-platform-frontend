@@ -4,6 +4,7 @@ import {
   LIST_SHARED_FINANCIAL_REPORTS_URL,
   GET_FINANCIAL_REPORT_URL,
   type SharedReportSummary,
+  type ReportPeriod,
   type ReportSection,
 } from "@/lib/financialReports";
 
@@ -19,16 +20,20 @@ async function fetchSharedReports(companyId: string): Promise<ReportsResult> {
   return { reports: Array.isArray(data?.reports) ? data.reports : [], forbidden: false };
 }
 
-type DetailResult = { sections: ReportSection[] | null; forbidden: boolean };
+type DetailResult = { sections: ReportSection[] | null; period: ReportPeriod; forbidden: boolean };
 
 async function fetchReportDetail(reportId: string): Promise<DetailResult> {
   const res = await fetch(`${GET_FINANCIAL_REPORT_URL}?report_id=${encodeURIComponent(reportId)}`, {
     credentials: "include",
   });
-  if (res.status === 403) return { sections: null, forbidden: true };
-  if (!res.ok) return { sections: null, forbidden: false };
+  if (res.status === 403) return { sections: null, period: null, forbidden: true };
+  if (!res.ok) return { sections: null, period: null, forbidden: false };
   const data = await res.json();
-  return { sections: Array.isArray(data?.sections) ? data.sections : [], forbidden: false };
+  return {
+    sections: Array.isArray(data?.sections) ? data.sections : [],
+    period: data?.period ?? null,
+    forbidden: false,
+  };
 }
 
 /**
@@ -75,6 +80,7 @@ export function useSharedFinancialReports(companyId: string | null) {
     selectedId,
     setSelectedId,
     sections: detailData?.sections ?? null,
+    period: detailData?.period ?? null,
     loadingDetail,
     forbidden: (reportsData?.forbidden ?? false) || (detailData?.forbidden ?? false),
   };

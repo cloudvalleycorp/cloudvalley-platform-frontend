@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { AlertTriangle, Sparkles, Wand2, SlidersHorizontal } from "lucide-react";
 import { SectionCard } from "@/components/SectionCard";
 import { EmptyState } from "@/components/EmptyState";
+import { LoadingState } from "@/components/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -242,7 +243,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
     }
   };
 
-  if (loading) return null;
+  if (loading) return <LoadingState variant="centered" className="py-16" />;
 
   return (
     <div className="space-y-8">
@@ -364,7 +365,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
                 <div key={key} className="border border-warning/40 bg-warning/5 rounded-lg p-5 sm:col-span-2">
                   <div className="flex items-center gap-1.5 mb-2">
                     <AlertTriangle size={13} strokeWidth={1.5} className="text-muted-foreground" />
-                    <h3 className="text-sm font-medium">{STANDARD_KEY_LABELS[key]} — {group.length} métricas en conflicto</h3>
+                    <h3 className="text-sm font-medium">{STANDARD_KEY_LABELS[key]}: {group.length} métricas en conflicto</h3>
                   </div>
                   <div className="space-y-1 mb-3">
                     {group.map((m) => {
@@ -378,7 +379,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
                         >
                           <span className="text-xs text-muted-foreground">
                             {m.name}
-                            {m.source_role && <span className="ml-1.5 text-[10px] uppercase tracking-wide">({m.source_role})</span>}
+                            {m.source_role && <span className="ml-1.5 text-[0.6875rem] uppercase tracking-wide">({m.source_role})</span>}
                           </span>
                           <span className="text-xs font-medium shrink-0">{formatMetricValue(gCurrent, m.unit)}</span>
                         </button>
@@ -390,21 +391,23 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
                       ¿Por qué difieren?{diffPctLabel(group, values) ? ` (${diffPctLabel(group, values)})` : ""}
                     </Button>
                   )}
-                  {result === "loading" && <p className="text-xs text-muted-foreground">Investigando…</p>}
-                  {result === "error" && <p className="text-xs text-muted-foreground">No se pudo investigar la diferencia ahora.</p>}
-                  {result && result !== "loading" && result !== "error" && (
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      {result.structural_diff.length === 0 ? (
-                        <p>Calculan exactamente lo mismo — la diferencia no se explica por su definición.</p>
-                      ) : (
-                        result.structural_diff.map((d, i) => <p key={i}>• {d}</p>)
-                      )}
-                      {result.explanation && <p className="italic mt-1">{result.explanation}</p>}
-                    </div>
-                  )}
+                  <div aria-live="polite">
+                    {result === "loading" && <p className="text-xs text-muted-foreground">Investigando…</p>}
+                    {result === "error" && <p className="text-xs text-muted-foreground">No se pudo investigar la diferencia ahora.</p>}
+                    {result && result !== "loading" && result !== "error" && (
+                      <div className="text-xs text-muted-foreground space-y-1">
+                        {result.structural_diff.length === 0 ? (
+                          <p>Calculan exactamente lo mismo. La diferencia no se explica por su definición.</p>
+                        ) : (
+                          result.structural_diff.map((d, i) => <p key={i}>• {d}</p>)
+                        )}
+                        {result.explanation && <p className="italic mt-1">{result.explanation}</p>}
+                      </div>
+                    )}
+                  </div>
                   {warning?.suggested_source_roles && Object.keys(warning.suggested_source_roles).length > 0 && (
-                    <p className="text-[11px] text-muted-foreground mt-2">
-                      IA sugiere un rol de fuente — asignalo desde el Explorador para elegir cuál mostrar acá.
+                    <p className="text-xs text-muted-foreground mt-2">
+                      IA sugiere un rol de fuente. Asignalo desde el Explorador para elegir cuál mostrar acá.
                     </p>
                   )}
                 </div>
@@ -455,66 +458,68 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
           ) : undefined
         }
       >
-        {loadingCoverage ? (
-          <p className="text-sm text-muted-foreground">Revisando tus fuentes conectadas contra tus métricas…</p>
-        ) : coverageError ? (
-          <EmptyState
-            bordered={false}
-            icon={Wand2}
-            title="No pudimos buscar mejoras ahora."
-            description={COVERAGE_ERROR_MESSAGES[coverageError]}
-            action={{ label: "Reintentar", onClick: loadCoverage }}
-          />
-        ) : !coverage ? (
-          <EmptyState
-            bordered={false}
-            icon={Wand2}
-            title="Todavía no buscaste mejoras con tus fuentes conectadas."
-            description="Revisamos tus métricas de carga manual y las que ya se calculan solas, y avisamos si hay una fuente ya conectada que las puede completar o mejorar."
-            action={{ label: "Buscar mejoras", onClick: loadCoverage }}
-          />
-        ) : improvableMetrics.length === 0 ? (
-          <EmptyState
-            bordered={false}
-            icon={Wand2}
-            title="Con tus fuentes conectadas no encontramos mejoras nuevas."
-            description="Volvé a buscar cuando conectes una fuente nueva."
-          />
-        ) : (
-          <div className="space-y-3">
-            {improvableMetrics.map((m) => (
-              <div key={m.metric_id} className="border border-border rounded-md p-3 flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <p className="text-sm font-medium">{m.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {m.status === "proposal_connect"
-                      ? "Se carga a mano — la podemos calcular sola con lo que ya conectaste."
-                      : "Ya se calcula sola — hay una fuente nueva conectada para sumarle."}
-                  </p>
-                  {m.proposal?.low_confidence && (
-                    <Badge variant="warning" className="mt-1.5 gap-1">
-                      <AlertTriangle size={10} strokeWidth={1.5} aria-hidden="true" />
-                      Confianza baja
-                    </Badge>
-                  )}
+        <div aria-live="polite">
+          {loadingCoverage ? (
+            <p className="text-sm text-muted-foreground">Revisando tus fuentes conectadas contra tus métricas…</p>
+          ) : coverageError ? (
+            <EmptyState
+              bordered={false}
+              icon={Wand2}
+              title="No pudimos buscar mejoras ahora."
+              description={COVERAGE_ERROR_MESSAGES[coverageError]}
+              action={{ label: "Reintentar", onClick: loadCoverage }}
+            />
+          ) : !coverage ? (
+            <EmptyState
+              bordered={false}
+              icon={Wand2}
+              title="Todavía no buscaste mejoras con tus fuentes conectadas."
+              description="Revisamos tus métricas de carga manual y las que ya se calculan solas, y avisamos si hay una fuente ya conectada que las puede completar o mejorar."
+              action={{ label: "Buscar mejoras", onClick: loadCoverage }}
+            />
+          ) : improvableMetrics.length === 0 ? (
+            <EmptyState
+              bordered={false}
+              icon={Wand2}
+              title="Con tus fuentes conectadas no encontramos mejoras nuevas."
+              description="Volvé a buscar cuando conectes una fuente nueva."
+            />
+          ) : (
+            <div className="space-y-3">
+              {improvableMetrics.map((m) => (
+                <div key={m.metric_id} className="border border-border rounded-md p-3 flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-sm font-medium">{m.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {m.status === "proposal_connect"
+                        ? "Se carga a mano. La podemos calcular sola con lo que ya conectaste."
+                        : "Ya se calcula sola. Hay una fuente nueva conectada para sumarle."}
+                    </p>
+                    {m.proposal?.low_confidence && (
+                      <Badge variant="warning" className="mt-1.5 gap-1">
+                        <AlertTriangle size={10} strokeWidth={1.5} aria-hidden="true" />
+                        Confianza baja
+                      </Badge>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setReviewItem({ kind: m.status === "proposal_connect" ? "connect" : "enrich", row: m })}
+                  >
+                    Revisar y confirmar
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setReviewItem({ kind: m.status === "proposal_connect" ? "connect" : "enrich", row: m })}
-                >
-                  Revisar y confirmar
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-        {coverage && coverage.truncated_metric_ids.length > 0 && (
-          <p className="text-[11px] text-muted-foreground mt-3">
-            Todavía no revisamos {coverage.truncated_metric_ids.length} métrica{coverage.truncated_metric_ids.length === 1 ? "" : "s"} más
-            — volvé a buscar en un rato para cubrirlas.
-          </p>
-        )}
+              ))}
+            </div>
+          )}
+          {coverage && coverage.truncated_metric_ids.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Todavía no revisamos {coverage.truncated_metric_ids.length} métrica{coverage.truncated_metric_ids.length === 1 ? "" : "s"} más.
+              Volvé a buscar en un rato para cubrirlas.
+            </p>
+          )}
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -527,43 +532,45 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
           ) : undefined
         }
       >
-        {loadingHighlights ? (
-          <p className="text-sm text-muted-foreground">Buscando los cambios más relevantes del período…</p>
-        ) : highlightsError ? (
-          <EmptyState
-            bordered={false}
-            icon={Sparkles}
-            title="No pudimos generar destacados ahora."
-            description="Puede ser un problema temporal del servicio. Probá de nuevo en un rato."
-            action={{ label: "Reintentar", onClick: () => loadHighlights() }}
-          />
-        ) : !highlights ? (
-          <EmptyState
-            bordered={false}
-            icon={Sparkles}
-            title="Todavía no generaste los destacados de este período."
-            description="Resume los cambios más grandes de tus métricas principales vs. el período anterior, con evidencia real."
-            action={{ label: "Generar destacados", onClick: () => loadHighlights() }}
-          />
-        ) : highlights.length === 0 ? (
-          <EmptyState bordered={false} icon={Sparkles} title="Sin cambios destacados este período." description="Ningún KPI principal tuvo una variación significativa." />
-        ) : (
-          <div className="space-y-3">
-            {highlights.map((h) => (
-              <div key={h.metric_id + h.title} className="border border-border rounded-md p-3">
-                <p className="text-sm font-medium">{h.title}</p>
-                {h.description ? (
-                  <p className="text-xs text-muted-foreground mt-1">{h.description}</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {h.delta.current_value.toLocaleString()} vs {h.delta.prior_value.toLocaleString()} ({h.delta.delta_pct >= 0 ? "+" : ""}
-                    {h.delta.delta_pct.toFixed(1)}%)
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        <div aria-live="polite">
+          {loadingHighlights ? (
+            <p className="text-sm text-muted-foreground">Buscando los cambios más relevantes del período…</p>
+          ) : highlightsError ? (
+            <EmptyState
+              bordered={false}
+              icon={Sparkles}
+              title="No pudimos generar destacados ahora."
+              description="Puede ser un problema temporal del servicio. Probá de nuevo en un rato."
+              action={{ label: "Reintentar", onClick: () => loadHighlights() }}
+            />
+          ) : !highlights ? (
+            <EmptyState
+              bordered={false}
+              icon={Sparkles}
+              title="Todavía no generaste los destacados de este período."
+              description="Resume los cambios más grandes de tus métricas principales vs. el período anterior, con evidencia real."
+              action={{ label: "Generar destacados", onClick: () => loadHighlights() }}
+            />
+          ) : highlights.length === 0 ? (
+            <EmptyState bordered={false} icon={Sparkles} title="Sin cambios destacados este período." description="Ningún KPI principal tuvo una variación significativa." />
+          ) : (
+            <div className="space-y-3">
+              {highlights.map((h) => (
+                <div key={h.metric_id + h.title} className="border border-border rounded-md p-3">
+                  <p className="text-sm font-medium">{h.title}</p>
+                  {h.description ? (
+                    <p className="text-xs text-muted-foreground mt-1">{h.description}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {h.delta.current_value.toLocaleString()} vs {h.delta.prior_value.toLocaleString()} ({h.delta.delta_pct >= 0 ? "+" : ""}
+                      {h.delta.delta_pct.toFixed(1)}%)
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </SectionCard>
 
       <MetricCoverageReviewDialog

@@ -70,12 +70,18 @@ export function ShareDialog({ open, onOpenChange, companyId, resourceType, resou
               <div className="text-sm font-medium">Todos los fondos conectados</div>
               <div className="text-xs text-muted-foreground">Incluye automáticamente a los que se conecten después.</div>
             </div>
-            <Switch checked={!!isPublic} onCheckedChange={onTogglePublic} />
+            <Switch checked={!!isPublic} onCheckedChange={onTogglePublic} aria-label="Compartir con todos los fondos conectados" />
           </div>
         )}
 
         <div className="pt-1">
           <div className="text-xs font-medium text-muted-foreground mb-2">Compartir con un fondo en particular</div>
+          {isPublic && (
+            <p className="text-xs text-muted-foreground mb-2">
+              Ya es visible para todos los fondos conectados. Compartirlo acá con uno en particular (o ponerle
+              vencimiento) no cambia nada mientras "Todos los fondos conectados" siga activo arriba.
+            </p>
+          )}
           {loadingConnections || loading ? (
             <LoadingState />
           ) : connections.length === 0 ? (
@@ -92,6 +98,7 @@ export function ShareDialog({ open, onOpenChange, companyId, resourceType, resou
                       <Switch
                         checked={active}
                         disabled={sharingId === c.connection_id}
+                        aria-label={`Compartir con ${c.counterpart_name}`}
                         onCheckedChange={(checked) => {
                           if (checked) {
                             const expiry = toIsoEndOfDay(draftExpiry[c.connection_id] ?? "");
@@ -104,7 +111,7 @@ export function ShareDialog({ open, onOpenChange, companyId, resourceType, resou
                     </div>
                     {active && (
                       <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-[11px] text-muted-foreground shrink-0">Vence</span>
+                        <span className="text-xs text-muted-foreground shrink-0">Vence</span>
                         <Input
                           type="date"
                           className="h-7 text-xs w-36"
@@ -115,7 +122,7 @@ export function ShareDialog({ open, onOpenChange, companyId, resourceType, resou
                             shareWith(resourceId, c, toIsoEndOfDay(next));
                           }}
                         />
-                        <span className="text-[11px] text-tertiary">(vacío = sin vencimiento)</span>
+                        <span className="text-xs text-muted-foreground">(vacío = sin vencimiento)</span>
                       </div>
                     )}
                   </div>

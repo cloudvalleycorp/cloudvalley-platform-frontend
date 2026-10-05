@@ -174,12 +174,12 @@ function InvestorTasksContent({ companies }: { companies: { id: string; name: st
                         {task.requested_by_name && ` · pedida por ${task.requested_by_name}`}
                       </span>
                     </button>
-                    <span className="text-[11px] text-muted-foreground shrink-0">{CRITICALITY_LABELS[task.criticality]}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">{CRITICALITY_LABELS[task.criticality]}</span>
                     {task.due_date && (
                       <span
                         className={cn(
                           "text-xs font-medium shrink-0 tabular-nums",
-                          task.is_overdue ? "text-destructive" : "text-muted-foreground"
+                          task.is_overdue ? "text-destructive-dark" : "text-muted-foreground"
                         )}
                       >
                         {task.is_overdue ? "Vencida" : new Date(task.due_date).toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}

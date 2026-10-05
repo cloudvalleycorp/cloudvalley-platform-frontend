@@ -87,8 +87,8 @@ export function MetricCoverageReviewDialog({ item, onOpenChange, companyId, allM
     : item.kind === "connect"
       ? "Esta métrica se cargaba a mano. A partir de ahora se va a calcular sola con la fuente que ya conectaste."
       : item.kind === "enrich"
-        ? "Esta métrica ya se calcula sola — le vamos a sumar una fuente nueva que todavía no estaba usando."
-        : `Todavía no trackeabas ${item.row.label} como métrica propia — la podemos crear con lo que ya conectaste.`;
+        ? "Esta métrica ya se calcula sola. Le vamos a sumar una fuente nueva que todavía no estaba usando."
+        : `Todavía no trackeabas ${item.row.label} como métrica propia. La podemos crear con lo que ya conectaste.`;
 
   const handleConfirm = async () => {
     if (!companyId) return;
@@ -183,7 +183,7 @@ export function MetricCoverageReviewDialog({ item, onOpenChange, companyId, allM
       onSaved();
       onOpenChange(false);
     } catch {
-      toast.error("No se pudo confirmar la propuesta — probá de nuevo.");
+      toast.error("No se pudo confirmar la propuesta. Probá de nuevo.");
       setSaving(false);
     }
   };
@@ -235,7 +235,7 @@ export function MetricCoverageReviewDialog({ item, onOpenChange, companyId, allM
       {proposal.low_confidence && (
         <Badge variant="warning" className="gap-1">
           <AlertTriangle size={11} strokeWidth={1.5} aria-hidden="true" />
-          Confianza baja — revisá la consulta antes de confirmar
+          Confianza baja, revisá la consulta antes de confirmar
         </Badge>
       )}
       <div>

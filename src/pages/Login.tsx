@@ -91,7 +91,7 @@ export default function Login() {
                 ? `Esperá ${cooldown}s`
                 : "Enviar enlace de acceso"}
             </Button>
-            <p className="text-xs text-tertiary text-center pt-2">
+            <p className="text-xs text-muted-foreground text-center pt-2">
               Te enviamos un link a tu email. Sin contraseña.
             </p>
           </form>

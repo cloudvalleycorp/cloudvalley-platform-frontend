@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormDialog } from "@/components/FormDialog";
-import { Label } from "@/components/ui/label";
+import { FormField } from "@/components/FormField";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { entityWords, handleMembershipError } from "@/lib/membership";
 import {
@@ -315,6 +315,7 @@ export default function Connections() {
     <AppLayout>
       <div className="max-w-6xl mx-auto px-8 py-12 space-y-8">
         <PageHeader
+          size="compact"
           title="Conexiones"
           subtitle={`Conexiones institucionales con ${counterpartWords.noun}s.`}
           action={
@@ -344,7 +345,7 @@ export default function Connections() {
                           <div className="font-medium truncate">{c.counterpart_name}</div>
                           <CounterpartLinks connection={c} />
                           {c.message && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{c.message}</p>}
-                          <div className="text-xs text-tertiary mt-1">
+                          <div className="text-xs text-muted-foreground mt-1">
                             {c.requested_by_name} · {new Date(c.created_at).toLocaleDateString("es-AR")}
                           </div>
                         </div>
@@ -387,7 +388,7 @@ export default function Connections() {
                         <div className="min-w-0">
                           <div className="font-medium truncate">{c.counterpart_name}</div>
                           <CounterpartLinks connection={c} />
-                          <div className="text-xs text-tertiary mt-1 flex items-center gap-1">
+                          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                             <Clock size={11} strokeWidth={1.5} /> Pendiente · {new Date(c.created_at).toLocaleDateString("es-AR")}
                           </div>
                         </div>
@@ -460,7 +461,7 @@ export default function Connections() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-muted-foreground hover:text-destructive"
+                            className="text-muted-foreground hover:text-destructive-dark"
                             onClick={() => setDisconnectTarget(c)}
                           >
                             <Unlink size={12} className="mr-1" /> Eliminar conexión
@@ -505,7 +506,7 @@ export default function Connections() {
               <LoadingState />
             </div>
           ) : targetsError ? (
-            <div className="p-4 text-sm text-muted-foreground text-center" aria-live="polite">
+            <div className="p-4 text-sm text-destructive-dark text-center" aria-live="polite">
               No pudimos cargar la lista de {counterpartWords.noun}s. Es un problema temporal de la plataforma, no
               tuyo. Contactá a CloudValley si se repite.
             </div>
@@ -596,25 +597,23 @@ export default function Connections() {
         submitLabel={savingBatch ? "Guardando…" : "Guardar"}
         busy={savingBatch}
       >
-        <div>
-          <Label className="text-xs">Batch</Label>
+        <FormField label="Batch" htmlFor="connection-batch">
           <Input
+            id="connection-batch"
             value={batchInput}
             onChange={(e) => setBatchInput(e.target.value)}
             placeholder="Ej: 2026-A"
-            className="mt-1"
           />
-        </div>
-        <div>
-          <Label className="text-xs">Año</Label>
+        </FormField>
+        <FormField label="Año" htmlFor="connection-year">
           <Input
+            id="connection-year"
             type="number"
             value={yearInput}
             onChange={(e) => setYearInput(e.target.value)}
             placeholder="Ej: 2026"
-            className="mt-1"
           />
-        </div>
+        </FormField>
       </FormDialog>
 
       <ConfirmationDialog

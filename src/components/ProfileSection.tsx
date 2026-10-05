@@ -245,7 +245,7 @@ export function ProfileSection() {
           placeholder="nuevo@email.com"
           autoFocus
         />
-        {emailError && <p className="text-xs text-destructive" aria-live="polite">{emailError}</p>}
+        {emailError && <p className="text-xs text-destructive-dark" aria-live="polite">{emailError}</p>}
       </FormDialog>
     </>
   );

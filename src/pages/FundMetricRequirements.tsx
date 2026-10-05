@@ -284,12 +284,12 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-foreground truncate">{r.name}</span>
                         {r.metric_class === "standard" && (
-                          <Badge variant="secondary" className="text-[10px]">
+                          <Badge variant="secondary" className="text-xs">
                             Estándar{r.standard_key ? ` · ${STANDARD_KEY_LABELS[r.standard_key] ?? r.standard_key}` : ""}
                           </Badge>
                         )}
                         {r.mandatory && (
-                          <Badge variant="default" className="text-[10px]">
+                          <Badge variant="default" className="text-xs">
                             Obligatorio
                           </Badge>
                         )}

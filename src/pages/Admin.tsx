@@ -144,22 +144,22 @@ export default function Admin() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="border border-border rounded-lg bg-card p-4">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Startups activas</p>
+              <p className="text-[0.6875rem] text-muted-foreground uppercase tracking-wide">Startups activas</p>
               <p className="text-2xl font-medium mt-1">{kpis.counts.active_companies}</p>
               <div className="mt-1"><Delta value={kpis.deltas.active_companies} /></div>
             </div>
             <div className="border border-border rounded-lg bg-card p-4">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Fondos activos</p>
+              <p className="text-[0.6875rem] text-muted-foreground uppercase tracking-wide">Fondos activos</p>
               <p className="text-2xl font-medium mt-1">{kpis.counts.active_funds}</p>
               <div className="mt-1"><Delta value={kpis.deltas.active_funds} /></div>
             </div>
             <div className="border border-border rounded-lg bg-card p-4">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Usuarios activos</p>
+              <p className="text-[0.6875rem] text-muted-foreground uppercase tracking-wide">Usuarios activos</p>
               <p className="text-2xl font-medium mt-1">{kpis.counts.active_users}</p>
               <div className="mt-1"><Delta value={kpis.deltas.active_users} /></div>
             </div>
             <Link to="/admin/connections" className="border border-border rounded-lg bg-card p-4 hover:border-foreground/30 transition-colors">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Conexiones pendientes</p>
+              <p className="text-[0.6875rem] text-muted-foreground uppercase tracking-wide">Conexiones pendientes</p>
               <p className="text-2xl font-medium mt-1 text-warning-dark">{connections.length}</p>
               {stalePending.length > 0 && (
                 <p className="text-xs text-warning-dark mt-1">{stalePending.length} hace &gt;7 días</p>

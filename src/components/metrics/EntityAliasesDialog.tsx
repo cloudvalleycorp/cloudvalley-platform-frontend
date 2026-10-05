@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { X, Pencil, ArrowRightLeft } from "lucide-react";
 import { FormDialog } from "@/components/FormDialog";
 import { FormField } from "@/components/FormField";
+import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,6 +39,7 @@ export function EntityAliasesDialog({ open, onOpenChange, companyId }: Props) {
   const [renameValue, setRenameValue] = useState("");
   const [movingAlias, setMovingAlias] = useState<{ alias: string; fromId: string } | null>(null);
   const [moveTargetId, setMoveTargetId] = useState("");
+  const [confirmRemoveAlias, setConfirmRemoveAlias] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
@@ -142,6 +144,7 @@ export function EntityAliasesDialog({ open, onOpenChange, companyId }: Props) {
         return;
       }
       toast.success("Alias quitado");
+      setConfirmRemoveAlias(null);
       load();
     } catch {
       toast.error("No se pudo quitar el alias");
@@ -155,7 +158,7 @@ export function EntityAliasesDialog({ open, onOpenChange, companyId }: Props) {
       open={open}
       onOpenChange={onOpenChange}
       title="Entidades resueltas"
-      description="Revisá y corregí las agrupaciones que hizo la IA — renombrá un grupo, movés un alias a otra entidad, o sacalo."
+      description="Revisá y corregí las agrupaciones que hizo la IA: renombrá un grupo, movés un alias a otra entidad, o sacalo."
       contentClassName="sm:max-w-xl"
       footer={
         <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -239,7 +242,7 @@ export function EntityAliasesDialog({ open, onOpenChange, companyId }: Props) {
                     >
                       <ArrowRightLeft size={10} strokeWidth={1.5} />
                     </button>
-                    <button type="button" onClick={() => removeAlias(alias)} aria-label={`Quitar ${alias}`} title="Quitar">
+                    <button type="button" onClick={() => setConfirmRemoveAlias(alias)} aria-label={`Quitar ${alias}`} title="Quitar">
                       <X size={10} strokeWidth={1.5} />
                     </button>
                   </span>
@@ -274,6 +277,16 @@ export function EntityAliasesDialog({ open, onOpenChange, companyId }: Props) {
           ))}
         </div>
       )}
+      <ConfirmationDialog
+        open={!!confirmRemoveAlias}
+        onOpenChange={(o) => !o && setConfirmRemoveAlias(null)}
+        title="¿Quitar este alias?"
+        description={`"${confirmRemoveAlias}" deja de agruparse con esta entidad. Las filas históricas que ya se sincronizaron no cambian, solo afecta a las que lleguen de ahora en más.`}
+        confirmLabel="Quitar"
+        variant="destructive"
+        onConfirm={() => confirmRemoveAlias && removeAlias(confirmRemoveAlias)}
+        busy={busy}
+      />
     </FormDialog>
   );
 }

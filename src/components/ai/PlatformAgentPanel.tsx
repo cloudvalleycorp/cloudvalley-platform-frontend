@@ -13,6 +13,7 @@ import { usePlatformAgent } from "@/hooks/usePlatformAgent";
 import { slugify } from "@/hooks/useMetricPropertyForm";
 import { handleMembershipError } from "@/lib/membership";
 import { isQuerySpec, type QuerySpec } from "@/lib/querySpec";
+import { reportNotes, reportProposals } from "@/lib/reportProposal";
 import { cn } from "@/lib/utils";
 import {
   LIST_AGENT_CONVERSATIONS_URL,
@@ -24,6 +25,7 @@ import {
   type PlatformAgentMetricFields,
   type PlatformAgentResponse,
   type ObservabilityTraceEntry,
+  type ReportProposal,
   type FormulaSyntaxEntry,
   type AgentConversationSummary,
   type ListAgentConversationsResponse,
@@ -97,7 +99,8 @@ function asRecord(v: unknown): Record<string, unknown> | undefined {
 function pendingConfirmations(trace: ObservabilityTraceEntry[]) {
   return trace
     .map((entry, index) => {
-      if (entry.result?.status !== "pending_confirmation") return null;
+      // Las propuestas de reporte tienen tarjeta propia (ver reportProposals).
+      if (entry.tool === "create-report-from-proposal" || entry.result?.status !== "pending_confirmation") return null;
       const proposed =
         asRecord(entry.result?.proposed) ??
         asRecord(entry.result?.proposed_metric) ??
@@ -178,6 +181,58 @@ function duplicateSuggestions(trace: ObservabilityTraceEntry[]) {
       return { index, existingMetricId, proposedQuery };
     })
     .filter((x): x is { index: number; existingMetricId: string; proposedQuery: QuerySpec | null } => !!x);
+}
+
+const MONTHS_ES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+function periodLabel(period: string): string {
+  const [year, month] = period.split("-").map(Number);
+  if (!year || !month || month < 1 || month > 12) return period;
+  return `${MONTHS_ES[month - 1]} ${year}`;
+}
+
+// Tarjeta de confirmación de un reporte propuesto por el agente: nombre,
+// período y secciones tal cual vienen en result.proposed. "Crear reporte"
+// confirma; "Cambiar algo" descarta la propuesta y deja el pedido original
+// en el textarea para que el usuario lo corrija.
+function ReportProposalCard({
+  proposal,
+  onCreate,
+  onRevise,
+}: {
+  proposal: ReportProposal;
+  onCreate: () => void;
+  onRevise: () => void;
+}) {
+  return (
+    <div className="w-full max-w-[85%] rounded-md border border-primary/40 bg-primary/5 p-3 space-y-2">
+      <p className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">Reporte propuesto</p>
+      <p className="text-sm font-medium text-foreground">{proposal.name}</p>
+      <p className="text-xs text-muted-foreground">Período: {periodLabel(proposal.period)}</p>
+      <ul className="divide-y divide-border/60 border-t border-border/60">
+        {proposal.sections.map((section, i) => (
+          <li key={i} className="flex items-center justify-between gap-3 py-1.5 text-xs">
+            <span className="text-foreground">{section.title || "Sección sin título"}</span>
+            <span className="text-muted-foreground tabular-nums shrink-0">
+              {section.metric_ids.length} {section.metric_ids.length === 1 ? "métrica" : "métricas"}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground">Se crea como borrador. Podés editarlo después.</p>
+      <div className="flex items-center gap-2 pt-1">
+        <Button size="sm" onClick={onCreate}>
+          Crear reporte
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onRevise}>
+          Cambiar algo
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 // Copy por surface — extendido con las 4 superficies nuevas del rediseño
@@ -523,6 +578,34 @@ export function PlatformAgentPanel({
     }
   };
 
+  // Confirmación de un reporte propuesto: se reenvía EXACTO lo que vino en
+  // result.proposed, sin question y sin report_id (ver usePlatformAgent).
+  const handleConfirmReportCreate = async (exchangeIdx: number, traceIdx: number, proposal: ReportProposal) => {
+    resolveTrace(exchangeIdx, traceIdx);
+    setPendingQuestion("Creando el reporte…");
+    const response = await ask("", {
+      uiContext,
+      formulaSyntax,
+      confirmWrite: true,
+      reportFields: proposal,
+      conversationId: conversationId ?? undefined,
+      newConversation: !conversationId,
+    });
+    setPendingQuestion(null);
+    if (response) {
+      if (response.conversation_id && response.conversation_id !== conversationId) {
+        setConversationId(response.conversation_id);
+      }
+      setExchanges((prev) => [...prev, { question: "Crear reporte", response, resolvedTraceIndices: new Set() }]);
+      onAgentWrote?.();
+    }
+  };
+
+  const handleReviseReport = (exchangeIdx: number, traceIdx: number) => {
+    resolveTrace(exchangeIdx, traceIdx);
+    setQuestion(exchanges[exchangeIdx]?.question ?? "");
+  };
+
   const handleDiscard = (exchangeIdx: number, traceIdx: number) => resolveTrace(exchangeIdx, traceIdx);
 
   const handleOpenChange = (o: boolean) => {
@@ -548,6 +631,7 @@ export function PlatformAgentPanel({
       ref={panelRef}
       aria-label="Asistente"
       aria-hidden={!open}
+      {...(open ? {} : { inert: "" })}
       onKeyDown={(e) => {
         if (e.key === "Escape") handleOpenChange(false);
       }}
@@ -615,7 +699,7 @@ export function PlatformAgentPanel({
                         <button
                           type="button"
                           aria-label={`Eliminar "${c.title}"`}
-                          className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                          className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive-dark"
                           onClick={() => {
                             setHistoryOpen(false);
                             setDeleteTarget(c);
@@ -685,7 +769,7 @@ export function PlatformAgentPanel({
                     >
                       {proposedQuery && (
                         <div className="pb-1.5 mb-1 border-b border-border/60">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
+                          <p className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground mb-0.5">
                             Consulta que se iba a proponer
                           </p>
                           <QuerySummary query={proposedQuery} className="text-xs" />
@@ -708,7 +792,7 @@ export function PlatformAgentPanel({
 
                   {previews.map(({ index, formula, value }) => (
                     <div key={`f-${index}`} className="w-full max-w-[85%] rounded-md bg-surface border border-border p-3">
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Fórmula propuesta</p>
+                      <p className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground mb-1">Fórmula propuesta</p>
                       <code className="block font-mono text-xs text-foreground break-all">{formula}</code>
                       {typeof value === "number" && (
                         <p className="text-xs text-muted-foreground mt-1.5">Con los datos actuales da {value}.</p>
@@ -718,8 +802,28 @@ export function PlatformAgentPanel({
 
                   {queries.map(({ index, query }) => (
                     <div key={`q-${index}`} className="w-full max-w-[85%] rounded-md bg-surface border border-border p-3">
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Consulta propuesta</p>
+                      <p className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground mb-1">Consulta propuesta</p>
                       <QuerySummary query={query} className="text-xs" />
+                    </div>
+                  ))}
+
+                  {reportProposals(trace)
+                    .filter(({ index }) => !ex.resolvedTraceIndices.has(index))
+                    .map(({ index, proposal }) => (
+                      <ReportProposalCard
+                        key={`rp-${index}`}
+                        proposal={proposal}
+                        onCreate={() => handleConfirmReportCreate(exchangeIdx, index, proposal)}
+                        onRevise={() => handleReviseReport(exchangeIdx, index)}
+                      />
+                    ))}
+
+                  {reportNotes(trace).map((text, i) => (
+                    <div
+                      key={`rn-${i}`}
+                      className="w-full max-w-[85%] rounded-md border border-warning/40 bg-warning/5 p-3 text-xs text-foreground"
+                    >
+                      {text}
                     </div>
                   ))}
 
@@ -730,10 +834,10 @@ export function PlatformAgentPanel({
                       key={`p-${index}`}
                       className="w-full max-w-[85%] rounded-md border border-primary/40 bg-primary/5 p-3 space-y-1"
                     >
-                      <p className="text-xs font-medium text-primary mb-1">Propuesta, revisá antes de confirmar</p>
+                      <p className="text-xs font-medium text-primary-dark mb-1">Propuesta, revisá antes de confirmar</p>
                       {proposedQuery && (
                         <div className="pb-1.5 mb-1 border-b border-border/60">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Consulta</p>
+                          <p className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground mb-0.5">Consulta</p>
                           <QuerySummary query={proposedQuery} className="text-xs" />
                         </div>
                       )}

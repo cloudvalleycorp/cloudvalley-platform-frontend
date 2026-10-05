@@ -8,6 +8,7 @@ import {
   type PlatformAgentMetricFields,
   type FormulaSyntaxEntry,
   type PlatformAgentResponse,
+  type ReportProposal,
 } from "@/lib/aiInsights";
 
 // Surfaces cross-company (investor, sin un companyId singular — ver
@@ -35,6 +36,9 @@ export type AskOptions = {
   // métrica equivalente — ver "duplicado detectado" en PlatformAgentPanel.tsx.
   confirmDuplicate?: boolean;
   metricFields?: PlatformAgentMetricFields;
+  // Confirmación de create-report-from-proposal: name/period/sections van
+  // tal cual vinieron en result.proposed. Sin question, sin report_id.
+  reportFields?: ReportProposal;
   // Solo para confirmar add-metric-to-report — el reporte YA existente al
   // que se agrega la métrica (uiContext.selectedReportId en report_editor).
   reportId?: string;
@@ -96,6 +100,7 @@ export function usePlatformAgent(companyId: string | null, surface: PlatformAgen
           ...(opts.reportId ? { report_id: opts.reportId } : {}),
           ...(opts.companyIds && opts.companyIds.length > 0 ? { company_ids: opts.companyIds } : {}),
           ...(opts.metricFields ?? {}),
+          ...(opts.reportFields ?? {}),
         }),
       });
       if (!res.ok) {

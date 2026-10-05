@@ -102,7 +102,7 @@ export function ActionCenterSection({ tasks, loading, currentUserId, onToggleDon
         <div className="space-y-5">
           {own.length > 0 && (
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-tertiary mb-1">Tareas propias</p>
+              <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground mb-1">Tareas propias</p>
               {own.map((t) => (
                 <TaskRow key={t.startup_task_id} task={t} onToggleDone={onToggleDone} showRequester={false} />
               ))}
@@ -110,7 +110,7 @@ export function ActionCenterSection({ tasks, loading, currentUserId, onToggleDon
           )}
           {fromFunds.length > 0 && (
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-tertiary mb-1">Pedidas por tus inversores</p>
+              <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground mb-1">Pedidas por tus inversores</p>
               {fromFunds.map((t) => (
                 <TaskRow key={t.startup_task_id} task={t} onToggleDone={onToggleDone} />
               ))}
@@ -122,7 +122,7 @@ export function ActionCenterSection({ tasks, loading, currentUserId, onToggleDon
                 <TaskRow key={t.startup_task_id} task={t} onToggleDone={onToggleDone} />
               ))}
               {ungrouped.length > MAX_UNGROUPED_VISIBLE && (
-                <Link to="/roadmap" className="text-xs font-medium text-primary-dark hover:underline inline-block mt-2">
+                <Link to="/roadmap" className="text-xs font-medium text-primary-dark hover:underline inline-flex min-h-[1.5rem] items-center mt-2">
                   Ver las {ungrouped.length - MAX_UNGROUPED_VISIBLE} restantes en Roadmap →
                 </Link>
               )}

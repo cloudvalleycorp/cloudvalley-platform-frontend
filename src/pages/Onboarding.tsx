@@ -94,13 +94,6 @@ export default function Onboarding() {
     );
   }
 
-  void (() => {
-    if (!authLoading && !user) navigate("/login", { replace: true });
-    if (!authLoading && user && isOrgViewer) navigate("/portfolio", { replace: true });
-    // Ya onboardeado según la sesión del backend.
-    if (!authLoading && user && company_id) navigate("/dashboard", { replace: true });
-  }, [authLoading, user, isOrgViewer, company_id, navigate]);
-
   if (authLoading || startupLoading) return null;
   if (isOrgViewer) return <Navigate to="/portfolio" replace />;
   if (company_id) return <Navigate to="/dashboard" replace />;

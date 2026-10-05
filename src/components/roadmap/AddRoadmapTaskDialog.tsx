@@ -184,7 +184,7 @@ export function AddRoadmapTaskDialog({
           placeholder="Ej: Subir cap table actualizada"
         />
       </FormField>
-      <FormField label="Descripción" helpText="Opcional — se ve al abrir el detalle de la tarea.">
+      <FormField label="Descripción" helpText="Opcional. Se ve al abrir el detalle de la tarea.">
         <Textarea
           value={draft.description}
           onChange={(e) => setDraft({ ...draft, description: e.target.value })}

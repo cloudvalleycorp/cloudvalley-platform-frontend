@@ -276,8 +276,8 @@ export function MetricsExplorerTab({ companyId, isOwner, metricId, navigate, raw
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+        <div className="flex items-center gap-2 flex-wrap">
           {pageMode === "data" && view === "monthly" && <PeriodSelect period={period} onChange={setPeriod} />}
           {pageMode === "data" && (
             <div className="inline-flex border border-border rounded-md overflow-hidden h-9">
@@ -307,7 +307,7 @@ export function MetricsExplorerTab({ companyId, isOwner, metricId, navigate, raw
           )}
         </div>
         {pageMode === "data" ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button variant="outline" onClick={() => setScenarioDialogOpen(true)}>
               <GitCompare size={14} className="mr-1" /> Cargar escenario
             </Button>
@@ -436,7 +436,7 @@ export function MetricsExplorerTab({ companyId, isOwner, metricId, navigate, raw
 
           {!financial.loading && (
             <section className="mt-10">
-              <h3 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Historial de cargas</h3>
+              <h2 className="text-xs font-medium text-foreground uppercase tracking-wide mb-3">Historial de cargas</h2>
               {financial.loadingLogs ? (
                 <LoadingState />
               ) : (

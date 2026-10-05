@@ -4,23 +4,24 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CloudValley Design System — Brand: coral (#FF6F6A) + teal (#2EC4B6) sobre
-   una base neutra fría (family 240°, "cool gray"). Todo color es HSL.
+/* CloudValley Design System, según el mockup aprobado (reporting-founder, Paleta 8
+   y TokensA/B). Marca #B8402B: botón principal e identidad, nunca estado ni error.
+   Acción #165ECA: links con flecha, foco, selección, pestaña activa, switch y
+   checkbox. Error magenta #B81466: solo errores, faltantes y destructivo. Info teal
+   #147B72: información y rótulo de contenido generado por IA. Coral #FF6F6A retirado.
+   Base neutra fría (family 240°). Todo color es HSL.
    Fondo de página se mantiene blanco (decisión explícita 2026-08-11) — el
    family Neutral 50 se usa para superficies recesadas (hover, headers de
    tabla, sidebar), no para el body.
    Pares de contraste verificados con la fórmula WCAG (relative luminance),
-   no a ojo — ver notas por token. Texto blanco sobre Primary (#FF6F6A) da
-   ~2.72:1, sobre Success (#34C759) ~2.22:1 y sobre Secondary/teal (#2EC4B6)
-   ~2.17:1 — los tres por debajo de AA (4.5:1) e incluso del piso de 3:1
-   para componentes UI grandes, confirmado en vivo (texto "Agregar" apenas
-   legible sobre el coral base). Sin tocar ningún HEX de marca: se usa texto
-   Neutral 900 en vez de blanco sobre estos fondos saturados (~6.3-7.9:1),
+   no a ojo — ver notas por token. Los pares de contraste de la paleta vigente
+   (botón naranja #B8402B con blanco 5,5:1; error #B81466 con blanco
+   6,3:1) están calculados en los comentarios de cada token. Los fondos saturados
+   usan texto Neutral 900 en vez de blanco cuando el contraste lo exige (~6.3-7.9:1),
    la misma variación que el dark mode ya usaba para estos mismos tokens
    ("variaciones calculadas... necesarias para accesibilidad", autorizado
-   explícitamente). Destructive (#FF3B30, ~3.55:1 con blanco) se alinea al
-   mismo criterio por consistencia entre los cuatro colores sólidos de
-   botón/badge — con Neutral 900 da ~4.81:1. */
+   explícitamente). Destructive (#B81466, 6,31:1 con blanco) es el error de la
+   paleta aprobada. */
 
 @layer base {
   :root {
@@ -36,10 +37,14 @@
     --popover: 0 0% 100%;
     --popover-foreground: 240 28% 14%;
 
-    /* Primary = marca/acción — Coral. Texto Neutral 900 en vez de blanco:
-       ~6.3:1 vs ~2.72:1 (ver nota de archivo), mismo patrón que dark mode. */
-    --primary: 2 100% 71%;             /* #FF6F6A */
-    --primary-foreground: 240 28% 14%;
+    /* Primary = acción (mockup, "interactive"): links con flecha, foco, pestaña
+       activa, switch y checkbox activos, selección. #165ECA da 6,02:1 con blanco. */
+    --primary: 216 80% 44%;            /* #165ECA */
+    --primary-foreground: 0 0% 100%;
+    /* CTA primario (fondo del botón default): marca, con texto blanco.
+       El naranja de marca es solo para el CTA y la identidad, nunca para estados. */
+    --cta: 9 62% 45%;                  /* #B8402B: botón principal (rojo de marca) */
+    --cta-foreground: 0 0% 100%;       /* #FFFFFF: 5,52:1 */
 
     /* Secondary queda NEUTRO a propósito — es un token estructural de
        shadcn (track de slider/progress, hover del botón cerrar de Sheet,
@@ -55,19 +60,19 @@
     --tertiary: 240 7% 58%;            /* Calculado (no es un stop del brief): ~3.3:1 vs blanco, entre Neutral 500 y 300 — Neutral 300 solo da 2.1:1, muy débil para texto que todavía necesita leerse (ver CLAUDE.md: "usar con moderación"). */
 
     /* Accent = hover genérico de botones outline/ghost/dropdown — se usa en
-       TODA la app, así que queda neutro (no coral) para no saturar cada
-       hover de color de marca. El coral en hover queda reservado a
+       TODA la app, así que queda neutro (no naranja) para no saturar cada
+       hover de color de marca. El naranja en hover queda reservado a
        sidebar-accent, un solo lugar por página. */
     --accent: 240 18% 97%;             /* Neutral 50 */
     --accent-foreground: 240 28% 14%;  /* Neutral 900 */
 
-    --destructive: 3 100% 59%;         /* Error #FF3B30 */
-    --destructive-foreground: 240 28% 14%; /* Neutral 900: ~4.81:1 vs ~3.55:1 con blanco */
+    --destructive: 330 80% 40%;        /* Error magenta #B81466: 6,31:1 con blanco (paleta aprobada, 39° de la marca) */
+    --destructive-foreground: 0 0% 100%;
 
-    --success: 135 59% 49%;            /* #34C759 */
-    --success-foreground: 240 28% 14%; /* Neutral 900: ~7.69:1 vs ~2.22:1 con blanco */
+    --success: 135 45% 30%;            /* #2A6F3B: 6,11:1 con blanco */
+    --success-foreground: 0 0% 100%;   /* blanco sobre #2A6F3B: 6,11:1 */
 
-    --warning: 39 100% 59%;            /* #FFB830 */
+    --warning: 39 100% 69%;            /* #FFC861: fondo con tinta oscura, nunca texto */
     --warning-foreground: 240 28% 14%; /* texto oscuro, el amarillo no da contraste suficiente con blanco */
 
     /* Variantes "-dark" de success/warning/destructive — para texto chico
@@ -83,38 +88,56 @@
        warning ~10.29:1 contra el fondo oscuro), así que reusan el mismo
        valor que su base — ver bloque .dark. */
     --success-dark: 135 45% 30%;       /* #2A6F3B — ~6.11:1 vs blanco */
-    --warning-dark: 39 90% 32%;        /* #9B6808 — ~4.81:1 vs blanco */
-    --destructive-dark: 3 90% 40%;     /* #C2130A — ~6.20:1 vs blanco */
+    --warning-dark: 240 28% 14%;       /* advertencia en texto: tinta, no color */
+    --destructive-dark: 330 80% 40%;   /* #B81466: 6,31:1 con blanco */
 
     --border: 240 15% 92%;             /* Neutral 100 #E8E8EE */
-    --input: 240 15% 92%;
-    /* Ring = Primary Dark, no Primary base — el foco necesita ser bien
-       visible y Primary Dark da ~3.8:1 vs Primary's ~2.7:1. */
-    --ring: 2 70% 59%;                 /* Primary Dark #E0524D */
+    /* Control = borde de inputs, outline y checkbox sin marcar: 3:1 (mockup,
+       "bordes de control"). #8C8CA0 da 3,29:1 con blanco. */
+    --input: 240 10% 59%;
+    /* Ring = acción azul (mockup): el foco es azul en todo el sistema. */
+    --ring: 216 80% 44%;
 
     --radius: 0.75rem;
 
-    /* Sidebar — fondo blanco, activo con wash coral sutil (spec sección 11) */
+    /* Sidebar — fondo blanco, activo con wash naranja sutil (spec sección 11) */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 17% 29%; /* Neutral 700 */
-    --sidebar-primary: 2 100% 71%;     /* Coral */
+    --sidebar-primary: 216 80% 44%;    /* Acción (#165ECA): pestaña activa */
     --sidebar-primary-foreground: 240 28% 14%;
-    --sidebar-accent: 6 100% 97%;      /* Primary Subtle #FFF0EF — item activo */
-    --sidebar-accent-foreground: 2 70% 59%; /* Primary Dark — ~3.46:1 vs Primary Subtle */
+    --sidebar-accent: 224 69% 95%;     /* Tinte de selección #E9EEFB — item activo */
+    /* Corregido 2026-09-29: el valor viejo (Primary Dark, 59% luminosidad)
+       daba ~3.49:1 contra --sidebar-accent (calculado, no a ojo) — por
+       debajo de 4.5:1 para texto normal, y este es el texto del ítem de
+       navegación activo, visible en TODAS las pantallas de la app. Mismo
+       hue/saturación, luminosidad bajada a 48% → ~4.72:1 (calculado). */
+    --sidebar-accent-foreground: 216 80% 44%;
     --sidebar-border: 240 15% 92%;
-    --sidebar-ring: 2 70% 59%;
+    --sidebar-ring: 216 80% 44%;
 
     /* Variaciones de marca — disponibles para usos puntuales (tags, pills,
        backgrounds destacados, badges) que necesiten un tinte de marca sin
        ser el botón principal. Ver CLAUDE.md sección "Primary variations". */
-    --primary-dark: 2 70% 59%;         /* #E0524D */
-    --primary-light: 2 100% 80%;       /* #FF9E9B */
-    --primary-lighter: 1 100% 91%;     /* #FFD4D3 */
-    --primary-subtle: 6 100% 97%;      /* #FFF0EF */
+    /* Corregido 2026-09-29: 59% de luminosidad daba ~3.83:1 contra blanco
+       (calculado) — pasa el piso de 3:1 de un ring de foco (su uso
+       original) pero no los 4.5:1 de texto normal, y ya se usaba como texto
+       en 8 archivos (links/hover de "Ver más", accesos rápidos de Admin).
+       Mismo hue, más saturación en vez de ir hacia negro/marrón (evita la
+       combinación "coral casi negro" que no se quería) → ~5.95:1. */
+    --primary-dark: 216 80% 44%;       /* #165ECA: texto de acción sobre blanco (6,02:1) */
+    --primary-subtle: 224 69% 95%;     /* #E9EEFB: tinte de selección */
 
-    --teal: 174 62% 47%;               /* #2EC4B6 */
-    --teal-foreground: 240 28% 14%;    /* Neutral 900: ~7.87:1 vs ~2.17:1 con blanco */
-    --teal-dark: 175 72% 36%;          /* #1A9E92 */
+    --teal: 175 72% 28%;               /* #147B72 (teal de la paleta aprobada): 5,4:1 con blanco */
+    --teal-foreground: 0 0% 100%;      /* blanco sobre #147B72 */
+    /* Corregido 2026-09-29: 36% de luminosidad nunca pasó la verificación
+       WCAG que sí tuvieron success/warning/destructive-dark el 2026-09-04.
+       Calculado (fórmula de luminancia relativa): 36% daba ~3.31:1 contra
+       blanco/card y ~2.96:1 contra --teal-subtle (el fondo del badge
+       "Demo" en Admin*.tsx) — ambos por debajo de 4.5:1 para texto normal.
+       28% da ~5.12:1 contra blanco/card y ~4.58:1 contra --teal-subtle,
+       los dos casos reales de uso en la app (RisksOpportunitiesSection.tsx,
+       DocumentRow.tsx, InvestorDataRoom.tsx, badges "Demo" de Admin). */
+    --teal-dark: 175 72% 28%;          /* #147B72 */
     --teal-light: 174 59% 68%;         /* #7DDDD3 */
     --teal-subtle: 175 59% 92%;        /* #E0F7F5 */
   }
@@ -134,8 +157,11 @@
     --popover: 240 13% 11%;
     --popover-foreground: 240 20% 95%;
 
-    --primary: 2 100% 74%;
-    --primary-foreground: 240 28% 10%;
+    --primary: 216 89% 74%;            /* #81B1F8: acción en oscuro (8,33:1 con #14141F) */
+    --primary-foreground: 240 20% 8%;
+    /* Dark: coral claro con texto casi negro, ~8:1 (calculado). */
+    --cta: 11 75% 63%;                 /* #E8735A: botón principal en oscuro */
+    --cta-foreground: 240 20% 8%;      /* #14141F: 6,12:1 */
 
     --secondary: 240 12% 18%;
     --secondary-foreground: 240 15% 90%;
@@ -148,38 +174,36 @@
     --accent: 240 12% 16%;
     --accent-foreground: 240 15% 92%;
 
-    --destructive: 3 90% 64%;
-    --destructive-foreground: 240 28% 10%;
+    --destructive: 330 100% 80%;       /* #FF99CC: error en oscuro */
+    --destructive-foreground: 240 20% 8%;
 
-    --success: 135 55% 52%;
+    --success: 130 50% 65%;            /* #7BD389 */
     --success-foreground: 240 28% 10%;
 
-    --warning: 39 90% 60%;
+    --warning: 39 100% 69%;            /* #FFC861 */
     --warning-foreground: 240 28% 10%;
 
     /* Mismo valor que el token base — ya da >4.5:1 como texto acá, ver nota
        en el bloque :root. */
-    --success-dark: 135 55% 52%;
-    --warning-dark: 39 90% 60%;
-    --destructive-dark: 3 90% 64%;
+    --success-dark: 130 50% 65%;
+    --warning-dark: 39 100% 69%;
+    --destructive-dark: 330 100% 80%;
 
     --border: 240 12% 20%;
-    --input: 240 12% 20%;
-    --ring: 2 75% 66%;
+    --input: 240 10% 60%;              /* control en oscuro: #8A8AA0, 5,41:1 (mockup) */
+    --ring: 216 89% 74%;
 
     --sidebar-background: 240 13% 10%;
     --sidebar-foreground: 240 15% 85%;
-    --sidebar-primary: 2 100% 74%;
+    --sidebar-primary: 216 89% 74%;
     --sidebar-primary-foreground: 240 28% 10%;
-    --sidebar-accent: 2 40% 18%;
-    --sidebar-accent-foreground: 2 90% 78%;
+    --sidebar-accent: 221 39% 19%;
+    --sidebar-accent-foreground: 216 89% 74%;
     --sidebar-border: 240 12% 20%;
-    --sidebar-ring: 2 75% 66%;
+    --sidebar-ring: 216 89% 74%;
 
-    --primary-dark: 2 75% 65%;
-    --primary-light: 2 90% 55%;
-    --primary-lighter: 2 60% 30%;
-    --primary-subtle: 2 40% 16%;
+    --primary-dark: 216 89% 74%;       /* #81B1F8: texto de acción en oscuro */
+    --primary-subtle: 221 39% 19%;     /* #1E2A44: tinte de selección en oscuro */
 
     --teal: 174 62% 52%;
     --teal-foreground: 240 28% 10%;

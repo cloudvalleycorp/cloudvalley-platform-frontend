@@ -49,7 +49,7 @@ export function QueryBuilder({ value, onChange, rawFields, metricOptions }: Prop
         depth={0}
       />
       <div className="rounded-md border border-border bg-surface px-3 py-2">
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground mr-1.5">Vista previa:</span>
+        <span className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground mr-1.5">Vista previa:</span>
         <QuerySummary query={value} rawFields={rawFields} metricOptions={metricOptions} className="text-xs" />
       </div>
     </div>

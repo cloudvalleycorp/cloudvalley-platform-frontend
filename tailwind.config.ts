@@ -31,6 +31,12 @@ export default {
           lighter: "hsl(var(--primary-lighter))",
           subtle: "hsl(var(--primary-subtle))",
         },
+        // Fondo del botón primario (ver index.css). Separado de `primary`
+        // para que el coral claro siga siendo acento y no fondo de botón.
+        cta: {
+          DEFAULT: "hsl(var(--cta))",
+          foreground: "hsl(var(--cta-foreground))",
+        },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",

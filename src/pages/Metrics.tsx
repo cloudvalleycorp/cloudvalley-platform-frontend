@@ -20,14 +20,14 @@ import { MetricsExplorerTab } from "@/components/metrics/MetricsExplorerTab";
 const TAB_HEADER: Record<MetricsTab, { title: string; subtitle: string }> = {
   overview: { title: "Overview", subtitle: "Tus KPIs principales, con tendencia real y el origen de cada número a un clic." },
   sources: { title: "Fuentes de datos", subtitle: "Revisá qué tan al día está cada fuente y cuántas métricas dependen de ella." },
-  health: { title: "Salud de datos", subtitle: "Problemas reales agrupados por severidad — nada inventado." },
+  health: { title: "Salud de datos", subtitle: "Problemas reales agrupados por severidad. Nada inventado." },
   explorer: { title: "Explorador", subtitle: "Creá, editá y entendé de dónde sale cada métrica." },
 };
 
 const now = new Date();
 
 export default function Metrics() {
-  const { role, company_id, is_owner } = useAuth();
+  const { role, company_id, is_owner, loading: authLoading, user } = useAuth();
   const { metricId } = useParams<{ metricId?: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -54,6 +54,15 @@ export default function Metrics() {
   // Bug real (auditado 2026-09-21): sin guard de rol, investor/admin caían
   // acá con company_id null y los 4 tabs renderizaban vacíos/rotos sin
   // ningún mensaje. Mismo criterio que Reporting.tsx/DataRoom.tsx.
+  //
+  // Segundo bug real, encontrado en vivo auditando Roadmap.tsx (2026-09-29):
+  // faltaba esperar a `authLoading` — `role` arranca en `null` mientras
+  // useAuth() resuelve la sesión, así que una recarga completa evaluaba
+  // `role !== "user"` como true por un instante. Reporting.tsx/
+  // GrowthTrackerSheets.tsx/DataRoom.tsx ya tenían este guard bien puesto,
+  // solo Dashboard/Roadmap/Metrics lo tenían faltante.
+  if (authLoading) return null;
+  if (!user) return <Navigate to="/login" replace />;
   if (role === "investor") return <Navigate to="/overview" replace />;
   if (role !== "user") return <Navigate to="/admin" replace />;
 
