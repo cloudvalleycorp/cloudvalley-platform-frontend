@@ -116,13 +116,14 @@ export function CalculatedMetricsGrid({
                 reason: skipReasonByMetricId[m.id],
               },
               change: null,
-              sparkData: historyPeriodStrs.map(() => ({ v: 0 })),
+              sparkData: historyPeriodStrs.map(() => ({ v: null })),
             };
           }
           const current = byPeriod[currentPeriodStr] ?? null;
           const prev = byPeriod[prevPeriodStr] ?? null;
           const change = current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
-          const sparkData = historyPeriodStrs.map((p) => ({ v: byPeriod[p] ?? 0 }));
+          // null = sin dato ese mes: el gráfico corta la línea, no dibuja un cero.
+          const sparkData = historyPeriodStrs.map((p) => ({ v: byPeriod[p] ?? null }));
           return {
             metric: m,
             detailed: { value: current, error: null, missing: current == null ? [QUERY_NO_DATA] : [], reason: undefined },
@@ -135,7 +136,7 @@ export function CalculatedMetricsGrid({
             metric: m,
             detailed: { value: null, error: null, missing: [QUERY_NO_DATA], reason: undefined },
             change: null,
-            sparkData: historyInputs.map(() => ({ v: 0 })),
+            sparkData: historyInputs.map(() => ({ v: null })),
           };
         }
         const expr = m.formula_expression;
@@ -145,7 +146,7 @@ export function CalculatedMetricsGrid({
         const current = detailed.value;
         const change =
           current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
-        const sparkData = historyInputs.map((inp) => ({ v: evalFormula(expr, inp, [], calcDefs) ?? 0 }));
+        const sparkData = historyInputs.map((inp) => ({ v: evalFormula(expr, inp, [], calcDefs) ?? null }));
         return { metric: m, detailed, change, sparkData };
       }),
     [

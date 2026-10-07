@@ -50,7 +50,9 @@ export type ReportSummary = {
 
 export type ReportBlock = { metric_id: string };
 
-export type ReportSection = { title: string; subtitle: string | null; blocks: ReportBlock[] };
+// notes: nota de la sección. Si el guardado manda la sección sin este campo,
+// el backend la pierde, así que el editor siempre la reenvía (null si no hay).
+export type ReportSection = { title: string; subtitle: string | null; blocks: ReportBlock[]; notes?: string | null };
 
 export type ReportDetail = {
   report_id: string;

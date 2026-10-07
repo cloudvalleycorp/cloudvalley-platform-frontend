@@ -307,8 +307,8 @@ export default function Reporting() {
           subtitle="Armá un reporte con las métricas que quieras y compartilo con un fondo puntual."
           action={
             is_owner && (
-              <Button onClick={() => setCreateOpen(true)}>
-                <Plus size={14} className="mr-1" /> Nuevo reporte
+              <Button className="rounded-lg" onClick={() => setCreateOpen(true)}>
+                Nuevo reporte
               </Button>
             )
           }
@@ -322,7 +322,7 @@ export default function Reporting() {
               searchPlaceholder="Buscar reporte por nombre"
               filters={
                 is_owner ? (
-                  <div role="group" aria-label="Filtrar por estado" className="inline-flex items-center gap-0.5 rounded-md border border-border p-0.5 h-9">
+                  <div role="group" aria-label="Filtrar por estado" className="inline-flex items-center gap-0.5 rounded-lg border border-border p-0.5 h-9">
                     {ESTADO_FILTROS.map((opt) => (
                       <button
                         key={opt.value}
@@ -330,7 +330,7 @@ export default function Reporting() {
                         aria-pressed={estado === opt.value}
                         onClick={() => updateParams({ estado: opt.value === "todos" ? null : opt.value })}
                         className={cn(
-                          "h-7 px-3 rounded-sm text-xs font-medium transition-colors",
+                          "h-7 px-3 rounded-md text-xs font-medium transition-colors",
                           estado === opt.value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                         )}
                       >
@@ -375,11 +375,8 @@ export default function Reporting() {
               >
                 <Link
                   to={`/reporting/${r.report_id}`}
-                  className="flex items-center gap-3 min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="flex items-center gap-3 min-w-0 flex-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
-                  <div className="h-9 w-9 rounded-md bg-surface text-muted-foreground flex items-center justify-center shrink-0">
-                    <FileText size={16} strokeWidth={1.5} />
-                  </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm font-medium break-words min-w-0">{r.name}</span>
@@ -394,18 +391,13 @@ export default function Reporting() {
                   <Button
                     size="sm"
                     variant="outline"
+                    className="rounded-lg"
                     onClick={(e) => {
                       e.stopPropagation();
                       navigate(`/reporting/${r.report_id}`);
                     }}
                   >
-                    {is_owner && !r.period ? (
-                      "Fijar periodo"
-                    ) : (
-                      <>
-                        <Pencil size={12} className="mr-1" /> {is_owner ? "Editar" : "Ver"}
-                      </>
-                    )}
+                    {is_owner && !r.period ? "Fijar periodo" : is_owner ? "Editar" : "Ver"}
                   </Button>
                   {is_owner && (
                     <Button

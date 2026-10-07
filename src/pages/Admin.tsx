@@ -126,7 +126,7 @@ export default function Admin() {
 
   return (
     <AppLayout>
-      <div className="max-w-6xl mx-auto px-8 py-12 space-y-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-12 space-y-6">
         <PageHeader
           title="Ecosistema CloudValley"
           subtitle="Salud agregada de la plataforma."
@@ -187,7 +187,7 @@ export default function Admin() {
                     to={`/admin/startup/${s.company_id}`}
                     className="w-full flex items-center justify-between gap-2 py-1.5 text-sm hover:underline"
                   >
-                    <span className="truncate">{s.company_name} — import financiero falló</span>
+                    <span className="truncate">{s.company_name}: revisá el import financiero</span>
                     <span className="text-xs text-destructive-dark shrink-0">Con errores</span>
                   </Link>
                 ))}

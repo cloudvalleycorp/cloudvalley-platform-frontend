@@ -306,7 +306,7 @@ function PortfolioCatalogView({
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Avatar className="h-8 w-8 shrink-0">
                     <AvatarImage src={c.logo_url ?? undefined} alt="" />
-                    <AvatarFallback className="text-xs font-semibold">
+                    <AvatarFallback className="text-xs font-medium">
                       {c.name.trim().slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>

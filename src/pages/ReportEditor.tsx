@@ -21,6 +21,8 @@ import { Switch } from "@/components/ui/switch";
 import { SectionCard } from "@/components/SectionCard";
 import { ConfirmationDialog } from "@/components/ConfirmationDialog";
 import { ReportSectionView } from "@/components/metrics/ReportSectionView";
+import { UnitGroupCharts } from "@/components/metrics/UnitGroupCharts";
+import { SectionNotesField } from "@/components/metrics/SectionNotesField";
 import { PeriodSelect } from "@/components/metrics/PeriodSelect";
 import { MetricInfoSheet, type MetricHistoryPoint } from "@/components/metrics/MetricInfoSheet";
 import { ReportAnalyticsSheet } from "@/components/metrics/ReportAnalyticsSheet";
@@ -51,7 +53,14 @@ import {
   type ReportShare,
 } from "@/lib/financialReports";
 import { toast } from "sonner";
-import { ChevronUp, ChevronDown, X, Plus, Save, GripVertical, Eye, Pencil, Share2, FileText, Sparkles, Download, BarChart3 } from "lucide-react";
+import { MoreHorizontal, Plus, Save, GripVertical, Eye, Pencil, Share2, FileText, Sparkles, Download, BarChart3 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const now = new Date();
 
@@ -74,6 +83,54 @@ const MONTHS_LOWER_ES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 ];
+
+// Controles de una métrica en el editor: un solo menú por tarjeta (mockup: la
+// tarjeta muestra solo sus datos). Vive fuera de ReportEditor para no remontarse
+// en cada render.
+// Meses abreviados del eje X: los seis períodos que usa la serie de cada KPI.
+function chartMonthsFor(period: { month: number; year: number }): string[] {
+  return buildHistoryPeriodStrs(period).map((p) => MONTHS_LOWER_ES[Number(p.slice(5, 7)) - 1].slice(0, 3));
+}
+
+function MetricCardMenu({
+  label,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+}: {
+  label: string;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="absolute right-2 top-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" aria-label={`Opciones de ${label}`}>
+            <MoreHorizontal size={14} aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem disabled={!canMoveUp} onSelect={onMoveUp}>
+            Mover arriba
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={!canMoveDown} onSelect={onMoveDown}>
+            Mover abajo
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-destructive-dark" onSelect={onRemove}>
+            Quitar
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
 
 export default function ReportEditor() {
   const { reportId } = useParams<{ reportId: string }>();
@@ -379,6 +436,7 @@ export default function ReportEditor() {
       // Hay secciones sin título cargado (datos viejos): nunca mandar "undefined" al PDF.
       title: section.title || "Sección sin título",
       subtitle: section.subtitle ?? null,
+      notes: section.notes ?? null,
       blocks: section.blocks
         .map((b) => metricById[b.metric_id])
         .filter((d): d is MetricDef => !!d)
@@ -404,11 +462,15 @@ export default function ReportEditor() {
             current: r.current,
             change: r.change,
             spark: r.sparkData.map((p) => p.v),
-            missingLabel: `Sin dato en ${monthLabel}`,
+            missingLabel: `Sin dato en ${MONTHS_LOWER_ES[period.month - 1]}. El fondo lo ve así hasta que se cargue.`,
           };
         }),
     }));
   };
+
+  // Cambios respecto de la última versión guardada. Se recalcula en cada render
+  // porque name/sections son estado; el snapshot es una ref.
+  const isDirty = JSON.stringify({ name, sections }) !== savedSnapshotRef.current;
 
   const handleExportPdf = async () => {
     if (!reportId) return;
@@ -422,9 +484,18 @@ export default function ReportEditor() {
       toast.error(`Mostrá el reporte en ${MONTH_LABELS[saved.m - 1]} ${saved.y} para exportarlo.`);
       return;
     }
+    // La pestaña del PDF se abre en el mismo clic: después de guardar o de las
+    // esperas de red el navegador ya no la deja abrir (pop-up bloqueado).
+    const pdfWindow = window.open("", "_blank");
+    if (pdfWindow) pdfWindow.opener = null;
     if (JSON.stringify({ name, sections }) !== savedSnapshotRef.current) {
-      toast.error("Guardá los cambios antes de exportar el PDF.");
-      return;
+      // Con cambios sin guardar se guarda primero: el PDF sale de lo que se ve.
+      // Si el guardado falla (save avisa con su propio toast), no se exporta.
+      await save();
+      if (JSON.stringify({ name, sections }) !== savedSnapshotRef.current) {
+        pdfWindow?.close();
+        return;
+      }
     }
     setExportingPdf(true);
     try {
@@ -436,24 +507,27 @@ export default function ReportEditor() {
         logoDataUrl,
         periodLabel: `${MONTH_LABELS[period.month - 1]} ${period.year}`,
         generatedLabel,
+        version: publishedVersion,
+        prevPeriodLabel: prevMonthName,
         sections: buildPdfSections(),
       });
       const result = await exportReportPdf(reportId, html);
       if (result.ok === false) {
+        pdfWindow?.close();
         toast.error(result.message);
         return;
       }
-      // Sin "noopener" en los features: con esa opción window.open siempre devuelve
-      // null y el aviso de pop-up bloqueado salía aunque el PDF sí se abría.
-      // Se corta el opener a mano después de abrir.
-      const opened = window.open(result.downloadUrl, "_blank");
-      if (opened) {
-        opened.opener = null;
+      if (pdfWindow) {
+        pdfWindow.location.href = result.downloadUrl;
       } else {
-        toast.error("El navegador bloqueó la ventana del PDF. Permití pop-ups para este sitio y probá de nuevo.");
+        // Si el navegador igual bloqueó la pestaña, el botón del aviso la abre con un clic propio.
+        toast.success("PDF listo.", {
+          action: { label: "Abrir PDF", onClick: () => window.open(result.downloadUrl, "_blank") },
+        });
       }
     } catch {
       // Un fallo armando el documento tampoco puede quedar en silencio.
+      pdfWindow?.close();
       toast.error(PDF_FAILED_MESSAGE);
     } finally {
       setExportingPdf(false);
@@ -502,7 +576,8 @@ export default function ReportEditor() {
         body: JSON.stringify({
           report_id: reportId,
           name: name.trim(),
-          sections,
+          // Cada sección va con su notes explícito: sin ese campo el backend pierde la nota.
+          sections: sections.map((section) => ({ ...section, notes: section.notes ?? null })),
           // Si alguien más guardó después de que cargamos, el servidor responde 409
           // y no pisa nada. Compatibilidad: sin valor, se guarda igual.
           expected_updated_at: reportUpdatedAtRef.current ?? undefined,
@@ -690,13 +765,13 @@ export default function ReportEditor() {
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {is_owner && (
-                  <div role="group" aria-label="Modo del reporte" className="inline-flex border border-border rounded-md overflow-hidden h-9">
+                  <div role="group" aria-label="Modo del reporte" className="inline-flex items-center gap-0.5 rounded-lg bg-surface p-0.5 h-9">
                     <button
                       onClick={() => changeMode("edit")}
                       aria-pressed={mode === "edit"}
                       className={cn(
-                        "px-3 text-xs flex items-center gap-1.5 transition-all",
-                        mode === "edit" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                        "h-8 px-3 text-xs flex items-center gap-1.5 rounded-md transition-all",
+                        mode === "edit" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                       )}
                     >
                       <Pencil size={12} strokeWidth={1.5} /> Editar
@@ -705,8 +780,8 @@ export default function ReportEditor() {
                       onClick={() => changeMode("preview")}
                       aria-pressed={mode === "preview"}
                       className={cn(
-                        "px-3 text-xs flex items-center gap-1.5 transition-all border-l border-border",
-                        mode === "preview" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                        "h-8 px-3 text-xs flex items-center gap-1.5 rounded-md transition-all",
+                        mode === "preview" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                       )}
                     >
                       <Eye size={12} strokeWidth={1.5} /> Vista previa
@@ -718,15 +793,24 @@ export default function ReportEditor() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={exportingPdf}>
-                <Download size={14} className="mr-1" aria-hidden="true" /> {exportingPdf ? "Generando…" : "Exportar PDF"}
+              {is_owner && effectiveMode === "edit" && (
+                <Button className="rounded-lg" variant="outline" size="sm" onClick={save} disabled={saving}>
+                  {saving ? "Guardando…" : "Guardar borrador"}
+                </Button>
+              )}
+              {is_owner && effectiveMode === "edit" && isDirty && !saving && (
+                <span className="text-xs text-muted-foreground">Cambios sin guardar</span>
+              )}
+              <Button className="rounded-lg" variant="outline" size="sm" onClick={handleExportPdf} disabled={exportingPdf}>
+                <Download size={14} className="mr-1" aria-hidden="true" />{" "}
+                {exportingPdf ? "Generando…" : isDirty ? "Guardar y exportar PDF" : "Exportar PDF"}
               </Button>
               {is_owner && (
-                <Button variant="outline" size="sm" onClick={() => changeAnalytics(true)}>
+                <Button className="rounded-lg" variant="outline" size="sm" onClick={() => changeAnalytics(true)}>
                   <BarChart3 size={14} className="mr-1" aria-hidden="true" /> Actividad
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={() => setAssistantOpen(true)}>
+              <Button className="rounded-lg" variant="outline" size="sm" onClick={() => setAssistantOpen(true)}>
                 <Sparkles size={14} className="mr-1" aria-hidden="true" /> Asistente
               </Button>
             </div>
@@ -756,22 +840,22 @@ export default function ReportEditor() {
             />
 
             {savedPeriod === null && (
-              <div className="rounded-lg border border-border bg-surface px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div className="rounded-lg border border-warning/40 bg-warning/15 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
                 <span className="text-muted-foreground">
                   Este reporte no tiene período definido. Elegí el mes que quiere mostrar y fijalo.
                 </span>
-                <Button size="sm" onClick={savePeriod} disabled={savingPeriod}>
+                <Button className="rounded-lg" size="sm" onClick={savePeriod} disabled={savingPeriod}>
                   {savingPeriod ? "Fijando…" : `Fijar ${MONTH_LABELS[period.month - 1]} ${period.year}`}
                 </Button>
               </div>
             )}
             {periodDiffersFromSaved && (
-              <div className="rounded-lg border border-border bg-surface px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div className="rounded-lg border border-warning/40 bg-warning/15 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
                 <span className="text-muted-foreground">
                   Estás viendo {MONTH_LABELS[period.month - 1]} {period.year}. El reporte está fijado a{" "}
                   {formatSavedPeriod(savedPeriod)}.
                 </span>
-                <Button size="sm" variant="outline" onClick={savePeriod} disabled={savingPeriod}>
+                <Button className="rounded-lg" size="sm" variant="outline" onClick={savePeriod} disabled={savingPeriod}>
                   {savingPeriod ? "Fijando…" : `Usar ${MONTH_LABELS[period.month - 1]} ${period.year} en el reporte`}
                 </Button>
               </div>
@@ -788,8 +872,8 @@ export default function ReportEditor() {
               ) : (
                 <div className="space-y-10 animate-fade-in">
                   {sections.map((section, i) => (
+                    <div key={i} className="space-y-4">
                     <ReportSectionView
-                      key={i}
                       section={section}
                       metricById={metricById}
                       currentInputs={currentInputs}
@@ -803,6 +887,11 @@ export default function ReportEditor() {
                       period={period}
                       onInfo={setOpenInfo}
                     />
+                    <UnitGroupCharts
+                      series={(buildPdfSections()[i]?.blocks ?? []).map((b) => ({ name: b.name, unit: b.unit, spark: b.spark, current: b.current }))}
+                      months={chartMonthsFor(period)}
+                    />
+                    </div>
                   ))}
                 </div>
               )
@@ -885,19 +974,29 @@ export default function ReportEditor() {
                         )}
                         <div className="flex items-center gap-1 shrink-0">
                           {renamingSection !== si && (
-                            <Button size="sm" variant="ghost" onClick={() => setRenamingSection(si)}>
+                            <Button size="sm" variant="ghost" className="text-primary-dark" onClick={() => setRenamingSection(si)}>
                               Renombrar sección
                             </Button>
                           )}
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" disabled={si === 0} onClick={() => moveSection(si, -1)} title="Mover sección arriba" aria-label="Mover sección arriba">
-                            <ChevronUp size={14} />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" disabled={si === sections.length - 1} onClick={() => moveSection(si, 1)} title="Mover sección abajo" aria-label="Mover sección abajo">
-                            <ChevronDown size={14} />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive-dark" onClick={() => setConfirmRemoveSection(si)} title="Eliminar sección" aria-label="Eliminar sección">
-                            <X size={14} />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" aria-label={`Opciones de la sección ${si + 1}${section.title ? `: ${section.title}` : ""}`}>
+                                <MoreHorizontal size={14} aria-hidden="true" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem disabled={si === 0} onSelect={() => moveSection(si, -1)}>
+                                Mover arriba
+                              </DropdownMenuItem>
+                              <DropdownMenuItem disabled={si === sections.length - 1} onSelect={() => moveSection(si, 1)}>
+                                Mover abajo
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive-dark" onSelect={() => setConfirmRemoveSection(si)}>
+                                Eliminar sección
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
 
@@ -908,17 +1007,14 @@ export default function ReportEditor() {
                           const label = def?.name ?? block.metric_id;
                           const hasValue = view != null && view.current != null;
                           const controls = (
-                            <div className="absolute right-2 top-2 flex items-center gap-0.5">
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={bi === 0} onClick={() => moveBlock(si, bi, -1)} title="Mover arriba" aria-label="Mover métrica arriba">
-                                <ChevronUp size={12} />
-                              </Button>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={bi === section.blocks.length - 1} onClick={() => moveBlock(si, bi, 1)} title="Mover abajo" aria-label="Mover métrica abajo">
-                                <ChevronDown size={12} />
-                              </Button>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive-dark" onClick={() => removeBlock(si, bi)} title="Quitar" aria-label={`Quitar ${label}`}>
-                                <X size={12} />
-                              </Button>
-                            </div>
+                            <MetricCardMenu
+                              label={label}
+                              canMoveUp={bi > 0}
+                              canMoveDown={bi < section.blocks.length - 1}
+                              onMoveUp={() => moveBlock(si, bi, -1)}
+                              onMoveDown={() => moveBlock(si, bi, 1)}
+                              onRemove={() => removeBlock(si, bi)}
+                            />
                           );
                           return hasValue ? (
                             <div key={bi} className="relative rounded-lg border border-border bg-card p-4 min-w-0">
@@ -962,6 +1058,17 @@ export default function ReportEditor() {
                             ))}
                         </SelectContent>
                       </Select>
+                      <UnitGroupCharts
+                        series={(buildPdfSections()[si]?.blocks ?? []).map((b) => ({ name: b.name, unit: b.unit, spark: b.spark, current: b.current }))}
+                        months={chartMonthsFor(period)}
+                      />
+                      <div className="border-t border-border pt-4">
+                        <SectionNotesField
+                          id={`nota-seccion-${si}`}
+                          value={section.notes ?? null}
+                          onChange={(notes) => updateSection(si, { notes })}
+                        />
+                      </div>
                     </section>
                   ))}
                 </div>
@@ -1004,15 +1111,12 @@ export default function ReportEditor() {
                 {is_owner && (
                   <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button variant="outline" onClick={addSection}>
+                      <Button className="rounded-lg" variant="outline" onClick={addSection}>
                         <Plus size={14} className="mr-1" /> Agregar sección
-                      </Button>
-                      <Button variant="ghost" onClick={save} disabled={saving}>
-                        Guardar borrador
                       </Button>
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
-                      <Button onClick={() => setPublishOpen(true)} disabled={publishing}>
+                      <Button className="rounded-lg" onClick={() => setPublishOpen(true)} disabled={publishing}>
                         Publicar versión {nextVersion}
                       </Button>
                       <span className="text-xs text-muted-foreground">
@@ -1064,7 +1168,16 @@ export default function ReportEditor() {
           currentPeriodId: toPeriodString(period.month, period.year),
         }}
         formulaSyntax={FORMULA_SYNTAX}
-        onAgentWrote={() => loadReport({ showLoading: false })}
+        onAgentWrote={() => {
+          // Con cambios sin guardar no recargamos: pisaría lo que la persona está escribiendo.
+          // El próximo guardado manda expected_updated_at, así que el cambio del asistente
+          // se detecta como conflicto (409) y nada se pisa en silencio.
+          if (isDirty) {
+            toast.info("El asistente actualizó este reporte. Tus cambios siguen acá: recargá para ver la versión nueva.");
+            return;
+          }
+          void loadReport({ showLoading: false });
+        }}
       />
     </AppLayout>
   );

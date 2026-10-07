@@ -297,7 +297,7 @@ export default function AdminFunds() {
                     <Link to={`/admin/funds/${f.fund_id}`} className="font-medium inline-flex items-center gap-1.5 hover:underline">
                       {f.name}
                       {f.is_demo && (
-                        <span className="text-[0.6875rem] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-teal-subtle text-teal-dark">
+                        <span className="text-[0.6875rem] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-teal-subtle text-teal-dark">
                           Demo
                         </span>
                       )}
@@ -433,7 +433,7 @@ export default function AdminFunds() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="shrink-0 h-7 px-2 text-muted-foreground hover:text-destructive"
+                    className="shrink-0 h-7 px-2 text-muted-foreground hover:text-destructive-dark"
                     onClick={() => setDisconnectTarget(p)}
                   >
                     <Unlink size={12} className="mr-1" /> Desconectar

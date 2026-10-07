@@ -10,6 +10,7 @@ import {
   type PlatformAgentResponse,
   type ReportProposal,
 } from "@/lib/aiInsights";
+import type { SectionNotesFields } from "@/lib/reportSectionNotes";
 
 // Surfaces cross-company (investor, sin un companyId singular — ver
 // company_ids opcional más abajo). Bug real encontrado en vivo 2026-08-24:
@@ -39,6 +40,9 @@ export type AskOptions = {
   // Confirmación de create-report-from-proposal: name/period/sections van
   // tal cual vinieron en result.proposed. Sin question, sin report_id.
   reportFields?: ReportProposal;
+  // Confirmación de una nota de sección (set-report-section-notes): se reenvían
+  // exactos los campos de la propuesta, incluido expected_updated_at.
+  notesFields?: SectionNotesFields;
   // Solo para confirmar add-metric-to-report — el reporte YA existente al
   // que se agrega la métrica (uiContext.selectedReportId en report_editor).
   reportId?: string;
@@ -101,6 +105,7 @@ export function usePlatformAgent(companyId: string | null, surface: PlatformAgen
           ...(opts.companyIds && opts.companyIds.length > 0 ? { company_ids: opts.companyIds } : {}),
           ...(opts.metricFields ?? {}),
           ...(opts.reportFields ?? {}),
+          ...(opts.notesFields ?? {}),
         }),
       });
       if (!res.ok) {

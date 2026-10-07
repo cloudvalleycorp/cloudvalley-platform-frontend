@@ -46,12 +46,19 @@ export type ListDataHealthIssuesResponse = { issues: DataHealthIssue[] };
 export type MetricHighlight = {
   metric_id: string;
   title: string;
-  description: string | null;
+  // Siempre string, ya con el signo y el verbo: se muestra tal cual.
+  description: string;
   delta: { current_value: number; prior_value: number; delta_pct: number };
   confidence: Confidence;
   evidence: LineageNode[];
 };
 export type ListMetricHighlightsResponse = { highlights: MetricHighlight[] };
+
+// Un highlight sin texto válido se omite, no es un error: la lista puede venir
+// corta o vacía.
+export function visibleHighlights(list: MetricHighlight[]): MetricHighlight[] {
+  return list.filter((h) => typeof h.description === "string" && h.description.trim() !== "");
+}
 
 export type MetricVersionSummary = { version_id: string; created_at: string | null; created_by_user_id: string | null; deleted: boolean };
 export type ListMetricVersionsResponse = { versions: MetricVersionSummary[] };

@@ -200,7 +200,7 @@ function InvestorTasksContent({ companies }: { companies: { id: string; name: st
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive-dark"
                         aria-label="Cancelar pedido"
                         onClick={() => setCanceling(task)}
                       >

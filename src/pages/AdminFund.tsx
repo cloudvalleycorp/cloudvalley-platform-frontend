@@ -107,7 +107,7 @@ export default function AdminFund() {
                 <span className="inline-flex items-center gap-2">
                   {fund.name}
                   {fund.is_demo && (
-                    <span className="text-[0.6875rem] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-teal-subtle text-teal-dark">
+                    <span className="text-[0.6875rem] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-teal-subtle text-teal-dark">
                       Demo
                     </span>
                   )}

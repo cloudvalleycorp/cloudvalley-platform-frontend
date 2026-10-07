@@ -397,7 +397,7 @@ export default function InvestorCompany() {
                   <span className="inline-flex items-center gap-3">
                     <Avatar className="h-9 w-9 shrink-0">
                       <AvatarImage src={profile.logo_url ?? undefined} alt="" />
-                      <AvatarFallback className="text-xs font-semibold">
+                      <AvatarFallback className="text-xs font-medium">
                         {profile.name.trim().slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>

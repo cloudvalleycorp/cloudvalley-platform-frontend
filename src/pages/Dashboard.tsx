@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useSearchParams, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -10,33 +10,27 @@ import { useRoadmap } from "@/hooks/useRoadmap";
 import { useDocuments } from "@/hooks/useDocuments";
 import { useSheetsSources } from "@/hooks/useSheetsSources";
 import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
-import { useMetricHighlights } from "@/hooks/useMetricHighlights";
 import { collectDataHealthIssues, summarizeHealth } from "@/lib/dataHealthIssues";
 import { LIST_DATA_HEALTH_ISSUES_URL, type DataHealthIssue } from "@/lib/metricIntelligence";
-import { LIST_METRIC_SOURCE_COVERAGE_URL, type ListMetricSourceCoverageResponse } from "@/lib/metricSourceCoverage";
 import { LIST_FINANCIAL_REPORTS_URL, type ReportSummary } from "@/lib/financialReports";
-import { handleMembershipError } from "@/lib/membership";
-import { STANDARD_KEY_ORDER } from "@/lib/metricRequirements";
 import { periodRange } from "@/lib/metricPeriod";
-import { getDashboardAiCache, setDashboardAiCache } from "@/lib/dashboardAiCache";
+import { DashboardKpiError, defaultDashboardKpiIds, type KpiSaveOutcome } from "@/lib/dashboardKpis";
+import { useDashboardKpis } from "@/hooks/useDashboardKpis";
 import type { RoadmapTask } from "@/lib/roadmap";
 
-import { ExecutiveSummaryCard } from "@/components/dashboard/ExecutiveSummaryCard";
 import { CompanyHealthStrip } from "@/components/dashboard/CompanyHealthStrip";
-import { WhatChangedSection } from "@/components/dashboard/WhatChangedSection";
-import { RisksOpportunitiesSection } from "@/components/dashboard/RisksOpportunitiesSection";
 import { ActionCenterSection } from "@/components/dashboard/ActionCenterSection";
 import { DataReadinessSection } from "@/components/dashboard/DataReadinessSection";
-import { PerformanceVsPlanSection } from "@/components/dashboard/PerformanceVsPlanSection";
 import { ExploreSection } from "@/components/dashboard/ExploreSection";
 
-type CoverageErrorKind = "rate_limit" | "unavailable" | "generic";
+// Arreglo estable: un [] nuevo en cada render reiniciaría el borrador del selector
+// de KPIs mientras está abierto.
+const NO_KPI_IDS: string[] = [];
 
 export default function Dashboard() {
   // user.id NO es el id real del usuario (alias legacy a company_id, ver
   // AuthContext.tsx) — para comparar "es mi propia tarea" hace falta user_id.
   const { role, company_id, user_id, email, full_name, loading: authLoading, user } = useAuth();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
@@ -51,17 +45,14 @@ export default function Dashboard() {
   const [dismissed, setDismissed] = useState(false);
   const [reopenNoMembership, setReopenNoMembership] = useState(false);
 
-  // 12 meses alcanza para KPIs + comparación de período — mismo rango que
-  // usa Metrics > Overview para el mismo propósito.
+  // 12 meses alcanza para KPIs + comparación de período.
   const financialRange = useMemo(() => {
     const now = new Date();
     return periodRange({ month: now.getMonth() + 1, year: now.getFullYear() }, 12);
   }, []);
   // periodRange(period, N) devuelve N+1 períodos (incluye ambos extremos,
-  // ver metricPeriod.ts) — bien para financialRange (sin tope), pero
-  // evaluate-metrics rechaza más de 12 períodos por request (400 real,
-  // encontrado en vivo probando esta pantalla): acá va con 11 meses atrás,
-  // no 12, para quedar en exactamente 12.
+  // ver metricPeriod.ts) — evaluate-metrics rechaza más de 12 períodos por
+  // request (400 real), así que acá va con 11 meses atrás, para quedar en 12.
   const periodSpec = useMemo(() => {
     const now = new Date();
     const r = periodRange({ month: now.getMonth() + 1, year: now.getFullYear() }, 11);
@@ -73,71 +64,30 @@ export default function Dashboard() {
   const documents = useDocuments(company_id ?? null);
   const sources = useSheetsSources(company_id ?? null);
 
-  const standardMetricIds = useMemo(
-    () =>
-      financial.metrics
-        .filter((m) => m.metric_class === "standard" && m.standard_key && STANDARD_KEY_ORDER.includes(m.standard_key))
-        .map((m) => m.id),
-    [financial.metrics]
-  );
-  const actual = useEvaluatedMetrics(company_id ?? null, standardMetricIds, periodSpec, "actual");
-  const forecast = useEvaluatedMetrics(company_id ?? null, standardMetricIds, periodSpec, "forecast");
+  // KPIs elegidos por la startup, guardados en el backend. Sin selección
+  // guardada se usa el default. Mientras carga no se evalúa nada, así no se
+  // calcula el default para después reemplazarlo.
+  const defaultKpiIds = useMemo(() => defaultDashboardKpiIds(financial.metrics), [financial.metrics]);
+  const kpisCompanyId = role === "user" ? company_id ?? null : null;
+  const { kpiIds, loading: kpisLoading, saving: kpisSaving, saveKpis } = useDashboardKpis(kpisCompanyId, defaultKpiIds);
+  const kpiValues = useEvaluatedMetrics(company_id ?? null, kpisLoading ? NO_KPI_IDS : kpiIds, periodSpec, "actual");
 
-  // Se auto-generan una sola vez por sesión de pestaña (cache en memoria,
-  // dashboardAiCache.ts) — pedido explícito del usuario 2026-09-29: "no
-  // debería darse click para que dé el reporte, sino que aparezca el resumen
-  // insight". Hidratar desde cache evita volver a disparar la llamada al
-  // navegar a otra pantalla y volver dentro de la misma sesión.
-  const cachedDashboardAi = company_id ? getDashboardAiCache(company_id) : {};
-  const highlights = useMetricHighlights(company_id ?? null, cachedDashboardAi.highlights);
-
-  // list-metric-source-coverage — mismo endpoint/criterio que "Qué podemos
-  // mejorar" en MetricsOverviewTab.tsx (disparo manual, sin hook dedicado
-  // todavía porque hoy solo lo consumen esas dos pantallas).
-  const [coverage, setCoverage] = useState<ListMetricSourceCoverageResponse | null>(cachedDashboardAi.coverage ?? null);
-  const [loadingCoverage, setLoadingCoverage] = useState(false);
-  const [coverageError, setCoverageError] = useState<CoverageErrorKind | null>(null);
-  const loadCoverage = async () => {
-    if (!company_id) return;
-    setLoadingCoverage(true);
-    setCoverageError(null);
+  const handleChangeKpis = async (ids: string[]): Promise<KpiSaveOutcome> => {
     try {
-      const res = await fetch(`${LIST_METRIC_SOURCE_COVERAGE_URL}?company_id=${encodeURIComponent(company_id)}`, { credentials: "include" });
-      if (res.status === 429) return setCoverageError("rate_limit");
-      if (res.status === 503) return setCoverageError("unavailable");
-      if (!res.ok) {
-        await handleMembershipError(res);
-        return setCoverageError("generic");
+      await saveKpis(ids);
+      return { ok: true };
+    } catch (err) {
+      const invalidIds = err instanceof DashboardKpiError ? err.invalidMetricIds : [];
+      if (invalidIds.length > 0) {
+        // El catálogo cambió (métrica archivada o borrada): se refresca para que
+        // el selector no la vuelva a ofrecer.
+        void financial.reload();
       }
-      const data = (await res.json()) as ListMetricSourceCoverageResponse;
-      setCoverage(data);
-      if (company_id) setDashboardAiCache(company_id, { coverage: data });
-    } catch {
-      setCoverageError("generic");
-    } finally {
-      setLoadingCoverage(false);
+      const message =
+        err instanceof DashboardKpiError ? err.message : "No pudimos guardar la selección. Revisá tu conexión y probá de nuevo.";
+      return { ok: false, message, invalidIds };
     }
   };
-
-  const autoTriggeredHighlights = useRef(false);
-  const autoTriggeredCoverage = useRef(false);
-  useEffect(() => {
-    if (!company_id) return;
-    if (!highlights.highlights && !autoTriggeredHighlights.current) {
-      autoTriggeredHighlights.current = true;
-      highlights.load();
-    }
-    if (!coverage && !autoTriggeredCoverage.current) {
-      autoTriggeredCoverage.current = true;
-      loadCoverage();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [company_id]);
-
-  useEffect(() => {
-    if (company_id && highlights.highlights) setDashboardAiCache(company_id, { highlights: highlights.highlights });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlights.highlights]);
 
   // list-data-health-issues — mismo endpoint que Metrics > Salud de datos.
   const [backendHealthIssues, setBackendHealthIssues] = useState<DataHealthIssue[]>([]);
@@ -189,28 +139,17 @@ export default function Dashboard() {
   // es-AR devuelve en minúscula ("domingo, 4 de octubre"): solo la primera letra va en mayúscula.
   const todayRaw = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
   const today = todayRaw.charAt(0).toUpperCase() + todayRaw.slice(1);
+  const monthLabel = new Date().toLocaleDateString("es-AR", { month: "long" });
 
-  // Bug real (auditado 2026-09-21): esta pantalla no tenía ningún guard de
-  // rol — investor/admin caían acá con company_id null y todos los hooks de
-  // arriba se quedaban en enabled:false para siempre (render vacío/roto, sin
-  // mensaje). Va después de todos los hooks (rules-of-hooks), mismo criterio
-  // que ya usa Reporting.tsx/DataRoom.tsx para separar por rol.
-  //
-  // Segundo bug real, encontrado en vivo auditando Roadmap.tsx (2026-09-29):
-  // faltaba esperar a `authLoading` antes de evaluar el rol — `role` arranca
-  // en `null` mientras useAuth() resuelve la sesión, así que en una recarga
-  // completa `role !== "user"` daba true por un instante y mandaba a /admin,
-  // que a su vez rebota de vuelta acá (mismo guard) — un founder recargando
-  // /dashboard podía ver un parpadeo a /admin sin ningún error visible.
+  // Guardas de rol: van después de todos los hooks (rules-of-hooks). Esperar
+  // authLoading antes de evaluar el rol evita rebotes a /admin en una recarga.
   if (authLoading) return null;
-  // Sin sesión, role queda en null: sin esta guarda, /dashboard → /admin →
-  // /dashboard en loop. Sin user se va a login, nunca se rebota entre rutas.
+  // Sin sesión se va a login, nunca se rebota entre rutas.
   if (!user) return <Navigate to="/login" replace />;
   if (role === "investor") return <Navigate to="/overview" replace />;
   if (role !== "user") return <Navigate to="/admin" replace />;
 
-  // role="user" sin company asignada: mostrar el flujo "sin empresa" (o un
-  // banner persistente si el usuario eligió "decidir más tarde").
+  // role="user" sin company asignada: flujo "sin empresa" o banner persistente.
   if (role === "user" && !company_id) {
     if (!dismissed || reopenNoMembership) {
       return (
@@ -228,7 +167,7 @@ export default function Dashboard() {
     }
     return (
       <AppLayout>
-        <div className="max-w-6xl mx-auto px-8 py-12">
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-12">
           <NoMembershipBanner role="user" onOpen={() => setReopenNoMembership(true)} />
           <div className="border border-border rounded-lg p-12 text-center text-sm text-muted-foreground bg-card">
             No hay contenido para mostrar hasta que te unas a una startup.
@@ -253,31 +192,14 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
-            <ExecutiveSummaryCard companyId={company_id ?? null} />
-
             <CompanyHealthStrip
               metrics={financial.metrics}
-              values={actual.values}
-              loading={actual.loading}
-              onGoToMetrics={() => navigate("/metrics?tab=explorer")}
-            />
-
-            <WhatChangedSection
-              companyId={company_id ?? null}
-              highlights={highlights.highlights}
-              loading={highlights.loading}
-              error={highlights.error}
-              onLoad={() => highlights.load()}
-            />
-
-            <RisksOpportunitiesSection
-              metrics={financial.metrics}
-              highlights={highlights.highlights}
-              healthIssues={healthIssues}
-              coverage={coverage}
-              hasTriggeredEither={highlights.highlights !== null || coverage !== null}
-              onLoadHighlights={() => highlights.load()}
-              onLoadCoverage={loadCoverage}
+              selectedIds={kpisLoading ? NO_KPI_IDS : kpiIds}
+              values={kpiValues.values}
+              loading={kpisLoading || kpiValues.loading}
+              monthLabel={monthLabel}
+              saving={kpisSaving}
+              onChangeSelected={handleChangeKpis}
             />
 
             <div className="grid lg:grid-cols-2 gap-6 items-start">
@@ -285,17 +207,9 @@ export default function Dashboard() {
               <DataReadinessSection issues={healthIssues} loading={sources.loading || financial.loadingLogs} />
             </div>
 
-            <PerformanceVsPlanSection
-              metrics={financial.metrics}
-              forecastValues={forecast.values}
-              actualValues={forecast.valuesActual}
-              loading={forecast.loading}
-            />
-
             <ExploreSection
               metricsCount={financial.metrics.length}
               metricsIssueCount={healthSummary.critical + healthSummary.warning}
-              roadmapReadiness={roadmap.readinessScore}
               roadmapPendingCount={roadmap.tasks.filter((t) => t.status !== "done").length}
               docsUploaded={documents.documents.filter((d) => d.status !== "missing").length}
               docsTotal={documents.documents.length}

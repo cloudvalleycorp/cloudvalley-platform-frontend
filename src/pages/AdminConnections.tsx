@@ -177,14 +177,14 @@ export default function AdminConnections() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="text-muted-foreground hover:text-destructive"
+                      className="text-muted-foreground hover:text-destructive-dark"
                       disabled={busyId === c.connection_id}
                       onClick={() => decide(c.connection_id, "disconnect", "Conexión eliminada")}
                     >
                       Desconectar
                     </Button>
                   ) : (
-                    <span className="text-xs text-tertiary">—</span>
+                    <span className="text-xs text-muted-foreground">—</span>
                   ),
               },
             ]}

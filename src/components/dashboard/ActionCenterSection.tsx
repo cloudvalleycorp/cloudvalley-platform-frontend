@@ -82,7 +82,7 @@ export function ActionCenterSection({ tasks, loading, currentUserId, onToggleDon
       padding="sm"
       title={
         <span className="flex items-center gap-2">
-          <SectionNum n={5} />
+          <SectionNum n={2} />
           Qué tengo pendiente
         </span>
       }

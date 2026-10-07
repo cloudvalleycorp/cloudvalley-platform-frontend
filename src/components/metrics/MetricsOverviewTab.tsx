@@ -15,11 +15,12 @@ import { MetricCoverageReviewDialog, type CoverageReviewItem } from "@/component
 import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
 import { useMetricHighlights } from "@/hooks/useMetricHighlights";
 import { STANDARD_KEY_LABELS, STANDARD_KEY_ORDER, type FundRequiredMetricRow } from "@/lib/metricRequirements";
-import { loadVisibleKpis, saveVisibleKpis } from "@/lib/visibleKpis";
+import { useDashboardKpis } from "@/hooks/useDashboardKpis";
+import { DASHBOARD_KPI_MAX, DashboardKpiError, defaultDashboardKpiIds, nextKpiSelection } from "@/lib/dashboardKpis";
 import { formatMetricValue, type MetricDef, type RawField } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import type { MetricClassWarning, MetricScenario } from "@/lib/financialData";
-import { EXPLAIN_METRIC_DISCREPANCY_URL, type ExplainMetricDiscrepancyResponse } from "@/lib/metricIntelligence";
+import { EXPLAIN_METRIC_DISCREPANCY_URL, type ExplainMetricDiscrepancyResponse, visibleHighlights } from "@/lib/metricIntelligence";
 import { LIST_METRIC_SOURCE_COVERAGE_URL, type ListMetricSourceCoverageResponse, type NewStandardKpiRow } from "@/lib/metricSourceCoverage";
 import { handleMembershipError } from "@/lib/membership";
 import { toPeriodString } from "@/lib/metricPeriod";
@@ -103,7 +104,8 @@ function lastNPeriodSpec(months: number) {
 // estándar (STANDARD_KEY_ORDER, el enum real que definió backend, no la
 // lista aspiracional de 14 del spec original), requisitos de fondos, y
 // Destacados real (list-metric-highlights, ver Notas generales del handoff
-// de backend — no bloqueante por rate limit, puede volver sin `description`).
+// de backend — no bloqueante por rate limit). Cada highlight trae `description`
+// como string, lista para mostrar.
 export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired, rawFields, loading, onChanged, onGoToExplorer, onOpenMetric }: Props) {
   const standardMetrics = useMemo(() => metrics.filter((m) => m.metric_class === "standard"), [metrics]);
   const byKey = useMemo(() => {
@@ -195,25 +197,43 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
     });
   };
 
-  const [visibleKpis, setVisibleKpis] = useState<Set<string>>(loadVisibleKpis);
-  const toggleKpiVisible = (key: string, checked: boolean) => {
-    setVisibleKpis((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(key);
-      else next.delete(key);
-      // Nunca queda vacío — ni en memoria ni en localStorage. Vacío en
-      // memoria dejaría la grilla entera en blanco sin ninguna pista de por
-      // qué; vacío en localStorage se leería como "todos" al recargar (ver
-      // loadVisibleKpis), mostrando los 8 de nuevo sin avisar.
-      if (next.size === 0) {
-        toast.error("Dejá al menos un KPI visible.");
-        return prev;
-      }
-      saveVisibleKpis(next);
-      return next;
-    });
+  // Misma preferencia que el Dashboard (backend, una por startup). Acá se muestran
+  // solo los KPIs estándar de esa lista; los propios se ven en el Dashboard.
+  const defaultKpiIds = useMemo(() => defaultDashboardKpiIds(metrics), [metrics]);
+  const { kpiIds, loading: kpisLoading, saving: kpisSaving, saveKpis } = useDashboardKpis(companyId, defaultKpiIds);
+  const standardIdByKey = useMemo(
+    () => new Map(metrics.filter((m) => m.metric_class === "standard" && m.standard_key).map((m) => [m.standard_key as string, m.id])),
+    [metrics]
+  );
+  const standardIdsInOrder = useMemo(
+    () => STANDARD_KEY_ORDER.map((k) => standardIdByKey.get(k)).filter((id): id is string => !!id),
+    [standardIdByKey]
+  );
+  const visibleKpiOrder = useMemo(
+    () => STANDARD_KEY_ORDER.filter((k) => { const id = standardIdByKey.get(k); return id !== undefined && kpiIds.includes(id); }),
+    [standardIdByKey, kpiIds]
+  );
+  const visibleKpis = useMemo(() => new Set(visibleKpiOrder), [visibleKpiOrder]);
+
+  const toggleKpiVisible = async (key: string, checked: boolean) => {
+    const id = standardIdByKey.get(key);
+    if (!id || kpisLoading || kpisSaving) return;
+    const next = nextKpiSelection(kpiIds, standardIdsInOrder, id, checked);
+    // La grilla no puede quedar en blanco: al menos un KPI estándar visible.
+    if (!next.some((x) => standardIdsInOrder.includes(x))) {
+      toast.error("Dejá al menos un KPI visible.");
+      return;
+    }
+    if (next.length > DASHBOARD_KPI_MAX) {
+      toast.error(`Máximo ${DASHBOARD_KPI_MAX} KPIs.`);
+      return;
+    }
+    try {
+      await saveKpis(next);
+    } catch (err) {
+      toast.error(err instanceof DashboardKpiError ? err.message : "No pudimos guardar la selección. Revisá tu conexión y probá de nuevo.");
+    }
   };
-  const visibleKpiOrder = useMemo(() => STANDARD_KEY_ORDER.filter((k) => visibleKpis.has(k)), [visibleKpis]);
 
   const [rangeMonths, setRangeMonths] = useState<number>(6);
   const periodSpec = useMemo(() => lastNPeriodSpec(rangeMonths), [rangeMonths]);
@@ -296,6 +316,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
                   <DropdownMenuCheckboxItem
                     key={key}
                     checked={visibleKpis.has(key)}
+                    disabled={kpisLoading || kpisSaving}
                     onSelect={(e) => e.preventDefault()}
                     onCheckedChange={(checked) => toggleKpiVisible(key, checked === true)}
                   >
@@ -419,7 +440,7 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
             const current = periods.length > 0 ? series[periods[periods.length - 1]] : null;
             const prev = periods.length > 1 ? series[periods[periods.length - 2]] : null;
             const change = current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
-            const sparkData = periods.map((p) => ({ v: series[p] ?? 0 }));
+            const sparkData = periods.map((p) => ({ v: series[p] ?? null }));
             // scenario != "actual": evaluate-metrics devuelve values_actual en
             // la misma respuesta (ver Notas del handoff de backend) — se
             // compara sin un segundo request.
@@ -551,21 +572,14 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
               description="Resume los cambios más grandes de tus métricas principales vs. el período anterior, con evidencia real."
               action={{ label: "Generar destacados", onClick: () => loadHighlights() }}
             />
-          ) : highlights.length === 0 ? (
+          ) : visibleHighlights(highlights).length === 0 ? (
             <EmptyState bordered={false} icon={Sparkles} title="Sin cambios destacados este período." description="Ningún KPI principal tuvo una variación significativa." />
           ) : (
             <div className="space-y-3">
-              {highlights.map((h) => (
+              {visibleHighlights(highlights).map((h) => (
                 <div key={h.metric_id + h.title} className="border border-border rounded-md p-3">
                   <p className="text-sm font-medium">{h.title}</p>
-                  {h.description ? (
-                    <p className="text-xs text-muted-foreground mt-1">{h.description}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {h.delta.current_value.toLocaleString()} vs {h.delta.prior_value.toLocaleString()} ({h.delta.delta_pct >= 0 ? "+" : ""}
-                      {h.delta.delta_pct.toFixed(1)}%)
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground mt-1">{h.description}</p>
                 </div>
               ))}
             </div>

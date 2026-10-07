@@ -46,7 +46,7 @@ describe("sparklineSvg", () => {
 });
 
 describe("buildReportPdfHtml logo", () => {
-  const base = { reportName: "Board", companyName: "Maritos V3", periodLabel: "abril 2026", generatedLabel: "4 de octubre de 2026", sections: [] };
+  const base = { reportName: "Board", companyName: "Maritos V3", periodLabel: "abril 2026", generatedLabel: "4 de octubre de 2026", prevPeriodLabel: "marzo", sections: [] };
 
   it("con logo usa la imagen en data URL, sin monograma", () => {
     const html = buildReportPdfHtml({ ...base, logoDataUrl: "data:image/png;base64,AAAA" });
@@ -67,6 +67,7 @@ describe("buildReportPdfHtml", () => {
     companyName: "Maritos V3",
     periodLabel: "abril 2026",
     generatedLabel: "3 de octubre de 2026",
+    prevPeriodLabel: "marzo",
     sections: [
       {
         title: "Ingresos",
@@ -97,7 +98,7 @@ describe("buildReportPdfHtml", () => {
     expect(html).not.toMatch(/class="value">0</);
   });
 
-  it("formatea la variación con coma decimal y signo", () => {
-    expect(html).toContain("+12,5%");
+  it("escribe la variación en palabras con coma decimal, como la pantalla", () => {
+    expect(html).toContain("Sube 12,5% frente a marzo");
   });
 });

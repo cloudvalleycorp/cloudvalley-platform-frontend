@@ -323,7 +323,7 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
                         <DropdownMenuItem onClick={() => openEdit(r)}>
                           <Pencil size={14} strokeWidth={1.5} className="mr-2" /> Editar
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setDeleting(r)} className="text-destructive focus:text-destructive">
+                        <DropdownMenuItem onClick={() => setDeleting(r)} className="text-destructive-dark focus:text-destructive-dark">
                           <Trash2 size={14} strokeWidth={1.5} className="mr-2" /> Eliminar
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -383,7 +383,7 @@ function FundMetricRequirementsContent({ companies }: { companies: { id: string;
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => setDeletingSegment({ segment_id: s.segment_id, name: s.name })}
-                      className="text-destructive focus:text-destructive"
+                      className="text-destructive-dark focus:text-destructive-dark"
                     >
                       <Trash2 size={14} strokeWidth={1.5} className="mr-2" /> Eliminar
                     </DropdownMenuItem>

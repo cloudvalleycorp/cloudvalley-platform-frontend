@@ -42,7 +42,7 @@ export default function InvestorOverview() {
     }
     return (
       <AppLayout>
-        <div className="max-w-6xl mx-auto px-8 py-12">
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-12">
           <NoMembershipBanner role="investor" onOpen={() => setReopen(true)} />
           <EmptyState icon={Compass} title="Todavía no hay nada para mostrar." description="Vas a ver el resumen de tu portfolio apenas te unas a un fondo." />
         </div>
@@ -108,7 +108,7 @@ function InvestorOverviewContent({ companies }: { companies: { id: string; name:
 
   return (
     <AppLayout>
-      <div className="max-w-6xl mx-auto px-8 py-12 space-y-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-12 space-y-8">
         <PageHeader
           title="Overview"
           subtitle={`${filteredCompanies.length} empresa${filteredCompanies.length === 1 ? "" : "s"}`}

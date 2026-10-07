@@ -98,7 +98,7 @@
     /* Ring = acción azul (mockup): el foco es azul en todo el sistema. */
     --ring: 216 80% 44%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem; /* 8px: cards, botones e inputs (mockup reporting-founder) */
 
     /* Sidebar — fondo blanco, activo con wash naranja sutil (spec sección 11) */
     --sidebar-background: 0 0% 100%;

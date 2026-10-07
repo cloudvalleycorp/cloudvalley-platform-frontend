@@ -14,7 +14,6 @@ type ExploreCard = {
 type Props = {
   metricsCount: number;
   metricsIssueCount: number;
-  roadmapReadiness: number;
   roadmapPendingCount: number;
   docsUploaded: number;
   docsTotal: number;
@@ -25,7 +24,6 @@ type Props = {
 export function ExploreSection({
   metricsCount,
   metricsIssueCount,
-  roadmapReadiness,
   roadmapPendingCount,
   docsUploaded,
   docsTotal,
@@ -44,7 +42,7 @@ export function ExploreSection({
       to: "/roadmap",
       icon: Map,
       title: "Roadmap",
-      stat: `Readiness ${roadmapReadiness}/100 · ${roadmapPendingCount} tarea${roadmapPendingCount === 1 ? "" : "s"} pendiente${roadmapPendingCount === 1 ? "" : "s"}`,
+      stat: `${roadmapPendingCount} tarea${roadmapPendingCount === 1 ? "" : "s"} pendiente${roadmapPendingCount === 1 ? "" : "s"}`,
       cta: "Ver Roadmap",
     },
     {
@@ -73,7 +71,7 @@ export function ExploreSection({
       padding="sm"
       title={
         <span className="flex items-center gap-2">
-          <SectionNum n={7} />
+          <SectionNum n={3} />
           Explorar
         </span>
       }

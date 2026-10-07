@@ -4,7 +4,7 @@ import { SectionCard } from "@/components/SectionCard";
 import { SectionNum } from "@/components/dashboard/SectionNum";
 import { EmptyState } from "@/components/EmptyState";
 import { SkeletonSection } from "@/components/SkeletonSection";
-import { summarizeHealth, type HealthIssue, type HealthIssueSeverity } from "@/lib/dataHealthIssues";
+import type { HealthIssue, HealthIssueSeverity } from "@/lib/dataHealthIssues";
 import { cn } from "@/lib/utils";
 
 type Props = { issues: HealthIssue[]; loading: boolean };
@@ -20,30 +20,17 @@ const SEVERITY_COLOR: Record<HealthIssueSeverity, string> = {
   info: "text-muted-foreground bg-secondary",
 };
 
-// Heurística propia, no un endpoint (no existe un "score de calidad de
-// datos" real en backend todavía — ver Fase 8 del plan, pedido de
-// desglose por dominio queda como mejora futura). Penaliza por severidad,
-// clamp a [0,100] — es una aproximación legible ("cuántos problemas reales
-// hay pesados por gravedad"), no una medición precisa. Documentado acá y en
-// docs/design-system-command-center.md para que no se lea como un número
-// certificado por backend.
-function readinessPct(issues: HealthIssue[]): number {
-  const s = summarizeHealth(issues);
-  const penalty = s.critical * 15 + s.warning * 7 + s.info * 2;
-  return Math.max(0, Math.min(100, 100 - penalty));
-}
-
+// Solo la lista de alertas de datos. Se quitó el porcentaje de "confiables": era
+// una heurística propia (penalización por severidad), no un dato de backend, y
+// contradecía el readiness del Roadmap (auditoría P1-02).
 export function DataReadinessSection({ issues, loading }: Props) {
-  const pct = readinessPct(issues);
-  const summary = summarizeHealth(issues);
-
   return (
     <SectionCard
       padding="sm"
       title={
         <span className="flex items-center gap-2">
-          <SectionNum n={5} />
-          Data Readiness
+          <SectionNum n={2} />
+          Alertas de datos
         </span>
       }
     >
@@ -53,21 +40,6 @@ export function DataReadinessSection({ issues, loading }: Props) {
         <EmptyState bordered={false} icon={CheckCircle2} title="Todo en orden." description="No detectamos problemas de datos en este momento." />
       ) : (
         <>
-          <div className="flex items-center gap-3 mb-4">
-            <div
-              className="w-11 h-11 rounded-full shrink-0 flex items-center justify-center text-xs font-medium"
-              style={{
-                background: `conic-gradient(hsl(var(${summary.critical > 0 ? "--destructive" : "--warning"})) 0% ${pct}%, hsl(var(--border)) ${pct}% 100%)`,
-              }}
-            >
-              <div className="w-[34px] h-[34px] rounded-full bg-card flex items-center justify-center">{pct}%</div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Tus insights hoy son <span className="font-medium text-foreground">{pct}% confiables</span>. {summary.critical + summary.warning} problema
-              {summary.critical + summary.warning === 1 ? "" : "s"} de impacto {summary.critical > 0 ? "alto" : "medio"} recomendado
-              {summary.critical + summary.warning === 1 ? "" : "s"} de resolver.
-            </p>
-          </div>
           <div className="space-y-2">
             {issues.slice(0, 6).map((issue) => {
               const Icon = SEVERITY_ICON[issue.severity];

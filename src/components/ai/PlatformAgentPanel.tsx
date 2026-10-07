@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Sparkles, Send, RotateCcw, History, Pencil, Trash2, MessageSquare, X } from "lucide-react";
@@ -31,6 +31,14 @@ import {
   type ListAgentConversationsResponse,
   type GetAgentConversationResponse,
 } from "@/lib/aiInsights";
+import {
+  SECTION_NOTES_ERROR_TEXT,
+  SECTION_NOTES_OUTCOME_TEXT,
+  SECTION_NOTES_TOOL,
+  sectionNoteProposals,
+  sectionNotesSaveOutcome,
+  type SectionNotesFields,
+} from "@/lib/reportSectionNotes";
 
 type Exchange = {
   question: string;
@@ -100,7 +108,14 @@ function pendingConfirmations(trace: ObservabilityTraceEntry[]) {
   return trace
     .map((entry, index) => {
       // Las propuestas de reporte tienen tarjeta propia (ver reportProposals).
-      if (entry.tool === "create-report-from-proposal" || entry.result?.status !== "pending_confirmation") return null;
+      // Las notas de sección tienen su propia tarjeta (ver sectionNoteProposals):
+      // nunca se confirman como métrica.
+      if (
+        entry.tool === "create-report-from-proposal" ||
+        entry.tool === SECTION_NOTES_TOOL ||
+        entry.result?.status !== "pending_confirmation"
+      )
+        return null;
       const proposed =
         asRecord(entry.result?.proposed) ??
         asRecord(entry.result?.proposed_metric) ??
@@ -578,6 +593,36 @@ export function PlatformAgentPanel({
     }
   };
 
+  // Nota de sección propuesta por el agente: no se guarda hasta confirmar, y se
+  // reenvían exactos report_id, section_index, notes, section_title y
+  // expected_updated_at. Si el reporte cambió después, el backend responde
+  // conflict y no se guarda nada.
+  const handleConfirmNotes = async (exchangeIdx: number, traceIdx: number, fields: SectionNotesFields) => {
+    resolveTrace(exchangeIdx, traceIdx);
+    setPendingQuestion("Guardando la nota…");
+    const response = await ask("", {
+      uiContext,
+      formulaSyntax,
+      confirmWrite: true,
+      notesFields: fields,
+      conversationId: conversationId ?? undefined,
+      newConversation: !conversationId,
+    });
+    setPendingQuestion(null);
+    if (!response) return;
+    if (response.conversation_id && response.conversation_id !== conversationId) {
+      setConversationId(response.conversation_id);
+    }
+    // El texto sale del resultado real: solo "saved" dice que la nota quedó guardada.
+    const outcome = sectionNotesSaveOutcome(response.observability_trace ?? []);
+    const text = outcome ? SECTION_NOTES_OUTCOME_TEXT[outcome.kind] : SECTION_NOTES_ERROR_TEXT;
+    setExchanges((prev) => [
+      ...prev,
+      { question: "Guardar nota", response: stubResponseFromHistory(text), resolvedTraceIndices: new Set() },
+    ]);
+    if (outcome?.kind === "saved") onAgentWrote?.();
+  };
+
   // Confirmación de un reporte propuesto: se reenvía EXACTO lo que vino en
   // result.proposed, sin question y sin report_id (ver usePlatformAgent).
   const handleConfirmReportCreate = async (exchangeIdx: number, traceIdx: number, proposal: ReportProposal) => {
@@ -617,6 +662,34 @@ export function PlatformAgentPanel({
     }
   };
 
+  // Escape cierra el panel desde cualquier foco mientras está abierto, no solo
+  // cuando el foco está adentro. Un Escape dentro de un campo (renombrar) se
+  // frena antes de llegar acá.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleOpenChange(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Al cerrar, el foco vuelve al control que abrió el panel. Si no, al volverse
+  // inert el panel el foco queda en <body> y el teclado pierde el lugar.
+  // useLayoutEffect para capturar el origen antes de que el panel mueva el foco
+  // a su propio campo (ese movimiento corre en un useEffect).
+  const openerRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (open) openerRef.current = document.activeElement as HTMLElement | null;
+  }, [open]);
+  useEffect(() => {
+    if (!open && openerRef.current) {
+      openerRef.current.focus();
+      openerRef.current = null;
+    }
+  }, [open]);
+
   return (
     <>
     {/* Panel acoplado, no modal: sin scrim, se desliza desde el borde
@@ -632,9 +705,6 @@ export function PlatformAgentPanel({
       aria-label="Asistente"
       aria-hidden={!open}
       {...(open ? {} : { inert: "" })}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") handleOpenChange(false);
-      }}
       className={cn(
         // top-14 (no inset-y-0) para no taparle al header sus propios
         // botones (Buscar/tema/avatar) — el header es sticky z-40, este
@@ -673,7 +743,10 @@ export function PlatformAgentPanel({
                             onChange={(e) => setRenameDraft(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") void submitRename();
-                              if (e.key === "Escape") setRenamingId(null);
+                              if (e.key === "Escape") {
+                                e.stopPropagation();
+                                setRenamingId(null);
+                              }
                             }}
                             onBlur={() => void submitRename()}
                             className="flex-1 min-w-0 text-xs px-2 py-2 bg-transparent border-b border-border focus:outline-none"
@@ -717,7 +790,7 @@ export function PlatformAgentPanel({
                   <RotateCcw size={12} className="mr-1.5" aria-hidden="true" /> Nueva conversación
                 </Button>
               )}
-              <Button ref={closeBtnRef} variant="ghost" size="sm" aria-label="Minimizar Asistente" onClick={() => handleOpenChange(false)}>
+              <Button ref={closeBtnRef} variant="ghost" size="sm" aria-label="Cerrar Asistente" title="Cerrar (Esc)" onClick={() => handleOpenChange(false)}>
                 <X size={14} aria-hidden="true" />
               </Button>
             </div>
@@ -735,6 +808,7 @@ export function PlatformAgentPanel({
           {exchanges.map((ex, exchangeIdx) => {
             const trace = ex.response.observability_trace ?? [];
             const pending = pendingConfirmations(trace).filter((p) => !ex.resolvedTraceIndices.has(p.index));
+            const notes = sectionNoteProposals(trace).filter((p) => !ex.resolvedTraceIndices.has(p.index));
             const allCreated = createdLinks(trace);
             const unexpectedReports = allCreated.filter((c) => c.reportId && isUnexpectedNewReport(surface, uiContext, c.reportId));
             const created = allCreated.filter((c) => !unexpectedReports.includes(c));
@@ -744,19 +818,19 @@ export function PlatformAgentPanel({
             return (
               <div key={exchangeIdx} className="space-y-2">
                 <div className="flex justify-end">
-                  <p className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-4 py-2.5 text-sm">
+                  <p className="max-w-[85%] rounded-lg rounded-br-sm bg-primary text-primary-foreground px-4 py-2.5 text-sm">
                     {ex.question}
                   </p>
                 </div>
                 <div className="flex flex-col items-start gap-2">
-                  <div className="max-w-[85%] rounded-2xl rounded-bl-sm bg-surface border border-border px-4 py-2.5 text-sm text-foreground">
+                  <div className="max-w-[85%] rounded-lg rounded-bl-sm bg-surface border border-border px-4 py-2.5 text-sm text-foreground">
                     {ex.response.answer}
                   </div>
 
                   {ex.response.pending_clarifications.map((text, i) => (
                     <div
                       key={`cl-${i}`}
-                      className="max-w-[85%] rounded-2xl rounded-bl-sm bg-warning/10 border border-warning/40 px-4 py-2.5 text-sm text-foreground"
+                      className="max-w-[85%] rounded-lg rounded-bl-sm bg-warning/10 border border-warning/40 px-4 py-2.5 text-sm text-foreground"
                     >
                       {text}
                     </div>
@@ -824,6 +898,27 @@ export function PlatformAgentPanel({
                       className="w-full max-w-[85%] rounded-md border border-warning/40 bg-warning/5 p-3 text-xs text-foreground"
                     >
                       {text}
+                    </div>
+                  ))}
+
+                  {notes.map(({ index, fields }) => (
+                    <div
+                      key={`n-${index}`}
+                      className="w-full max-w-[85%] rounded-md border border-primary/40 bg-primary/5 p-3 space-y-1"
+                    >
+                      <p className="text-xs font-medium text-primary-dark mb-1">Propuesta generada con IA, revisala antes de guardar</p>
+                      <p className="text-xs text-muted-foreground">
+                        Sección: {fields.section_title?.trim() || `${fields.section_index + 1}`}
+                      </p>
+                      <p className="text-sm whitespace-pre-line">{fields.notes ?? "Sin nota"}</p>
+                      <div className="flex items-center gap-2 pt-2">
+                        <Button size="sm" onClick={() => handleConfirmNotes(exchangeIdx, index, fields)}>
+                          Guardar nota
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleDiscard(exchangeIdx, index)}>
+                          Descartar
+                        </Button>
+                      </div>
                     </div>
                   ))}
 
@@ -924,13 +1019,13 @@ export function PlatformAgentPanel({
           {pendingQuestion && (
             <div className="space-y-2 animate-fade-in">
               <div className="flex justify-end">
-                <p className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-4 py-2.5 text-sm">
+                <p className="max-w-[85%] rounded-lg rounded-br-sm bg-primary text-primary-foreground px-4 py-2.5 text-sm">
                   {pendingQuestion}
                 </p>
               </div>
               <div
                 role="status"
-                className="flex items-center gap-1 rounded-2xl rounded-bl-sm bg-surface border border-border px-4 py-3 w-fit"
+                className="flex items-center gap-1 rounded-lg rounded-bl-sm bg-surface border border-border px-4 py-3 w-fit"
               >
                 <span className="sr-only">Pensando…</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-pulse [animation-delay:-0.3s]" aria-hidden="true" />

@@ -17,7 +17,7 @@ const STYLES: Record<ComplianceStatus, string> = {
   error: "bg-destructive/10 text-destructive-dark",
   unfulfilled: "bg-muted text-muted-foreground",
   not_applicable: "bg-secondary text-secondary-foreground",
-  not_required_then: "bg-muted text-tertiary",
+  not_required_then: "bg-muted text-muted-foreground",
 };
 
 export function ComplianceStatusPill({ status, className }: { status: ComplianceStatus; className?: string }) {

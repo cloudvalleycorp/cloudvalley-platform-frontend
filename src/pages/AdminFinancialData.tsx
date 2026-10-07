@@ -453,7 +453,7 @@ export default function AdminFinancialData() {
                       align: "right" as const,
                       cell: (r: FinancialRecordRow) => {
                         const value = r[col.key];
-                        if (value == null) return <span className="text-tertiary">—</span>;
+                        if (value == null) return <span className="text-muted-foreground">—</span>;
                         return (
                           <div className="flex items-center justify-end gap-0.5">
                             <span className="tabular-nums">{value.toLocaleString()}</span>
@@ -469,7 +469,7 @@ export default function AdminFinancialData() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive-dark"
                               aria-label={`Eliminar ${col.label} de ${r.period}`}
                               onClick={() => setDeletingRecord({ period: r.period, metric: col.key, label: col.label })}
                             >

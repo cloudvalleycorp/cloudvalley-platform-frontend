@@ -305,7 +305,7 @@ export function SuggestedMetricsReview({
       toast.error(
         `${pendingDuplicateCount} sugerencia${pendingDuplicateCount === 1 ? "" : "s"} ya ${
           pendingDuplicateCount === 1 ? "existe" : "existen"
-        } — revisá abajo antes de continuar.`
+        }. Revisá abajo antes de continuar.`
       );
       return;
     }

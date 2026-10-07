@@ -49,7 +49,10 @@ export const MetricValueCard = memo(function MetricValueCard({
         </div>
         <button
           onClick={onInfo}
-          className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground"
+          // Sin -mr: un margen negativo a la derecha empujaba el botón 6px fuera de
+          // la tarjeta (desborde real medido a 375px). -ml/-my agranda el área de
+          // toque sin esa fuga.
+          className="shrink-0 p-1.5 -ml-1.5 -my-1.5 text-muted-foreground hover:text-foreground"
           aria-label={`Info sobre ${name}`}
         >
           <Info size={14} strokeWidth={1.5} aria-hidden="true" />

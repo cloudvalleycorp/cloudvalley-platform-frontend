@@ -52,9 +52,9 @@ Tipografía en rem, escala fija (accesibilidad y responsive). 1rem = 16px.
 - Etiquetas en mayúsculas con espaciado (`uppercase tracking-wide`): `text-[0.6875rem]` (11px). Nunca valores, nombres de métrica ni párrafos.
 - Prohibido: `text-[10px]`, `text-[10.5px]`, `text-[11px]` en texto con contenido.
 - Texto de contenido: nunca `text-tertiary` (3,30:1 sobre blanco). Usá `text-muted-foreground`.
-- Botones: píldora de 48 px (`h-12 rounded-full`). `sm` e `icon` mínimo 44 px de área de toque.
+- Botones: radio de 8 px (`rounded-lg`), igual que cards e inputs. Las píldoras (`rounded-full`) quedan solo para badges, chips y pills de estado. `sm` e `icon` mínimo 44 px de área de toque.
 
-Radio: `--radius: 0.75rem`, mapeado a `rounded-lg/md/sm`. Tipografía: Geist,
+Radio: `--radius: 0.5rem` (8px). `rounded-lg` 8px para cards, botones e inputs; `rounded-md` 6px para segmentos; `rounded-sm` 4px; pills `rounded-full`. Valores del mockup `reporting-founder`. Tipografía: Geist,
 weight 500 en headings, letter-spacing ajustado — ya está en `@layer base`, no
 lo reinventes por página.
 

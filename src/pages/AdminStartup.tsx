@@ -220,7 +220,7 @@ export default function AdminStartup() {
                       <p className="text-xs text-muted-foreground">Readiness score</p>
                       <p className="text-xl font-medium mt-1">
                         {roadmap.readinessScore}
-                        <span className="text-sm text-tertiary font-normal">/100</span>
+                        <span className="text-sm text-muted-foreground font-normal">/100</span>
                       </p>
                     </div>
                     <div>
@@ -260,7 +260,7 @@ export default function AdminStartup() {
                   </div>
                   <div>
                     <Label className="text-xs">
-                      Notas internas <span className="text-tertiary">— solo visible para el equipo CloudValley</span>
+                      Notas internas <span className="text-muted-foreground">— solo visible para el equipo CloudValley</span>
                     </Label>
                     <Textarea
                       value={editNotes}

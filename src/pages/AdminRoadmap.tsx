@@ -273,7 +273,7 @@ export default function AdminRoadmap() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="text-muted-foreground hover:text-destructive"
+                          className="text-muted-foreground hover:text-destructive-dark"
                           onClick={() => setDeletingPillar(p)}
                           aria-label={`Eliminar ${p.name}`}
                         >
@@ -342,7 +342,7 @@ export default function AdminRoadmap() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="text-muted-foreground hover:text-destructive"
+                          className="text-muted-foreground hover:text-destructive-dark"
                           onClick={() => setDeletingTask(t)}
                           aria-label={`Eliminar ${t.title}`}
                         >
