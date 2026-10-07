@@ -87,6 +87,7 @@ export default function Metrics() {
               const params = fulfillRequirementId ? { tab: "explorer", fulfill: fulfillRequirementId } : { tab: "explorer" };
               setSearchParams(params);
             }}
+            onGoToScenario={() => setSearchParams({ tab: "explorer", scenario: "1" })}
             onOpenMetric={(id) => navigate(`/metrics/${id}`)}
           />
         )}

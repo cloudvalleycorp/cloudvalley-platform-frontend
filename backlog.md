@@ -12,14 +12,51 @@ que se resuelve.
 
 Verificado:
 - Dashboard del founder: selección de KPIs guardada en backend (`get-dashboard-kpis` / `set-dashboard-kpis`), sin localStorage. Default cuando el backend responde `null`. Guardado y restauración en vivo con la cuenta Maritos V3.
-- Métricas > Overview: usa la misma preferencia que el Dashboard (una por startup). Chips de KPIs estándar en vivo.
+- Métricas > Overview: usa la misma preferencia que el Dashboard (una por startup).
 - Orden canónico al guardar, igual en Dashboard y Métricas.
 - Errores: 400 con `invalid_metric_ids` quita los ids del borrador y avisa; 401 manda a login.
+
+**Fix 2026-10-07**: Overview solo dejaba prender/apagar los 8 KPIs estándar
+(dropdown propio), sin poder elegir una métrica propia como sí se podía desde
+el Dashboard — bug real reportado en vivo ("no puedo escoger las métricas").
+Se extrajo el picker completo del Dashboard a un componente compartido
+(`src/components/metrics/KpiPickerDialog.tsx`, con buscador y grupos
+Estándar/Propias) y Overview pasa a usarlo igual que el Dashboard. La grilla
+de Overview ahora también renderiza las métricas propias elegidas (antes el
+id quedaba guardado en el backend pero Overview lo ignoraba en silencio:
+confirmado en vivo que la cuenta de test ya tenía `total_monto_transacciones`
+guardado de una sesión anterior y nunca se mostraba). Verificado en vivo:
+abrir el picker en Overview, elegir/sacar una propia, guardar, recargar.
 
 Decisiones tomadas:
 - Último que guarda gana (sin control de concurrencia).
 - Las selecciones viejas de localStorage se descartan, no se migran.
 - Un cambio de KPIs no actualiza el default si después aparece una métrica estándar nueva: la lista guardada queda fija.
+
+## Cargar escenario (forecast/presupuesto) — discoverabilidad (cerrado 2026-10-07)
+
+Reportado en vivo: "no encontré la manera de cargar escenarios forecast o
+presupuesto en los flujos". El único punto de entrada era el botón "Cargar
+escenario" dentro de Métricas > Explorador — Overview ya tenía un selector
+Real/Forecast/Presupuesto para VER el escenario, pero elegir Forecast/
+Presupuesto ahí no mostraba ningún link a dónde cargar esos valores.
+
+Fix: cuando el escenario de Overview no es "Real", aparece un texto con
+link ("Cargar forecast en el Explorador") que navega a
+`/metrics?tab=explorer&scenario=1`; `MetricsExplorerTab.tsx` lee ese
+query param (mismo patrón que `?fulfill=`), fuerza `pageMode="data"` y abre
+`ScenarioEntryDialog` ya con el escenario correcto preseleccionado. Verificado
+en vivo de punta a punta: Overview → Forecast → click → Explorador con el
+diálogo abierto en "Forecast" → URL limpia (sin `?scenario=`).
+
+**Confirmado, no es un bug**: el diálogo solo lista las métricas
+`metric_type === "input"` (hoy 5 en la cuenta de test: CAC, Headcount,
+Clientes Nuevos, Registros, Clientes Perdidos) porque son las únicas que se
+cargan a mano — una métrica calculada deriva su forecast de las de tipo
+input una vez que esas tienen valor cargado para el período, y una métrica
+de tipo query viene de una fuente conectada, no se puede sobrescribir a
+mano. "Todas las métricas" no aplica: no tendría sentido pedirle al
+founder un número para algo que ya se calcula solo.
 
 ---
 

@@ -119,7 +119,7 @@ export function SimpleSourceList({ leaves, onChange, rawFields, onSwitchToAdvanc
         </p>
       )}
       <button type="button" onClick={onSwitchToAdvanced} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
-        ¿Necesitás filtros, restar, o referenciar otra métrica? Usá el editor avanzado.
+        ¿Necesitás filtros, restar, o sumarle una métrica cargada a mano (como un ajuste puntual)? Usá el editor avanzado.
       </button>
     </div>
   );

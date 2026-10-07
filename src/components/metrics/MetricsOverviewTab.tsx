@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { AlertTriangle, Sparkles, Wand2, SlidersHorizontal } from "lucide-react";
 import { SectionCard } from "@/components/SectionCard";
 import { EmptyState } from "@/components/EmptyState";
@@ -8,17 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FundRequiredMetricsSection } from "@/components/metrics/FundRequiredMetricsSection";
 import { MetricValueCard } from "@/components/metrics/MetricValueCard";
 import { MetricCoverageReviewDialog, type CoverageReviewItem } from "@/components/metrics/MetricCoverageReviewDialog";
+import { KpiPickerDialog } from "@/components/metrics/KpiPickerDialog";
 import { useEvaluatedMetrics } from "@/hooks/useEvaluatedMetrics";
 import { useMetricHighlights } from "@/hooks/useMetricHighlights";
 import { STANDARD_KEY_LABELS, STANDARD_KEY_ORDER, type FundRequiredMetricRow } from "@/lib/metricRequirements";
 import { useDashboardKpis } from "@/hooks/useDashboardKpis";
-import { DASHBOARD_KPI_MAX, DashboardKpiError, defaultDashboardKpiIds, nextKpiSelection } from "@/lib/dashboardKpis";
+import { DASHBOARD_KPI_MAX, DashboardKpiError, defaultDashboardKpiIds, type KpiSaveOutcome } from "@/lib/dashboardKpis";
 import { formatMetricValue, type MetricDef, type RawField } from "@/lib/metrics";
-import { cn } from "@/lib/utils";
 import type { MetricClassWarning, MetricScenario } from "@/lib/financialData";
 import { EXPLAIN_METRIC_DISCREPANCY_URL, type ExplainMetricDiscrepancyResponse, visibleHighlights } from "@/lib/metricIntelligence";
 import { LIST_METRIC_SOURCE_COVERAGE_URL, type ListMetricSourceCoverageResponse, type NewStandardKpiRow } from "@/lib/metricSourceCoverage";
@@ -36,6 +34,11 @@ type Props = {
   loading: boolean;
   onChanged: () => void;
   onGoToExplorer: (fulfillRequirementId?: string) => void;
+  // Deep-link directo a "Cargar escenario" del Explorador — antes el único
+  // acceso a forecast/presupuesto vivía en Explorador, sin ningún link desde
+  // acá pese a que el selector de escenario de esta pantalla ya te deja mirar
+  // Forecast/Presupuesto. Encontrado en vivo 2026-10-07.
+  onGoToScenario: () => void;
   // Deep-link directo a una métrica puntual (/metrics/:id) — antes cualquier
   // click en "info" de una card llevaba al Explorador genérico, sin la
   // métrica preseleccionada.
@@ -49,15 +52,6 @@ type Props = {
 function categoryLabel(cat: string) {
   return cat.charAt(0).toUpperCase() + cat.slice(1).replace(/_/g, " ");
 }
-
-// Qué KPIs de STANDARD_KEY_ORDER mostrar en la grilla — preferencia por
-// founder, persiste en localStorage (mismo criterio que VIEW_KEY/
-// PAGE_MODE_KEY en MetricsExplorerTab.tsx). Pedido en vivo 2026-09-03: no
-// todas las startups siguen los 8 KPIs estándar, algunas quieren ocultar los
-// que no les aplican en vez de ver "Todavía no la trackeás" x N sin poder
-// sacarlos de la vista. Extraído a lib/visibleKpis.ts (2026-09-04): la misma
-// preferencia también la usa el Company Health del Dashboard, no tiene
-// sentido mantener dos listas separadas de "qué KPIs me importan".
 
 type CoverageErrorKind = "rate_limit" | "unavailable" | "generic";
 const COVERAGE_ERROR_MESSAGES: Record<CoverageErrorKind, string> = {
@@ -106,7 +100,7 @@ function lastNPeriodSpec(months: number) {
 // Destacados real (list-metric-highlights, ver Notas generales del handoff
 // de backend — no bloqueante por rate limit). Cada highlight trae `description`
 // como string, lista para mostrar.
-export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired, rawFields, loading, onChanged, onGoToExplorer, onOpenMetric }: Props) {
+export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired, rawFields, loading, onChanged, onGoToExplorer, onGoToScenario, onOpenMetric }: Props) {
   const standardMetrics = useMemo(() => metrics.filter((m) => m.metric_class === "standard"), [metrics]);
   const byKey = useMemo(() => {
     const map = new Map<string, MetricDef[]>();
@@ -197,10 +191,14 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
     });
   };
 
-  // Misma preferencia que el Dashboard (backend, una por startup). Acá se muestran
-  // solo los KPIs estándar de esa lista; los propios se ven en el Dashboard.
+  // Misma preferencia que el Dashboard (backend, una por startup) — estándar
+  // y propias, con el mismo picker (KpiPickerDialog). Antes este tab solo
+  // dejaba prender/apagar los 8 KPIs estándar, sin poder elegir una métrica
+  // propia como sí se podía desde el Dashboard: inconsistencia real
+  // encontrada en vivo 2026-10-07, se unifica acá.
+  const [kpiPickerOpen, setKpiPickerOpen] = useState(false);
   const defaultKpiIds = useMemo(() => defaultDashboardKpiIds(metrics), [metrics]);
-  const { kpiIds, loading: kpisLoading, saving: kpisSaving, saveKpis } = useDashboardKpis(companyId, defaultKpiIds);
+  const { kpiIds, saving: kpisSaving, saveKpis } = useDashboardKpis(companyId, defaultKpiIds);
   const standardIdByKey = useMemo(
     () => new Map(metrics.filter((m) => m.metric_class === "standard" && m.standard_key).map((m) => [m.standard_key as string, m.id])),
     [metrics]
@@ -213,31 +211,35 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
     () => STANDARD_KEY_ORDER.filter((k) => { const id = standardIdByKey.get(k); return id !== undefined && kpiIds.includes(id); }),
     [standardIdByKey, kpiIds]
   );
-  const visibleKpis = useMemo(() => new Set(visibleKpiOrder), [visibleKpiOrder]);
+  // Métricas propias elegidas (no estándar): se muestran después de la grilla
+  // estándar, mismo orden que guarda orderKpiIds.
+  const customKpiMetrics = useMemo(() => {
+    const standardIds = new Set(standardIdsInOrder);
+    const byId = new Map(metrics.map((m) => [m.id, m]));
+    return kpiIds.filter((id) => !standardIds.has(id)).map((id) => byId.get(id)).filter((m): m is MetricDef => m !== undefined);
+  }, [kpiIds, standardIdsInOrder, metrics]);
 
-  const toggleKpiVisible = async (key: string, checked: boolean) => {
-    const id = standardIdByKey.get(key);
-    if (!id || kpisLoading || kpisSaving) return;
-    const next = nextKpiSelection(kpiIds, standardIdsInOrder, id, checked);
-    // La grilla no puede quedar en blanco: al menos un KPI estándar visible.
-    if (!next.some((x) => standardIdsInOrder.includes(x))) {
-      toast.error("Dejá al menos un KPI visible.");
-      return;
-    }
-    if (next.length > DASHBOARD_KPI_MAX) {
-      toast.error(`Máximo ${DASHBOARD_KPI_MAX} KPIs.`);
-      return;
-    }
+  const handleSaveKpis = async (ids: string[]): Promise<KpiSaveOutcome> => {
     try {
-      await saveKpis(next);
+      await saveKpis(ids);
+      return { ok: true };
     } catch (err) {
-      toast.error(err instanceof DashboardKpiError ? err.message : "No pudimos guardar la selección. Revisá tu conexión y probá de nuevo.");
+      const invalidIds = err instanceof DashboardKpiError ? err.invalidMetricIds : [];
+      if (invalidIds.length > 0) onChanged();
+      const message =
+        err instanceof DashboardKpiError ? err.message : "No pudimos guardar la selección. Revisá tu conexión y probá de nuevo.";
+      return { ok: false, message, invalidIds };
     }
   };
 
   const [rangeMonths, setRangeMonths] = useState<number>(6);
   const periodSpec = useMemo(() => lastNPeriodSpec(rangeMonths), [rangeMonths]);
-  const metricIds = useMemo(() => standardMetrics.map((m) => m.id), [standardMetrics]);
+  // Todas las estándar (para detectar conflictos aunque no estén elegidas
+  // como KPI) + las propias elegidas puntualmente como KPI.
+  const metricIds = useMemo(
+    () => [...standardMetrics.map((m) => m.id), ...customKpiMetrics.map((m) => m.id)],
+    [standardMetrics, customKpiMetrics]
+  );
   const [scenario, setScenario] = useState<MetricScenario>("actual");
   const { values, valuesActual, loading: loadingValues } = useEvaluatedMetrics(companyId, metricIds, periodSpec, scenario);
 
@@ -261,6 +263,37 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
     } catch {
       setDiscrepancy((prev) => ({ ...prev, [standardKey]: "error" }));
     }
+  };
+
+  // Tarjeta de una sola métrica — compartida entre el caso estándar sin
+  // conflicto (una sola métrica para esa standard_key) y las métricas propias
+  // elegidas como KPI, que no tienen clave ni lógica de conflicto.
+  const metricCard = (m: MetricDef, label: string) => {
+    const series = values[m.id] ?? {};
+    const periods = Object.keys(series).sort();
+    const current = periods.length > 0 ? series[periods[periods.length - 1]] : null;
+    const prev = periods.length > 1 ? series[periods[periods.length - 2]] : null;
+    const change = current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
+    const sparkData = periods.map((p) => ({ v: series[p] ?? null }));
+    // scenario != "actual": evaluate-metrics devuelve values_actual en la
+    // misma respuesta (ver Notas del handoff de backend) — se compara sin un
+    // segundo request.
+    const actualSeries = scenario !== "actual" ? (valuesActual?.[m.id] ?? {}) : null;
+    const actualCurrent = actualSeries && periods.length > 0 ? (actualSeries[periods[periods.length - 1]] ?? null) : null;
+    return (
+      <MetricValueCard
+        key={m.id}
+        name={label}
+        unit={m.unit}
+        subtitle={scenario !== "actual" ? `${SCENARIO_LABELS[scenario]} vs. real: ${formatMetricValue(actualCurrent, m.unit)}` : undefined}
+        onInfo={() => onOpenMetric(m.id)}
+        current={current}
+        missing={loadingValues ? ["cargando"] : current == null ? ["sin datos"] : []}
+        missingMessage={loadingValues ? "Cargando…" : "Sin datos para este período."}
+        change={change}
+        sparkData={sparkData}
+      />
+    );
   };
 
   if (loading) return <LoadingState variant="centered" className="py-16" />;
@@ -302,32 +335,21 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
                 ))}
               </SelectContent>
             </Select>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 text-xs px-2.5">
-                  <SlidersHorizontal size={12} className="mr-1.5" aria-hidden="true" />
-                  KPIs ({visibleKpiOrder.length}/{STANDARD_KEY_ORDER.length})
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel className="text-xs">Elegí qué KPIs mostrar</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {STANDARD_KEY_ORDER.map((key) => (
-                  <DropdownMenuCheckboxItem
-                    key={key}
-                    checked={visibleKpis.has(key)}
-                    disabled={kpisLoading || kpisSaving}
-                    onSelect={(e) => e.preventDefault()}
-                    onCheckedChange={(checked) => toggleKpiVisible(key, checked === true)}
-                  >
-                    {STANDARD_KEY_LABELS[key]}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button variant="outline" size="sm" className="h-8 text-xs px-2.5" onClick={() => setKpiPickerOpen(true)}>
+              <SlidersHorizontal size={12} className="mr-1.5" aria-hidden="true" />
+              KPIs ({kpiIds.length}/{DASHBOARD_KPI_MAX})
+            </Button>
           </div>
         }
       >
+        {scenario !== "actual" && (
+          <p className="text-xs text-muted-foreground mb-3">
+            Estás viendo {SCENARIO_LABELS[scenario]}.{" "}
+            <button type="button" onClick={onGoToScenario} className="text-primary-dark hover:underline">
+              Cargar {SCENARIO_LABELS[scenario].toLowerCase()} en el Explorador
+            </button>
+          </p>
+        )}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {visibleKpiOrder.map((key) => {
             const group = byKey.get(key) ?? [];
@@ -434,40 +456,21 @@ export function MetricsOverviewTab({ companyId, metrics, warnings, fundRequired,
                 </div>
               );
             }
-            const m = group[0];
-            const series = values[m.id] ?? {};
-            const periods = Object.keys(series).sort();
-            const current = periods.length > 0 ? series[periods[periods.length - 1]] : null;
-            const prev = periods.length > 1 ? series[periods[periods.length - 2]] : null;
-            const change = current != null && prev != null && prev !== 0 ? ((current - prev) / Math.abs(prev)) * 100 : null;
-            const sparkData = periods.map((p) => ({ v: series[p] ?? null }));
-            // scenario != "actual": evaluate-metrics devuelve values_actual en
-            // la misma respuesta (ver Notas del handoff de backend) — se
-            // compara sin un segundo request.
-            const actualSeries = scenario !== "actual" ? (valuesActual?.[m.id] ?? {}) : null;
-            const actualCurrent =
-              actualSeries && periods.length > 0 ? (actualSeries[periods[periods.length - 1]] ?? null) : null;
-            return (
-              <MetricValueCard
-                key={m.id}
-                name={STANDARD_KEY_LABELS[key]}
-                unit={m.unit}
-                subtitle={
-                  scenario !== "actual"
-                    ? `${SCENARIO_LABELS[scenario]} vs. real: ${formatMetricValue(actualCurrent, m.unit)}`
-                    : undefined
-                }
-                onInfo={() => onOpenMetric(m.id)}
-                current={current}
-                missing={loadingValues ? ["cargando"] : current == null ? ["sin datos"] : []}
-                missingMessage={loadingValues ? "Cargando…" : "Sin datos para este período."}
-                change={change}
-                sparkData={sparkData}
-              />
-            );
+            return metricCard(group[0], STANDARD_KEY_LABELS[key]);
           })}
+          {customKpiMetrics.map((m) => metricCard(m, m.name))}
         </div>
       </SectionCard>
+
+      <KpiPickerDialog
+        open={kpiPickerOpen}
+        onOpenChange={setKpiPickerOpen}
+        metrics={metrics}
+        selectedIds={kpiIds}
+        defaultIds={defaultKpiIds}
+        saving={kpisSaving}
+        onSave={handleSaveKpis}
+      />
 
       <SectionCard
         title="Qué podemos mejorar"

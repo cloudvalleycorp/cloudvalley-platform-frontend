@@ -110,6 +110,20 @@ export function MetricsExplorerTab({ companyId, isOwner, metricId, navigate, raw
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, financial.loading, financial.fundRequired]);
 
+  // Handoff desde Overview ("Cargar {escenario} en el Explorador"): llega
+  // como ?tab=explorer&scenario=1 — antes el único acceso a "Cargar
+  // escenario" vivía acá sin ningún link desde Overview pese a que su
+  // selector de escenario ya te deja mirar Forecast/Presupuesto.
+  useEffect(() => {
+    if (!searchParams.get("scenario")) return;
+    setPageMode("data");
+    setScenarioDialogOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("scenario");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   useEffect(() => {
     localStorage.setItem(VIEW_KEY, view);
   }, [view]);
